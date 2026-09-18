@@ -661,6 +661,76 @@ all.txt: a.txt b.txt
     }
 
     #[test]
+    fn propagates_sequential_dependency_failure_with_stale_output() {
+        let root = temp_project("sequential-dependency-failure");
+        fs::write(root.join("source.txt"), "old\n").unwrap();
+        let needfile = r#"generated.txt: source.txt
+  if [ -e fail ]; then printf 'generation failed\n' >&2; exit 1; fi
+  cp {{in}} {{out}}
+final.txt: generated.txt
+  printf '%s\n' run >> final.runs
+  cp {{in}} {{out}}
+"#;
+        let mut first = context(&root, needfile);
+        build(&mut first, "final.txt", None).unwrap();
+        save_state(&root, &first.state).unwrap();
+
+        fs::write(root.join("source.txt"), "new\n").unwrap();
+        fs::write(root.join("fail"), "").unwrap();
+        let mut second = context(&root, needfile);
+        second.state = load_state(&root).unwrap();
+        let error = build(&mut second, "final.txt", None).unwrap_err();
+
+        assert!(error.contains("recipe failed for generated.txt"));
+        assert!(error.ends_with("required by final.txt"));
+        assert_eq!(
+            fs::read_to_string(root.join("generated.txt")).unwrap(),
+            "old\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("final.runs")).unwrap(),
+            "run\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn propagates_parallel_dependency_failure_with_stale_output() {
+        let root = temp_project("parallel-dependency-failure");
+        fs::write(root.join("source-a.txt"), "old-a\n").unwrap();
+        fs::write(root.join("source-b.txt"), "old-b\n").unwrap();
+        let needfile = r#"a.txt: source-a.txt
+  if [ -e fail ]; then printf 'generation failed\n' >&2; exit 1; fi
+  cp {{in}} {{out}}
+b.txt: source-b.txt
+  cp {{in}} {{out}}
+final.txt: a.txt b.txt
+  printf '%s\n' run >> final.runs
+  cat {{in}} > {{out}}
+"#;
+        let mut first = context(&root, needfile);
+        first.jobs = 2;
+        build(&mut first, "final.txt", None).unwrap();
+        save_state(&root, &first.state).unwrap();
+
+        fs::write(root.join("source-a.txt"), "new-a\n").unwrap();
+        fs::write(root.join("fail"), "").unwrap();
+        let mut second = context(&root, needfile);
+        second.jobs = 2;
+        second.state = load_state(&root).unwrap();
+        let error = build(&mut second, "final.txt", None).unwrap_err();
+
+        assert!(error.contains("recipe failed for a.txt"));
+        assert!(error.ends_with("required by final.txt"));
+        assert_eq!(fs::read_to_string(root.join("a.txt")).unwrap(), "old-a\n");
+        assert_eq!(
+            fs::read_to_string(root.join("final.runs")).unwrap(),
+            "run\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn limits_parallel_workers_to_requested_job_count() {
         let root = temp_project("parallel-limit");
         for name in ["a", "b", "c", "d", "e"] {

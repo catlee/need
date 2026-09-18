@@ -133,13 +133,7 @@ pub(crate) fn build_inner(
                     .collect::<Result<Vec<_>>>()
             })?;
             for (d, child, result) in results {
-                result.or_else(|e| {
-                    if abs(c, &d).is_file() {
-                        Ok(())
-                    } else {
-                        Err(required_by(e, target))
-                    }
-                })?;
+                result.map_err(|e| required_by(e, target))?;
                 let group = select_rule(c, &d)
                     .map(|(_, _, outputs)| outputs.join("\0"))
                     .unwrap_or_else(|_| d.clone());
@@ -164,14 +158,7 @@ pub(crate) fn build_inner(
                     .map(|(ri, _, _)| ri != usize::MAX)
                     .unwrap_or(false);
                 if !parallel || !parallel_targets.contains(path) {
-                    match build(c, path, None) {
-                        Ok(()) => {}
-                        Err(e) => {
-                            if !abs(c, path).is_file() {
-                                return Err(required_by(e, target));
-                            }
-                        }
-                    }
+                    build(c, path, None).map_err(|e| required_by(e, target))?;
                 }
                 if !generated {
                     record_cargo_dependency(c, &dependency);
