@@ -322,12 +322,13 @@ pub(crate) fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode
         .ok_or("failed to capture child stderr")?;
     let stdout_path = capture.stdout.clone();
     let stderr_path = capture.stderr.clone();
+    let stdout_stderr = stream_stdout_to_stderr(c.cargo);
     let stdout_thread = std::thread::spawn(move || {
         spool_stream(
             stdout_reader,
             &stdout_path,
             mode == OutputMode::Stream,
-            false,
+            stdout_stderr,
         )
     });
     let stderr_thread = std::thread::spawn(move || {
@@ -451,6 +452,10 @@ pub(crate) fn cargo_metadata(c: &BuildCtx, needfile: &Path) -> Vec<String> {
             .map(|name| format!("cargo:rerun-if-env-changed={name}")),
     );
     lines
+}
+
+pub(crate) fn stream_stdout_to_stderr(cargo: bool) -> bool {
+    cargo
 }
 
 fn spool_stream<R: Read>(mut reader: R, path: &Path, forward: bool, stderr: bool) -> Result<()> {

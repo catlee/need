@@ -48,6 +48,9 @@ Semantics:
 - output appears immediately
 - concurrent jobs may interleave
 
+In `--cargo` mode, both recipe streams go to parent stderr so stdout remains
+reserved for Cargo metadata directives.
+
 `stream` is the recommended default for an initial serial implementation.
 
 ### 2.2 `grouped`

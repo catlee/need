@@ -1060,6 +1060,12 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
     }
 
     #[test]
+    fn cargo_streams_recipe_output_to_stderr() {
+        assert!(stream_stdout_to_stderr(true));
+        assert!(!stream_stdout_to_stderr(false));
+    }
+
+    #[test]
     fn spools_large_successful_output_without_losing_log_bytes() {
         let root = temp_project("large-output");
         let ctx = BuildCtx {
