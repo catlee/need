@@ -62,10 +62,20 @@ working, then run the full `just check` before handing off.
 For independent issues, use one Herdr worktree and tab per issue. `herdr
 worktree create` creates the linked Git checkout, branch, Herdr workspace, tab,
 and root pane; start the agent in the returned pane with `-- --yolo`. Keep
-`.worktrees/` ignored.
+`.worktrees/` ignored. If many agents run Rust checks concurrently, expect
+Cargo package-cache or build-directory contention; batch the work or give
+agents isolated target directories.
 
-Agents should commit locally but not push. Rebase each completed branch onto
-the latest `main`, integrate with `git merge --ff-only`, run `just check` on
-the combined result, push, and only then close the issue. Remove temporary
-worktrees with `herdr worktree remove` after integration; this preserves their
-branches and commits.
+Agents should commit locally but not push. Issues that touch the same files
+may still conflict even when their behavior is independent, so preserve all
+relevant tests during conflict resolution. Integrate branches one at a time:
+immediately before each merge, rebase that branch onto the current `main`,
+resolve conflicts in its worktree, run its focused checks, and then use
+`git merge --ff-only`. Do not rebase all branches up front, because `main`
+changes after every fast-forward merge.
+
+After all branches are integrated, run `just format` and `just check` on
+`main`, including after any integration-only fix. Keep integration fixes in a
+temporary worktree/branch when practical; do not create merge commits. Push,
+and only then close the issue. Remove temporary worktrees with `herdr
+worktree remove` after integration; this preserves the branches and commits.
