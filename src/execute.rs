@@ -654,10 +654,9 @@ pub(crate) fn expand_glob(c: &BuildCtx, p: &str) -> Result<Vec<String>> {
                 error.error()
             ) + "\nhelp: check that the path exists and is readable"
         })?;
-        if x.is_file()
-            && let Ok(r) = x.strip_prefix(&c.root)
-        {
-            set.insert(r.to_string_lossy().replace('\\', "/"));
+        if x.is_file() {
+            let path = x.strip_prefix(&c.root).unwrap_or(&x);
+            set.insert(path.to_string_lossy().replace('\\', "/"));
         }
     }
     for r in &c.rules {

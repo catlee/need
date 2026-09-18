@@ -93,6 +93,7 @@ bundle.js: assets/*.js
 ```
 
 Matching files are sorted before they are used. Globs can also match concrete outputs declared elsewhere in the `needfile`, which lets generated files participate in the graph.
+Matches outside the project root are preserved as external paths, just like direct external dependencies.
 
 ## Variables and interpolation
 

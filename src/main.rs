@@ -561,6 +561,29 @@ mod tests {
     }
 
     #[test]
+    fn builds_from_an_external_glob_dependency() {
+        let root = temp_project("external-glob");
+        let external = root
+            .parent()
+            .unwrap()
+            .join(format!("need-external-glob-{}", std::process::id()));
+        fs::create_dir_all(&external).unwrap();
+        fs::write(external.join("source.txt"), "outside\n").unwrap();
+        let needfile = format!(
+            "out.txt: ../need-external-glob-{}/*.txt\n  cat {{{{in}}}} > {{{{out}}}}\n",
+            std::process::id()
+        );
+        let mut ctx = context(&root, &needfile);
+        build(&mut ctx, "out.txt", None).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("out.txt")).unwrap(),
+            "outside\n"
+        );
+        fs::remove_dir_all(external).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn builds_pattern_target_and_creates_parent_directory() {
         let root = temp_project("pattern");
         fs::write(root.join("input.txt"), "hello\n").unwrap();

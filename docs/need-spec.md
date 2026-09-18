@@ -415,6 +415,7 @@ A glob dependency tracks:
 - the membership of the matching set itself
 
 Adding or removing a matching file makes the dependent target stale.
+Matches outside the project root remain external paths and are preserved as dependency inputs, consistently with direct external paths.
 
 Malformed glob patterns and errors encountered while traversing a glob MUST
 fail dependency resolution with a diagnostic that identifies the glob and the
