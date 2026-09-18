@@ -597,6 +597,11 @@ build/%.png: src/%.yml
 
 `{{stem}}` is valid only in rules matched through `%`.
 
+Any other `{{...}}` token in a recipe is an error and MUST be reported before
+the recipe is executed. The diagnostic SHOULD name the unknown token and
+include a `help:` hint listing the supported automatic variables and indexed
+or slice forms.
+
 ---
 
 ## 12. Rule Modifiers

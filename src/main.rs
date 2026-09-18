@@ -480,6 +480,22 @@ mod tests {
     }
 
     #[test]
+    fn rejects_unknown_interpolation_before_running_recipe() {
+        let root = temp_project("unknown-interpolation");
+        fs::write(root.join("input.txt"), "input\n").unwrap();
+        let mut ctx = context(&root, "out.txt: input.txt\n  touch {{unknown}} {{out}}\n");
+
+        let error = build(&mut ctx, "out.txt", None).unwrap_err();
+
+        assert_eq!(
+            error,
+            "unknown interpolation token: {{unknown}}\nhelp: use {{in}}, {{out}}, {{stem}}, or an indexed/slice form"
+        );
+        assert!(!root.join("out.txt").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn hashes_files_with_streaming_blake3() {
         let root = temp_project("streaming-hash");
         let data: Vec<u8> = (0..100_000).map(|n| (n % 251) as u8).collect();

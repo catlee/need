@@ -728,6 +728,21 @@ pub(crate) fn interpolate(
             }
         }
     }
+    let rest = s.as_str();
+    if let Some(start) = rest.find("{{") {
+        let token_start = start + 2;
+        let Some(end) = rest[token_start..].find("}}") else {
+            return Err(format!(
+                "unterminated interpolation starting with {}\nhelp: close interpolation tokens with }}}}",
+                &rest[start..]
+            ));
+        };
+        let end = token_start + end;
+        let token = &rest[token_start..end];
+        return Err(format!(
+            "unknown interpolation token: {{{{{token}}}}}\nhelp: use {{{{in}}}}, {{{{out}}}}, {{{{stem}}}}, or an indexed/slice form"
+        ));
+    }
     Ok(s)
 }
 pub(crate) fn dependency_signature(c: &BuildCtx, dependency: &Dependency) -> Result<String> {
