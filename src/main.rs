@@ -720,10 +720,7 @@ fn cargo_metadata(c: &BuildCtx, needfile: &Path) -> Vec<String> {
 fn forward_stream<R: Read>(mut reader: R, stderr: bool) -> Vec<u8> {
     let mut captured = Vec::new();
     let mut chunk = [0_u8; 8192];
-    loop {
-        let Ok(count) = reader.read(&mut chunk) else {
-            break;
-        };
+    while let Ok(count) = reader.read(&mut chunk) {
         if count == 0 {
             break;
         }
