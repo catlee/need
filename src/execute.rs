@@ -488,7 +488,7 @@ pub(crate) fn is_leaf_rule(c: &BuildCtx, target: &str) -> Result<bool> {
             continue;
         };
         let Ok(path) = resolve_pattern_path(path, rule.pattern, stem.as_deref()) else {
-            return false;
+            return Ok(false);
         };
         let paths = if is_glob(&path) {
             expand_glob(c, &path)?
