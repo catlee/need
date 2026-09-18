@@ -260,7 +260,9 @@ Successful logs can be retained with:
 need.log.keep = 5
 ```
 
-The modifier itself contributes to the rule signature.
+Semantic modifiers contribute to the rule signature. The presentation-only
+`@output(...)` modifier changes logging behavior without invalidating the
+artifact.
 
 ## Freshness and state
 
@@ -269,7 +271,7 @@ The modifier itself contributes to the rule signature.
 * a declared output is missing;
 * a declared output’s content differs from the recorded successful output;
 * a file, tree, environment, or string dependency changes;
-* the resolved recipe, variables, or modifiers change;
+* the resolved recipe, variables, or semantic modifiers change;
 * `--force` is used.
 
 The state is content-based rather than timestamp-only. The `.need/` directory can be removed to discard cached build state; the next build will recreate it.

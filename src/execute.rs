@@ -171,7 +171,13 @@ pub(crate) fn build_inner(
         ));
     }
     let recipe = expand(&rule.recipe, &c.vars, &c.env_values);
-    let mods = expand(&rule.modifiers.join("\n"), &c.vars, &c.env_values);
+    let mods = rule
+        .modifiers
+        .iter()
+        .filter(|modifier| !modifier.starts_with("@output("))
+        .map(|modifier| expand(modifier, &c.vars, &c.env_values))
+        .collect::<Vec<_>>()
+        .join("\n");
     let dotenv_sig = rule
         .env_refs
         .iter()

@@ -348,6 +348,51 @@ mod tests {
     }
 
     #[test]
+    fn changing_output_modifier_does_not_rebuild() {
+        let root = temp_project("output-modifier-signature");
+        fs::write(root.join("input.txt"), "input\n").unwrap();
+        let needfile = "out.txt: input.txt\n  @output(stream)\n  printf '%s\\n' run >> runs.txt\n  cp {{in}} {{out}}\n";
+
+        let mut first = context(&root, needfile);
+        build(&mut first, "out.txt", None).unwrap();
+        save_state(&root, &first.state).unwrap();
+
+        let mut second = context(
+            &root,
+            "out.txt: input.txt\n  @output(silent)\n  printf '%s\\n' run >> runs.txt\n  cp {{in}} {{out}}\n",
+        );
+        second.state = load_state(&root).unwrap();
+        build(&mut second, "out.txt", None).unwrap();
+
+        assert_eq!(fs::read_to_string(root.join("runs.txt")).unwrap(), "run\n");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn semantic_modifiers_remain_in_the_rule_signature() {
+        let root = temp_project("semantic-modifier-signature");
+        fs::write(root.join("input.txt"), "input\n").unwrap();
+        let needfile =
+            "out.txt: input.txt\n  printf '%s\\n' run >> runs.txt\n  cp {{in}} {{out}}\n";
+
+        let mut first = context(&root, needfile);
+        first.rules[0].modifiers.push("@semantic(one)".into());
+        build(&mut first, "out.txt", None).unwrap();
+        save_state(&root, &first.state).unwrap();
+
+        let mut second = context(&root, needfile);
+        second.rules[0].modifiers.push("@semantic(two)".into());
+        second.state = load_state(&root).unwrap();
+        build(&mut second, "out.txt", None).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join("runs.txt")).unwrap(),
+            "run\nrun\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn parses_urls_and_quoted_variable_values() {
         let root = temp_project("parse-values");
         let path = root.join("needfile");

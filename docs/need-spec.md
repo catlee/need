@@ -825,7 +825,8 @@ The exact depfile format support may initially be limited to commonly generated 
 Rule modifiers:
 
 - are evaluated as part of rule execution semantics
-- are included in the rule signature
+- semantic modifiers are included in the rule signature
+- presentation-only modifiers, such as `@output(...)`, are not included in the rule signature
 - may reference variables and environment values
 - are not included in `{{in}}`
 - are not shell commands
@@ -1201,7 +1202,7 @@ A rule is stale when any of the following is true:
 - an `mtime(...)` dependency changed
 - an `env(...)` value changed
 - a `string(...)` value changed
-- the recipe signature changed
+- the recipe signature or a semantic modifier changed
 - an upstream generated dependency rebuilt
 - the rule has no previous successful build state
 
@@ -1292,7 +1293,7 @@ Expansion and dependency resolution follow a deterministic order:
 6. Substitute the bound stem into dependency patterns
 7. Expand dependency globs
 8. Evaluate dependency expressions such as file(), tree(), mtime(), env(), and string()
-9. Compute dependency and recipe signatures
+9. Compute dependency, recipe, and semantic modifier signatures
 10. Decide freshness
 11. Interpolate recipe values
 12. Shell-escape interpolated values

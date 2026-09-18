@@ -178,6 +178,10 @@ This fits existing directive syntax:
 @output(...)
 ```
 
+The `@output(...)` modifier is presentation-only: changing it does not make a
+current artifact stale. Other rule modifiers are semantic and contribute to
+the rule signature.
+
 Per-rule output configuration may be deferred from the first implementation.
 
 ## 6. Internal Capture Model
