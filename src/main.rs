@@ -348,6 +348,7 @@ fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Vec<Rule>)> {
         let mut modifiers = Vec::new();
         for l in body {
             if l.starts_with('@') {
+                validate_modifier(&l)?;
                 modifiers.push(l)
             } else if !l.is_empty() && !l.starts_with('#') {
                 recipe.push(l)
@@ -369,6 +370,18 @@ fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Vec<Rule>)> {
         });
     }
     Ok((vars, rules))
+}
+
+fn validate_modifier(modifier: &str) -> Result<()> {
+    let Some(value) = modifier
+        .strip_prefix("@output(")
+        .and_then(|x| x.strip_suffix(')'))
+    else {
+        return Err(format!("unsupported rule modifier {modifier}"));
+    };
+    OutputMode::parse(value)
+        .map(|_| ())
+        .map_err(|_| format!("invalid output mode in rule modifier {modifier}"))
 }
 
 #[derive(Default)]
@@ -1455,6 +1468,28 @@ mod tests {
         assert_eq!(rules[0].deps, vec!["input.txt", "config.txt"]);
         assert_eq!(rules[0].modifiers, vec!["@output(grouped)"]);
         assert!(rules[0].recipe.contains("{{in[0]}}"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_unsupported_rule_modifiers() {
+        let root = temp_project("modifiers");
+        let path = root.join("needfile");
+        fs::write(
+            &path,
+            "out.txt: input.txt\n  @outputs(.need/outputs)\n  touch {{out}}\n",
+        )
+        .unwrap();
+        let error = parse_needfile(&path).unwrap_err();
+        assert_eq!(error, "unsupported rule modifier @outputs(.need/outputs)");
+
+        fs::write(
+            &path,
+            "out.txt: input.txt\n  @output(nope)\n  touch {{out}}\n",
+        )
+        .unwrap();
+        let error = parse_needfile(&path).unwrap_err();
+        assert_eq!(error, "invalid output mode in rule modifier @output(nope)");
         fs::remove_dir_all(root).unwrap();
     }
 
