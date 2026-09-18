@@ -1494,7 +1494,9 @@ need --force build/app
 
 This forces the requested target/output group to rebuild even if its stored signature is current.
 
-Downstream targets affected by the rebuilt output are then evaluated normally.
+Dependencies of the requested target are evaluated normally: current
+dependencies are skipped, while stale dependencies rebuild as usual. Downstream
+targets affected by the rebuilt output are then evaluated normally.
 
 `need` does not need a Make-like `touch` operation because freshness is signature-based rather than timestamp-authoritative.
 

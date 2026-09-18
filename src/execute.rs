@@ -24,19 +24,28 @@ pub(crate) fn abs(c: &BuildCtx, p: &str) -> PathBuf {
 
 pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> Result<()> {
     let target = norm_rel(target)?;
+    let force = c.force && c.stack.is_empty();
+    if c.built.contains(&target) && !force {
+        return Ok(());
+    }
     if let Some(index) = c.stack.iter().position(|x| x == &target) {
         let mut cycle = c.stack[index..].to_vec();
         cycle.push(target.clone());
         return Err(format!("dependency cycle\n{}", cycle.join(" -> ")));
     }
     c.stack.push(target.clone());
-    let result = build_inner(c, &target, parent);
+    let result = build_inner(c, &target, parent, force);
     c.stack.pop();
     result
 }
 
-pub(crate) fn build_inner(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
-    if c.built.contains(target) {
+pub(crate) fn build_inner(
+    c: &mut BuildCtx,
+    target: &str,
+    _parent: Option<&str>,
+    force: bool,
+) -> Result<()> {
+    if c.built.contains(target) && !force {
         return Ok(());
     }
     let (ri, stem, outputs) = select_rule(c, target)?;
@@ -162,7 +171,7 @@ pub(crate) fn build_inner(c: &mut BuildCtx, target: &str, _parent: Option<&str>)
         "recipe={recipe}\nmods={mods}\ndeps={dep_sig:?}\ndotenv={dotenv_sig:?}"
     ));
     let saved = c.state.rules.get(&key).cloned();
-    let mut stale = c.force || saved.as_ref().is_none_or(|x| x.signature != sig);
+    let mut stale = force || saved.as_ref().is_none_or(|x| x.signature != sig);
     let mut outsig = BTreeMap::new();
     for o in &outputs {
         let p = abs(c, o);

@@ -504,6 +504,46 @@ mod tests {
     }
 
     #[test]
+    fn force_rebuilds_requested_target_but_evaluates_dependencies_normally() {
+        let root = temp_project("force-semantics");
+        fs::write(root.join("current-source.txt"), "current\n").unwrap();
+        fs::write(root.join("stale-source.txt"), "old\n").unwrap();
+        let needfile = r#"current.txt: current-source.txt
+  printf '%s\n' run >> current.runs
+  cp {{in}} {{out}}
+stale.txt: stale-source.txt
+  printf '%s\n' run >> stale.runs
+  cp {{in}} {{out}}
+final.txt: current.txt stale.txt
+  cat {{in}} > {{out}}
+"#;
+
+        let mut first = context(&root, needfile);
+        build(&mut first, "final.txt", None).unwrap();
+        save_state(&root, &first.state).unwrap();
+
+        fs::write(root.join("stale-source.txt"), "new\n").unwrap();
+        let mut second = context(&root, needfile);
+        second.force = true;
+        second.state = load_state(&root).unwrap();
+        build(&mut second, "final.txt", None).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join("current.runs")).unwrap(),
+            "run\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("stale.runs")).unwrap(),
+            "run\nrun\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("final.txt")).unwrap(),
+            "current\nnew\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn preserves_parallel_workers_state() {
         let root = temp_project("parallel-state");
         fs::write(root.join("input-a.txt"), "a\n").unwrap();

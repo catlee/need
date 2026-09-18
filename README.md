@@ -154,7 +154,7 @@ need                         # build the first concrete target
 need build/app               # build a target
 need --dry-run build/app     # show what would run
 need --explain build/app     # explain current and stale targets
-need --force build/app       # rebuild the target
+need --force build/app       # rebuild the target, not its current dependencies
 need --list                  # list declared targets
 need --output=grouped build/app
 ```
