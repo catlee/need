@@ -329,6 +329,25 @@ mod tests {
     }
 
     #[test]
+    fn preserves_relative_recipe_indentation() {
+        let root = temp_project("recipe-indentation");
+        let path = root.join("needfile");
+        fs::write(
+            &path,
+            "  out.txt: input.txt\n    if true; then\n      printf nested > {{out}}\n    fi\n",
+        )
+        .unwrap();
+
+        let (_, rules) = parse_needfile(&path).unwrap();
+
+        assert_eq!(
+            rules[0].recipe,
+            "if true; then\n  printf nested > {{out}}\nfi"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn parses_urls_and_quoted_variable_values() {
         let root = temp_project("parse-values");
         let path = root.join("needfile");
@@ -641,6 +660,23 @@ mod tests {
         assert!(error.contains("Permission denied"));
         assert!(error.ends_with("help: check that the path exists and is readable"));
         fs::set_permissions(&blocked, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn executes_recipe_with_relative_indentation_preserved() {
+        let root = temp_project("recipe-execution-indentation");
+        let mut ctx = context(
+            &root,
+            "out.txt:\n  cat > {{out}} <<'EOF'\n    nested\n  EOF\n",
+        );
+
+        build(&mut ctx, "out.txt", None).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join("out.txt")).unwrap(),
+            "  nested\n"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

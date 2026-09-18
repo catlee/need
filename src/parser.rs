@@ -83,17 +83,32 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
                     i + 1,
                 ));
             }
-            body.push(l.trim().into());
+            body.push(if l.len() >= indent {
+                l[indent..].to_owned()
+            } else {
+                String::new()
+            });
             i += 1
         }
-        let mut recipe = Vec::new();
+        let base_indent = body
+            .iter()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| line.len() - line.trim_start().len())
+            .min()
+            .unwrap_or(0);
+        let mut recipe: Vec<String> = Vec::new();
         let mut modifiers = Vec::new();
         for l in body {
+            let l = if l.len() >= base_indent {
+                &l[base_indent..]
+            } else {
+                ""
+            };
             if l.starts_with('@') {
-                validate_modifier(&l)?;
-                modifiers.push(l)
+                validate_modifier(l)?;
+                modifiers.push(l.into())
             } else if !l.is_empty() && !l.starts_with('#') {
-                recipe.push(l)
+                recipe.push(l.into())
             }
         }
         let pattern = outputs.iter().any(|x| x.matches('%').count() > 0);
