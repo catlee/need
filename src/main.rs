@@ -579,7 +579,13 @@ fn norm_rel(s: &str) -> Result<String> {
     for c in p.components() {
         match c {
             std::path::Component::ParentDir => {
-                o.pop();
+                if o.file_name()
+                    .is_some_and(|name| name != std::ffi::OsStr::new(".."))
+                {
+                    o.pop();
+                } else {
+                    o.push("..");
+                }
             }
             std::path::Component::CurDir => {}
             std::path::Component::Normal(x) => o.push(x),
@@ -1462,6 +1468,41 @@ mod tests {
         )
         .unwrap();
         assert_eq!(rendered, "tool 'a file.txt' b.txt c.txt -> 'out file'");
+    }
+
+    #[test]
+    fn preserves_parent_components_during_path_normalization() {
+        assert_eq!(
+            norm_rel("../retroterm/fontbm").unwrap(),
+            "../retroterm/fontbm"
+        );
+        assert_eq!(
+            norm_rel("../../retroterm/fontbm").unwrap(),
+            "../../retroterm/fontbm"
+        );
+        assert_eq!(norm_rel("build/../fontbm").unwrap(), "fontbm");
+    }
+
+    #[test]
+    fn builds_from_a_dependency_outside_the_project_root() {
+        let root = temp_project("parent-dependency");
+        let source = root
+            .parent()
+            .unwrap()
+            .join(format!("need-parent-source-{}", std::process::id()));
+        fs::write(&source, "outside\n").unwrap();
+        let needfile = format!(
+            "out.txt: file(../need-parent-source-{})\n  cp {{{{in}}}} {{{{out}}}}\n",
+            std::process::id()
+        );
+        let mut ctx = context(&root, &needfile);
+        build(&mut ctx, "out.txt", None).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("out.txt")).unwrap(),
+            "outside\n"
+        );
+        fs::remove_file(source).unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
