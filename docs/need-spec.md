@@ -30,6 +30,42 @@ A useful rule of thumb is:
 
 > **`just` does things. `need` makes things exist.**
 
+## Implementation Status
+
+This document describes the target design. The current prototype implements the
+core artifact graph, including:
+
+- basic rules, variables, interpolation, pattern rules, and dependency globs
+- automatic output directories and multiple-output groups
+- file, tree, mtime, environment, and string dependency expressions
+- content-based freshness and persistent state under `.need/`
+- dry-run, explain, list, force, parallel jobs, and configurable output modes
+- Cargo metadata mode with transitive source and environment dependencies
+- dependency-cycle detection
+
+The following specified features are not implemented yet:
+
+- **Dotenv loading** (Section 15.1): `need.env`, required/custom dotenv files,
+  override behavior, and dotenv-aware freshness.
+- **Dynamic output manifests** (Section 12, `@outputs(...)`): manifest
+  validation, output ownership updates, orphan cleanup, and interruption
+  recovery.
+- **Depfiles** (Section 12, `@depfile(...)`, and Section 44): compiler-generated
+  dependency discovery for C/C++ and similar tools.
+- **Glob re-evaluation** (Section 10.1): re-expanding globs after upstream rules
+  create or remove matching files.
+- **Complete CLI surface** (Section 46): `--file`, `-n`, and `--version`.
+- **Detailed explain reasons** (Section 34): reporting the specific changed
+  dependency, recipe, or output that made a rule stale.
+- **Interruption and recovery handling** (Section 30): signal-aware cleanup and
+  recovery metadata for interrupted builds.
+- **Cross-process locking** (Section 48): preventing concurrent `need` processes
+  from racing over the same output group or state database.
+- **Hash and output scalability improvements** (Sections 17 and 21): metadata
+  assisted hash caching and spool-to-disk capture for very large recipe output.
+
+These omissions are intentional implementation work remaining against the
+specification; they are not alternate semantics.
 ---
 
 ## 2. Design Goals
@@ -883,6 +919,46 @@ Explicit dependency syntax is available when an environment value affects freshn
 output.bin: input.dat env(SOME_FLAG)
   tool {{in}} -o {{out}}
 ```
+
+### 15.1 Dotenv Files
+
+Projects MAY opt in to loading environment variables from a dotenv file:
+
+```make
+need.env = load
+```
+
+When enabled, `need` looks for `.env` relative to the directory containing the
+discovered `needfile`, then in its ancestors. It is not an error if no file is
+found unless required loading is enabled:
+
+```make
+need.env.required = true
+```
+
+The filename or path MAY be customized:
+
+```make
+need.env.file = .env.local
+```
+
+Dotenv files use the conventional `NAME=value` format. Blank lines and
+comments are ignored. Values MAY be quoted, but dotenv loading MUST NOT execute
+shell code, command substitutions, or recipes.
+
+Variables loaded from the dotenv file are inherited by recipes and are
+available through `{{env.NAME}}` and `env(NAME)`. Existing process environment
+variables take precedence by default. Projects MAY opt into dotenv values
+overriding the process environment:
+
+```make
+need.env.override = true
+```
+
+Loaded environment values participate in rule freshness wherever they are
+referenced. The dotenv file itself MUST participate in freshness for rules
+whose resolved environment dependencies use values from that file. Dotenv
+contents MUST NOT be printed as part of normal diagnostics.
 
 ---
 

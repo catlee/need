@@ -1,5 +1,7 @@
 <h1 align=center><code>need</code></h1>
 
+[![CI](https://github.com/catlee/need/actions/workflows/ci.yml/badge.svg)](https://github.com/catlee/need/actions/workflows/ci.yml)
+
 For when you just need simple build dependencies.
 
 `need` is a small build tool for making files exist and keeping them up to date.
