@@ -7,7 +7,7 @@ use std::{
 use crate::{
     Result,
     hash::hash_text,
-    model::{OutputMode, Rule},
+    model::{Dependency, OutputMode, Rule},
 };
 
 pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Vec<Rule>)> {
@@ -59,7 +59,10 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
         }
         let (o, d) = header.split_once(':').unwrap();
         let outputs = split_words(o)?;
-        let deps = split_words(d)?;
+        let deps = split_words(d)?
+            .into_iter()
+            .map(|dependency| parse_dependency(&dependency))
+            .collect::<Result<Vec<_>>>()?;
         if outputs.is_empty() {
             return Err("rule has no outputs".into());
         }
@@ -94,13 +97,13 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
         }
         let pattern = outputs.iter().any(|x| x.matches('%').count() > 0);
         if outputs.iter().any(|x| x.matches('%').count() > 1)
-            || deps.iter().any(|x| x.matches('%').count() > 1)
+            || deps.iter().any(|x| x.template().matches('%').count() > 1)
         {
             return Err("only one % is supported per pattern".into());
         }
         rules.push(Rule {
             outputs: outputs.into_iter().map(|x| unquote(&x)).collect(),
-            deps: deps.into_iter().map(|x| unquote(&x)).collect(),
+            deps,
             recipe: recipe.join("\n"),
             modifiers,
             pattern,
@@ -108,6 +111,22 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
         });
     }
     Ok((vars, rules))
+}
+
+pub(crate) fn parse_dependency(raw: &str) -> Result<Dependency> {
+    let raw = unquote(raw);
+    for (prefix, constructor) in [
+        ("file(", Dependency::File as fn(String) -> Dependency),
+        ("tree(", Dependency::Tree as fn(String) -> Dependency),
+        ("mtime(", Dependency::Mtime as fn(String) -> Dependency),
+        ("env(", Dependency::Env as fn(String) -> Dependency),
+        ("string(", Dependency::String as fn(String) -> Dependency),
+    ] {
+        if let Some(value) = raw.strip_prefix(prefix).and_then(|x| x.strip_suffix(')')) {
+            return Ok(constructor(unquote(value)));
+        }
+    }
+    Ok(Dependency::File(raw))
 }
 
 pub(crate) fn validate_modifier(modifier: &str) -> Result<()> {

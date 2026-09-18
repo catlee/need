@@ -965,6 +965,10 @@ contents MUST NOT be printed as part of normal diagnostics.
 
 Bare paths mean file-content dependencies.
 
+Dependency kinds are explicit and MUST be preserved through graph evaluation.
+Implementations MUST NOT infer `tree(...)` semantics from a path's filesystem
+type; use `tree(...)` when recursive directory contents are intended.
+
 Example:
 
 ```make

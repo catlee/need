@@ -10,8 +10,8 @@ use std::{
 use crate::{
     Result,
     hash::{hash_file, hash_text, walk},
-    model::{BuildCtx, OutputMode, Rule, SavedRule},
-    parser::{expand, norm_rel, unquote},
+    model::{BuildCtx, Dependency, OutputMode, Rule, SavedRule},
+    parser::{expand, norm_rel},
 };
 
 pub(crate) fn abs(c: &BuildCtx, p: &str) -> PathBuf {
@@ -56,38 +56,59 @@ pub(crate) fn build_inner(
     let rule = c.rules[ri].clone();
     let key = outputs.join("\0");
     let mut deps = Vec::new();
-    for raw in &rule.deps {
-        let mut d = expand(raw, &c.vars, &c.env_values);
-        if rule.pattern {
-            d = d.replace('%', stem.as_deref().unwrap_or(""))
+    for dependency in &rule.deps {
+        let d = match dependency {
+            Dependency::File(path) => Dependency::File(norm_rel(&if rule.pattern {
+                path.replace('%', stem.as_deref().unwrap_or(""))
+            } else {
+                path.clone()
+            })?),
+            Dependency::Tree(path) => Dependency::Tree(norm_rel(path)?),
+            Dependency::Mtime(path) => Dependency::Mtime(norm_rel(path)?),
+            Dependency::Env(name) => Dependency::Env(name.clone()),
+            Dependency::String(value) => Dependency::String(value.clone()),
+        };
+        let mut resolved = vec![d];
+        if let Dependency::File(path) = &resolved[0]
+            && is_glob(path)
+        {
+            resolved = expand_glob(c, path)
+                .into_iter()
+                .map(Dependency::File)
+                .collect();
         }
-        if is_glob(&d) {
-            deps.extend(expand_glob(c, &d))
-        } else {
-            deps.push(eval_path(c, &d)?)
+        for d in resolved {
+            deps.push(d);
         }
     }
     let mut seen_deps = HashSet::new();
     deps.retain(|d| seen_deps.insert(d.clone()));
     let mut inputs = Vec::new();
     let mut dep_sig = Vec::new();
-    let parallel_candidates: Vec<String> = deps
+    let parallel_candidates: Vec<Dependency> = deps
         .iter()
-        .filter(|d| !d.starts_with("@value:") && is_leaf_rule(c, d))
+        .filter(|d| matches!(d, Dependency::File(path) if is_leaf_rule(c, path)))
         .cloned()
         .collect();
     let parallel = c.jobs > 1 && parallel_candidates.len() > 1;
-    let parallel_targets: HashSet<String> = parallel_candidates.iter().cloned().collect();
+    let parallel_targets: HashSet<String> = parallel_candidates
+        .iter()
+        .filter_map(|d| match d {
+            Dependency::File(path) => Some(path.clone()),
+            _ => None,
+        })
+        .collect();
     if parallel {
         let base = c.clone();
         let mut parallel_deps = Vec::new();
         let mut parallel_groups = HashSet::new();
         for d in &parallel_candidates {
-            let group = select_rule(c, d)
+            let Dependency::File(path) = d else { continue };
+            let group = select_rule(c, path)
                 .map(|(_, _, outputs)| outputs.join("\0"))
-                .unwrap_or_else(|_| d.clone());
+                .unwrap_or_else(|_| path.clone());
             if parallel_groups.insert(group) {
-                parallel_deps.push(d.clone());
+                parallel_deps.push(path.clone());
             }
         }
         for batch in parallel_deps.chunks(c.jobs) {
@@ -130,30 +151,43 @@ pub(crate) fn build_inner(
             }
         }
     }
-    for d in deps {
-        if d.starts_with("@value:") {
-            record_cargo_dependency(c, &d);
-            dep_sig.push(d);
-            continue;
-        }
-        let generated = select_rule(c, &d)
-            .map(|(ri, _, _)| ri != usize::MAX)
-            .unwrap_or(false);
-        if !parallel || !parallel_targets.contains(&d) {
-            match build(c, &d, None) {
-                Ok(()) => {}
-                Err(e) => {
-                    if !abs(c, &d).is_file() {
-                        return Err(required_by(e, target));
+    for dependency in deps {
+        let (path, should_build, should_input) = match &dependency {
+            Dependency::File(path) => (Some(path.as_str()), true, true),
+            Dependency::Tree(path) | Dependency::Mtime(path) => (Some(path.as_str()), false, false),
+            Dependency::Env(_) | Dependency::String(_) => (None, false, false),
+        };
+        if let Some(path) = path {
+            if should_build {
+                let generated = select_rule(c, path)
+                    .map(|(ri, _, _)| ri != usize::MAX)
+                    .unwrap_or(false);
+                if !parallel || !parallel_targets.contains(path) {
+                    match build(c, path, None) {
+                        Ok(()) => {}
+                        Err(e) => {
+                            if !abs(c, path).is_file() {
+                                return Err(required_by(e, target));
+                            }
+                        }
                     }
                 }
+                if !generated {
+                    record_cargo_dependency(c, &dependency);
+                }
+                if should_input {
+                    inputs.push(path.to_string());
+                }
+            } else {
+                record_cargo_dependency(c, &dependency);
             }
+        } else {
+            record_cargo_dependency(c, &dependency);
         }
-        if !generated {
-            record_cargo_dependency(c, &d);
-        }
-        inputs.push(d.clone());
-        dep_sig.push(format!("{d}={}", signature(c, &d)?));
+        dep_sig.push(format!(
+            "{dependency:?}={}",
+            dependency_signature(c, &dependency)?
+        ));
     }
     let recipe = expand(&rule.recipe, &c.vars, &c.env_values);
     let mods = expand(&rule.modifiers.join("\n"), &c.vars, &c.env_values);
@@ -342,16 +376,15 @@ pub(crate) fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode
     Ok(())
 }
 
-pub(crate) fn record_cargo_dependency(c: &mut BuildCtx, dependency: &str) {
-    if let Some(value) = dependency.strip_prefix("@value:env:") {
-        if let Some((name, _)) = value.split_once('=') {
-            c.cargo_env.insert(name.to_string());
+pub(crate) fn record_cargo_dependency(c: &mut BuildCtx, dependency: &Dependency) {
+    match dependency {
+        Dependency::Env(name) => {
+            c.cargo_env.insert(name.clone());
         }
-        return;
-    }
-    let path = dependency.strip_prefix("@mtime:").unwrap_or(dependency);
-    if !path.is_empty() {
-        c.cargo_deps.insert(path.to_string());
+        Dependency::File(path) | Dependency::Tree(path) | Dependency::Mtime(path) => {
+            c.cargo_deps.insert(path.clone());
+        }
+        Dependency::String(_) => {}
     }
 }
 
@@ -408,23 +441,23 @@ pub(crate) fn is_leaf_rule(c: &BuildCtx, target: &str) -> bool {
         return false;
     }
     let rule = &c.rules[ri];
-    rule.deps.iter().all(|raw| {
-        let mut dep = expand(raw, &c.vars, &c.env_values);
-        if rule.pattern {
-            dep = dep.replace('%', stem.as_deref().unwrap_or(""));
-        }
-        let deps = if is_glob(&dep) {
-            expand_glob(c, &dep)
-        } else {
-            vec![dep]
+    rule.deps.iter().all(|dependency| {
+        let Dependency::File(path) = dependency else {
+            return true;
         };
-        deps.into_iter().all(|dep| {
-            if dep.starts_with("@value:") {
-                return true;
-            }
-            eval_path(c, &dep)
+        let path = if rule.pattern {
+            path.replace('%', stem.as_deref().unwrap_or(""))
+        } else {
+            path.clone()
+        };
+        let paths = if is_glob(&path) {
+            expand_glob(c, &path)
+        } else {
+            vec![path]
+        };
+        paths.into_iter().all(|path| {
+            select_rule(c, &path)
                 .ok()
-                .and_then(|path| select_rule(c, &path).ok())
                 .map(|(i, _, _)| i == usize::MAX)
                 .unwrap_or(false)
         })
@@ -530,38 +563,6 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<(usize, Option<String
     }
     Err(format!("no rule to produce {t}"))
 }
-pub(crate) fn eval_path(c: &BuildCtx, raw: &str) -> Result<String> {
-    if let Some(x) = raw.strip_prefix("env(").and_then(|x| x.strip_suffix(')')) {
-        let value = c.env_values.get(x).cloned().unwrap_or_default();
-        let source = if c.dotenv_values.contains(x) {
-            c.dotenv_source
-                .as_ref()
-                .map(|(path, hash)| format!(";dotenv={path}:{hash}"))
-                .unwrap_or_default()
-        } else {
-            String::new()
-        };
-        return Ok(format!("@value:env:{x}={value}{source}"));
-    }
-    if let Some(x) = raw
-        .strip_prefix("string(")
-        .and_then(|x| x.strip_suffix(')'))
-    {
-        return Ok(format!("@value:string:{}", unquote(x)));
-    }
-    for k in ["file(", "tree("] {
-        if let Some(x) = raw.strip_prefix(k).and_then(|x| x.strip_suffix(')')) {
-            return norm_rel(&expand(x, &c.vars, &c.env_values));
-        }
-    }
-    if let Some(x) = raw.strip_prefix("mtime(").and_then(|x| x.strip_suffix(')')) {
-        return Ok(format!(
-            "@mtime:{}",
-            norm_rel(&expand(x, &c.vars, &c.env_values))?
-        ));
-    }
-    norm_rel(raw)
-}
 pub(crate) fn is_glob(s: &str) -> bool {
     s.contains('*') || s.contains('?')
 }
@@ -656,20 +657,38 @@ pub(crate) fn interpolate(
     }
     Ok(s)
 }
-pub(crate) fn signature(c: &BuildCtx, p: &str) -> Result<String> {
-    if let Some(path) = p.strip_prefix("@mtime:") {
-        let metadata = fs::metadata(abs(c, path)).map_err(|e| e.to_string())?;
+pub(crate) fn dependency_signature(c: &BuildCtx, dependency: &Dependency) -> Result<String> {
+    let path = match dependency {
+        Dependency::File(path) => path,
+        Dependency::Tree(path) => path,
+        Dependency::Mtime(path) => path,
+        Dependency::Env(name) => {
+            let value = c.env_values.get(name).cloned().unwrap_or_default();
+            let dotenv = if c.dotenv_values.contains(name) {
+                c.dotenv_source
+                    .as_ref()
+                    .map(|(path, hash)| format!(";dotenv={path}:{hash}"))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+            return Ok(hash_text(&format!("{name}={value}{dotenv}")));
+        }
+        Dependency::String(value) => return Ok(hash_text(value)),
+    };
+    if matches!(dependency, Dependency::Mtime(_)) {
+        let metadata = match fs::metadata(abs(c, path)) {
+            Ok(metadata) => metadata,
+            Err(_) => return Ok("MISSING".into()),
+        };
         let modified = metadata.modified().map_err(|e| e.to_string())?;
         return Ok(hash_text(&format!("{modified:?}:{}", metadata.len())));
     }
-    if p.starts_with("@value:") {
-        return Ok(hash_text(p));
-    }
-    let q = abs(c, p);
+    let q = abs(c, path);
     if !q.exists() {
         return Ok("MISSING".into());
     }
-    if q.is_dir() {
+    if matches!(dependency, Dependency::Tree(_)) {
         let mut a = Vec::new();
         for e in walk(&q)? {
             a.push(format!(

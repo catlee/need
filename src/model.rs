@@ -9,11 +9,32 @@ use crate::Result;
 #[derive(Clone, Debug)]
 pub(crate) struct Rule {
     pub(crate) outputs: Vec<String>,
-    pub(crate) deps: Vec<String>,
+    pub(crate) deps: Vec<Dependency>,
     pub(crate) recipe: String,
     pub(crate) modifiers: Vec<String>,
     pub(crate) pattern: bool,
     pub(crate) env_refs: BTreeSet<String>,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub(crate) enum Dependency {
+    File(String),
+    Tree(String),
+    Mtime(String),
+    Env(String),
+    String(String),
+}
+
+impl Dependency {
+    pub(crate) fn template(&self) -> &str {
+        match self {
+            Self::File(value)
+            | Self::Tree(value)
+            | Self::Mtime(value)
+            | Self::Env(value)
+            | Self::String(value) => value,
+        }
+    }
 }
 
 #[derive(Clone, Default, Serialize, Deserialize)]

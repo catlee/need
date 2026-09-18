@@ -128,6 +128,11 @@ build/app: src/main.c
 
 This is equivalent to `file(src/main.c)`. The file content contributes to the rule signature, so a content change rebuilds the target even when the timestamp is misleading.
 
+Dependency kinds are preserved explicitly: a bare path and `file(...)` never
+become a tree dependency merely because the referenced path is a directory.
+Use `tree(...)` when recursive membership and content should determine
+freshness.
+
 `file(...)` is useful when constructing a path from a variable:
 
 ```make

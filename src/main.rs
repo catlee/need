@@ -72,11 +72,13 @@ fn run() -> Result<()> {
         for value in rule
             .outputs
             .iter()
-            .chain(&rule.deps)
             .chain(std::iter::once(&rule.recipe))
             .chain(&rule.modifiers)
         {
             collect_env_refs(value, &ctx.vars, &mut rule.env_refs);
+        }
+        for dependency in &rule.deps {
+            collect_env_refs(dependency.template(), &ctx.vars, &mut rule.env_refs);
         }
         rule.outputs = rule
             .outputs
@@ -86,7 +88,13 @@ fn run() -> Result<()> {
         rule.deps = rule
             .deps
             .iter()
-            .map(|x| expand(x, &ctx.vars, &ctx.env_values))
+            .map(|dependency| match dependency {
+                Dependency::File(x) => Dependency::File(expand(x, &ctx.vars, &ctx.env_values)),
+                Dependency::Tree(x) => Dependency::Tree(expand(x, &ctx.vars, &ctx.env_values)),
+                Dependency::Mtime(x) => Dependency::Mtime(expand(x, &ctx.vars, &ctx.env_values)),
+                Dependency::Env(x) => Dependency::Env(expand(x, &ctx.vars, &ctx.env_values)),
+                Dependency::String(x) => Dependency::String(expand(x, &ctx.vars, &ctx.env_values)),
+            })
             .collect();
         rule.modifiers = rule
             .modifiers
@@ -306,7 +314,13 @@ mod tests {
         fs::write(&path, "name = value\nout.txt: input.txt \\\n  config.txt\n    @output(grouped)\n    cp {{in[0]}} {{out}}\n").unwrap();
         let (vars, rules) = parse_needfile(&path).unwrap();
         assert_eq!(vars["name"], "value");
-        assert_eq!(rules[0].deps, vec!["input.txt", "config.txt"]);
+        assert_eq!(
+            rules[0].deps,
+            vec![
+                Dependency::File("input.txt".into()),
+                Dependency::File("config.txt".into())
+            ]
+        );
         assert_eq!(rules[0].modifiers, vec!["@output(grouped)"]);
         assert!(rules[0].recipe.contains("{{in[0]}}"));
         fs::remove_dir_all(root).unwrap();
@@ -340,7 +354,13 @@ mod tests {
         )
         .unwrap();
         let (_, rules) = parse_needfile(&path).unwrap();
-        assert_eq!(rules[0].deps, vec!["input.txt", "config.txt"]);
+        assert_eq!(
+            rules[0].deps,
+            vec![
+                Dependency::File("input.txt".into()),
+                Dependency::File("config.txt".into())
+            ]
+        );
 
         fs::write(
             &path,
@@ -352,6 +372,75 @@ mod tests {
             error,
             "recipe or modifier must be indented deeper than dependency continuation"
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn parses_dependency_kinds_without_collapsing_them() {
+        let root = temp_project("dependency-kinds");
+        let path = root.join("needfile");
+        fs::write(
+            &path,
+            "out: input tree(resources) mtime(tool) env(MODE) string(\"v3\")\n  touch {{out}}\n",
+        )
+        .unwrap();
+        let (_, rules) = parse_needfile(&path).unwrap();
+        assert_eq!(
+            rules[0].deps,
+            vec![
+                Dependency::File("input".into()),
+                Dependency::Tree("resources".into()),
+                Dependency::Mtime("tool".into()),
+                Dependency::Env("MODE".into()),
+                Dependency::String("v3".into()),
+            ]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn dependency_signatures_keep_file_tree_and_mtime_semantics_distinct() {
+        let root = temp_project("dependency-signatures");
+        fs::create_dir(root.join("resources")).unwrap();
+        fs::write(root.join("resources/input"), "one").unwrap();
+        fs::write(root.join("tool"), "tool").unwrap();
+        let ctx = BuildCtx {
+            root: root.clone(),
+            ..Default::default()
+        };
+        let file = dependency_signature(&ctx, &Dependency::File("resources/input".into())).unwrap();
+        let tree = dependency_signature(&ctx, &Dependency::Tree("resources".into())).unwrap();
+        let mtime = dependency_signature(&ctx, &Dependency::Mtime("tool".into())).unwrap();
+        fs::write(root.join("resources/other"), "other").unwrap();
+        assert_eq!(
+            file,
+            dependency_signature(&ctx, &Dependency::File("resources/input".into())).unwrap()
+        );
+        assert_ne!(
+            tree,
+            dependency_signature(&ctx, &Dependency::Tree("resources".into())).unwrap()
+        );
+        assert_eq!(
+            mtime,
+            dependency_signature(&ctx, &Dependency::Mtime("tool".into())).unwrap()
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn only_file_dependencies_are_recipe_inputs() {
+        let root = temp_project("dependency-inputs");
+        fs::write(root.join("input"), "input").unwrap();
+        fs::create_dir(root.join("resources")).unwrap();
+        fs::write(root.join("resources/item"), "item").unwrap();
+        fs::write(root.join("tool"), "tool").unwrap();
+        let mut ctx = context(
+            &root,
+            "out: input tree(resources) mtime(tool) env(MODE) string(v3)\n  printf '%s' '{{in}}' > {{out}}\n",
+        );
+        ctx.env_values.insert("MODE".into(), "debug".into());
+        build(&mut ctx, "out", None).unwrap();
+        assert_eq!(fs::read_to_string(root.join("out")).unwrap(), "input");
         fs::remove_dir_all(root).unwrap();
     }
 
