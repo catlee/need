@@ -400,6 +400,23 @@ mod tests {
     }
 
     #[test]
+    fn substitutes_stem_in_typed_dependency_paths() {
+        let stem = Some("icons/logo");
+        assert_eq!(
+            vec![
+                resolve_dependency(&Dependency::File("src/%.yml".into()), true, stem),
+                resolve_dependency(&Dependency::Tree("resources/%".into()), true, stem),
+                resolve_dependency(&Dependency::Mtime("tools/%".into()), true, stem),
+            ],
+            vec![
+                Ok(Dependency::File("src/icons/logo.yml".into())),
+                Ok(Dependency::Tree("resources/icons/logo".into())),
+                Ok(Dependency::Mtime("tools/icons/logo".into())),
+            ]
+        );
+    }
+
+    #[test]
     fn dependency_signatures_keep_file_tree_and_mtime_semantics_distinct() {
         let root = temp_project("dependency-signatures");
         fs::create_dir(root.join("resources")).unwrap();

@@ -58,17 +58,7 @@ pub(crate) fn build_inner(
     let key = outputs.join("\0");
     let mut deps = Vec::new();
     for dependency in &rule.deps {
-        let d = match dependency {
-            Dependency::File(path) => Dependency::File(norm_rel(&if rule.pattern {
-                path.replace('%', stem.as_deref().unwrap_or(""))
-            } else {
-                path.clone()
-            })?),
-            Dependency::Tree(path) => Dependency::Tree(norm_rel(path)?),
-            Dependency::Mtime(path) => Dependency::Mtime(norm_rel(path)?),
-            Dependency::Env(name) => Dependency::Env(name.clone()),
-            Dependency::String(value) => Dependency::String(value.clone()),
-        };
+        let d = resolve_dependency(dependency, rule.pattern, stem.as_deref())?;
         let mut resolved = vec![d];
         if let Dependency::File(path) = &resolved[0]
             && is_glob(path)
@@ -491,10 +481,8 @@ pub(crate) fn is_leaf_rule(c: &BuildCtx, target: &str) -> Result<bool> {
         let Dependency::File(path) = dependency else {
             continue;
         };
-        let path = if rule.pattern {
-            path.replace('%', stem.as_deref().unwrap_or(""))
-        } else {
-            path.clone()
+        let Ok(path) = resolve_pattern_path(path, rule.pattern, stem.as_deref()) else {
+            return false;
         };
         let paths = if is_glob(&path) {
             expand_glob(c, &path)?
@@ -511,6 +499,30 @@ pub(crate) fn is_leaf_rule(c: &BuildCtx, target: &str) -> Result<bool> {
         }
     }
     Ok(true)
+}
+
+pub(crate) fn resolve_dependency(
+    dependency: &Dependency,
+    pattern: bool,
+    stem: Option<&str>,
+) -> Result<Dependency> {
+    match dependency {
+        Dependency::File(path) => Ok(Dependency::File(resolve_pattern_path(path, pattern, stem)?)),
+        Dependency::Tree(path) => Ok(Dependency::Tree(resolve_pattern_path(path, pattern, stem)?)),
+        Dependency::Mtime(path) => Ok(Dependency::Mtime(resolve_pattern_path(
+            path, pattern, stem,
+        )?)),
+        Dependency::Env(name) => Ok(Dependency::Env(name.clone())),
+        Dependency::String(value) => Ok(Dependency::String(value.clone())),
+    }
+}
+
+fn resolve_pattern_path(path: &str, pattern: bool, stem: Option<&str>) -> Result<String> {
+    norm_rel(&if pattern {
+        path.replace('%', stem.unwrap_or(""))
+    } else {
+        path.to_string()
+    })
 }
 
 fn print_failure_output(key: &str, capture: &Capture) -> Result<()> {
