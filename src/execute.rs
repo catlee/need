@@ -4,7 +4,10 @@ use std::{
     io::{self, IsTerminal, Read, Write},
     path::{Path, PathBuf},
     process::{Command, ExitStatus},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -276,6 +279,9 @@ pub(crate) fn rule_output(rule: &Rule) -> Option<OutputMode> {
         OutputMode::parse(value).ok()
     })
 }
+
+static OUTPUT_LOCK: Mutex<()> = Mutex::new(());
+
 pub(crate) fn display_key(key: &str) -> String {
     key.replace('\0', " ")
 }
@@ -341,13 +347,7 @@ pub(crate) fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode
         .map_err(|_| "stderr reader panicked")??;
     let success = status.success();
     if mode == OutputMode::Grouped && (!capture.is_empty(true)? || !capture.is_empty(false)?) {
-        if c.cargo {
-            eprintln!("[{}]", display_key(key));
-        } else {
-            println!("[{}]", display_key(key));
-        }
-        capture.copy_to(true, c.cargo)?;
-        capture.copy_to(false, true)?;
+        render_grouped_output(key, &capture, c.cargo)?;
     } else if !success && matches!(mode, OutputMode::Silent | OutputMode::Log) {
         print_failure_output(key, &capture)?;
     }
@@ -531,7 +531,23 @@ fn resolve_pattern_path(path: &str, pattern: bool, stem: Option<&str>) -> Result
     })
 }
 
+fn render_grouped_output(key: &str, capture: &Capture, cargo: bool) -> Result<()> {
+    let _guard = OUTPUT_LOCK
+        .lock()
+        .map_err(|_| "output lock poisoned".to_string())?;
+    if cargo {
+        eprintln!("[{}]", display_key(key));
+    } else {
+        println!("[{}]", display_key(key));
+    }
+    capture.copy_to(true, cargo)?;
+    capture.copy_to(false, true)
+}
+
 fn print_failure_output(key: &str, capture: &Capture) -> Result<()> {
+    let _guard = OUTPUT_LOCK
+        .lock()
+        .map_err(|_| "output lock poisoned".to_string())?;
     eprintln!("error: recipe failed for {}", display_key(key));
     if !capture.is_empty(true)? {
         eprintln!("--- stdout ---");
