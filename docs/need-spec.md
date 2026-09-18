@@ -38,6 +38,7 @@ core artifact graph, including:
 - basic rules, variables, interpolation, pattern rules, and dependency globs
 - automatic output directories and multiple-output groups
 - file, tree, mtime, environment, and string dependency expressions
+- opt-in dotenv loading with precedence, custom files, and freshness tracking
 - content-based freshness and persistent state under `.need/`
 - dry-run, explain, list, force, parallel jobs, and configurable output modes
 - Cargo metadata mode with transitive source and environment dependencies
@@ -46,8 +47,6 @@ core artifact graph, including:
 
 The following specified features are not implemented yet:
 
-- **Dotenv loading** (Section 15.1): `need.env`, required/custom dotenv files,
-  override behavior, and dotenv-aware freshness.
 - **Dynamic output manifests** (Section 12, `@outputs(...)`): manifest
   validation, output ownership updates, orphan cleanup, and interruption
   recovery.
@@ -921,7 +920,7 @@ output.bin: input.dat env(SOME_FLAG)
 
 ### 15.1 Dotenv Files
 
-Projects MAY opt in to loading environment variables from a dotenv file:
+Projects can opt in to loading environment variables from a dotenv file:
 
 ```make
 need.env = load
@@ -935,19 +934,19 @@ found unless required loading is enabled:
 need.env.required = true
 ```
 
-The filename or path MAY be customized:
+The filename or path can be customized:
 
 ```make
 need.env.file = .env.local
 ```
 
 Dotenv files use the conventional `NAME=value` format. Blank lines and
-comments are ignored. Values MAY be quoted, but dotenv loading MUST NOT execute
+comments are ignored. Values may be quoted, but dotenv loading does not execute
 shell code, command substitutions, or recipes.
 
 Variables loaded from the dotenv file are inherited by recipes and are
 available through `{{env.NAME}}` and `env(NAME)`. Existing process environment
-variables take precedence by default. Projects MAY opt into dotenv values
+variables take precedence by default. Projects can opt into dotenv values
 overriding the process environment:
 
 ```make

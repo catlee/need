@@ -182,7 +182,18 @@ The referenced value is included in the rule signature. The entire process envir
 
 When `need --cargo` is used, environment dependencies are emitted as `cargo:rerun-if-env-changed=NAME`.
 
-Dotenv loading from `.env` is not implemented yet. Values must currently come from the environment of the `need` process.
+To load a `.env` file, opt in:
+
+```make
+need.env = load
+```
+
+`need` searches for `.env` next to the `needfile` and in its ancestors. Existing
+process variables win by default. Use `need.env.override = true` to let the file
+win, `need.env.required = true` to require a file, or
+`need.env.file = .env.local` to use another filename. Blank lines and comments
+are ignored, values may be single- or double-quoted, and dotenv loading never
+executes shell code.
 
 ### String values
 
@@ -262,7 +273,6 @@ For a generated Cargo artifact, use `need --cargo TARGET` from `build.rs` so Car
 
 The larger design in [the specification](need-spec.md) includes features that are not available in the current implementation:
 
-* loading `.env` files;
 * dynamic output manifests;
 * compiler depfiles;
 * re-evaluating globs after upstream rules create or remove files;

@@ -18,6 +18,7 @@ struct Rule {
     recipe: String,
     modifiers: Vec<String>,
     pattern: bool,
+    env_refs: BTreeSet<String>,
 }
 #[derive(Clone, Default, Serialize, Deserialize)]
 struct State {
@@ -46,6 +47,9 @@ struct BuildCtx {
     jobs: usize,
     cargo_deps: BTreeSet<String>,
     cargo_env: BTreeSet<String>,
+    env_values: HashMap<String, String>,
+    dotenv_values: HashSet<String>,
+    dotenv_source: Option<(String, String)>,
     stack: Vec<String>,
 }
 
@@ -94,6 +98,7 @@ fn run() -> Result<()> {
     let file = find_needfile(env::current_dir().map_err(|e| e.to_string())?)?;
     let root = file.parent().unwrap().to_path_buf();
     let (vars, rules) = parse_needfile(&file)?;
+    let dotenv = load_dotenv(&vars, &root)?;
     let output = if let Some(value) = cli_output.as_deref() {
         OutputMode::parse(value)?
     } else if let Some(value) = ctx_config(&vars, "need.output") {
@@ -113,15 +118,35 @@ fn run() -> Result<()> {
         output,
         log_keep,
         jobs,
+        env_values: dotenv.values,
+        dotenv_values: dotenv.loaded,
+        dotenv_source: dotenv.source,
         ..Default::default()
     };
     for rule in &mut ctx.rules {
-        rule.outputs = rule.outputs.iter().map(|x| expand(x, &ctx.vars)).collect();
-        rule.deps = rule.deps.iter().map(|x| expand(x, &ctx.vars)).collect();
+        for value in rule
+            .outputs
+            .iter()
+            .chain(&rule.deps)
+            .chain(std::iter::once(&rule.recipe))
+            .chain(&rule.modifiers)
+        {
+            collect_env_refs(value, &ctx.vars, &mut rule.env_refs);
+        }
+        rule.outputs = rule
+            .outputs
+            .iter()
+            .map(|x| expand(x, &ctx.vars, &ctx.env_values))
+            .collect();
+        rule.deps = rule
+            .deps
+            .iter()
+            .map(|x| expand(x, &ctx.vars, &ctx.env_values))
+            .collect();
         rule.modifiers = rule
             .modifiers
             .iter()
-            .map(|x| expand(x, &ctx.vars))
+            .map(|x| expand(x, &ctx.vars, &ctx.env_values))
             .collect();
     }
     for (i, r) in ctx.rules.iter().enumerate() {
@@ -336,9 +361,114 @@ fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Vec<Rule>)> {
             recipe: recipe.join("\n"),
             modifiers,
             pattern,
+            env_refs: BTreeSet::new(),
         });
     }
     Ok((vars, rules))
+}
+
+#[derive(Default)]
+struct Dotenv {
+    values: HashMap<String, String>,
+    loaded: HashSet<String>,
+    source: Option<(String, String)>,
+}
+
+fn load_dotenv(vars: &HashMap<String, String>, root: &Path) -> Result<Dotenv> {
+    let requested = vars
+        .get("need.env")
+        .is_some_and(|x| x == "load" || x == "true")
+        || vars.contains_key("need.env.file")
+        || vars.get("need.env.required").is_some_and(|x| x == "true")
+        || vars.get("need.env.override").is_some_and(|x| x == "true");
+    let mut values: HashMap<String, String> = env::vars().collect();
+    if !requested {
+        return Ok(Dotenv {
+            values,
+            ..Default::default()
+        });
+    }
+    let filename = vars
+        .get("need.env.file")
+        .map(String::as_str)
+        .unwrap_or(".env");
+    let path = find_dotenv(root, filename);
+    let required = vars.get("need.env.required").is_some_and(|x| x == "true");
+    let Some(path) = path else {
+        if required {
+            return Err(format!("required environment file not found: {filename}"));
+        }
+        return Ok(Dotenv {
+            values,
+            ..Default::default()
+        });
+    };
+    let text =
+        fs::read_to_string(&path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
+    let parsed = parse_dotenv(&text)?;
+    let override_env = vars.get("need.env.override").is_some_and(|x| x == "true");
+    let mut loaded = HashSet::new();
+    for (name, value) in parsed {
+        if override_env || !values.contains_key(&name) {
+            values.insert(name.clone(), value);
+            loaded.insert(name);
+        }
+    }
+    let source = Some((path.to_string_lossy().into_owned(), hash_text(&text)));
+    Ok(Dotenv {
+        values,
+        loaded,
+        source,
+    })
+}
+
+fn find_dotenv(root: &Path, filename: &str) -> Option<PathBuf> {
+    let path = Path::new(filename);
+    if path.is_absolute() {
+        return path.is_file().then(|| path.to_path_buf());
+    }
+    let mut directory = root.to_path_buf();
+    loop {
+        let candidate = directory.join(path);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        if !directory.pop() {
+            return None;
+        }
+    }
+}
+
+fn parse_dotenv(text: &str) -> Result<HashMap<String, String>> {
+    let mut values = HashMap::new();
+    for (line_number, raw) in text.lines().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let line = line.strip_prefix("export ").unwrap_or(line);
+        let (name, raw_value) = line
+            .split_once('=')
+            .ok_or_else(|| format!("invalid dotenv entry on line {}", line_number + 1))?;
+        let name = name.trim();
+        if name.is_empty() || !name.chars().all(|c| c == '_' || c.is_ascii_alphanumeric()) {
+            return Err(format!(
+                "invalid dotenv variable on line {}",
+                line_number + 1
+            ));
+        }
+        let value = raw_value.trim();
+        let value = if value.len() >= 2
+            && ((value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\'')))
+        {
+            value[1..value.len() - 1].to_string()
+        } else {
+            value.to_string()
+        };
+        values.insert(name.to_string(), value);
+    }
+    Ok(values)
 }
 fn split_words(s: &str) -> Result<Vec<String>> {
     let mut out = Vec::new();
@@ -383,7 +513,7 @@ fn unquote(s: &str) -> String {
         s.into()
     }
 }
-fn expand(s: &str, v: &HashMap<String, String>) -> String {
+fn expand(s: &str, v: &HashMap<String, String>, env_values: &HashMap<String, String>) -> String {
     let mut o: String = s.into();
     for _ in 0..v.len().max(1) {
         let old = o.clone();
@@ -402,10 +532,39 @@ fn expand(s: &str, v: &HashMap<String, String>) -> String {
         };
         let end = begin + offset;
         let name = &o[begin + 6..end];
-        o.replace_range(begin..end + 2, &env::var(name).unwrap_or_default());
+        o.replace_range(
+            begin..end + 2,
+            env_values.get(name).cloned().unwrap_or_default().as_str(),
+        );
         start = begin;
     }
     o
+}
+
+fn collect_env_refs(text: &str, vars: &HashMap<String, String>, refs: &mut BTreeSet<String>) {
+    let mut rest = text;
+    while let Some(start) = rest.find("{{env.") {
+        let after = &rest[start + 6..];
+        let Some(end) = after.find("}}") else {
+            break;
+        };
+        refs.insert(after[..end].to_string());
+        rest = &after[end + 2..];
+    }
+    let mut rest = text;
+    while let Some(start) = rest.find("env(") {
+        let after = &rest[start + 4..];
+        let Some(end) = after.find(')') else {
+            break;
+        };
+        refs.insert(after[..end].to_string());
+        rest = &after[end + 1..];
+    }
+    for (name, value) in vars {
+        if text.contains(&format!("{{{{{name}}}}}")) {
+            collect_env_refs(value, vars, refs);
+        }
+    }
 }
 fn norm_rel(s: &str) -> Result<String> {
     let p = Path::new(s);
@@ -462,7 +621,7 @@ fn build_inner(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<
     let key = outputs.join("\0");
     let mut deps = Vec::new();
     for raw in &rule.deps {
-        let mut d = expand(raw, &c.vars);
+        let mut d = expand(raw, &c.vars, &c.env_values);
         if rule.pattern {
             d = d.replace('%', stem.as_deref().unwrap_or(""))
         }
@@ -557,9 +716,21 @@ fn build_inner(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<
         inputs.push(d.clone());
         dep_sig.push(format!("{d}={}", signature(c, &d)?));
     }
-    let recipe = expand(&rule.recipe, &c.vars);
-    let mods = expand(&rule.modifiers.join("\n"), &c.vars);
-    let sig = hash_text(&format!("recipe={recipe}\nmods={mods}\ndeps={dep_sig:?}"));
+    let recipe = expand(&rule.recipe, &c.vars, &c.env_values);
+    let mods = expand(&rule.modifiers.join("\n"), &c.vars, &c.env_values);
+    let dotenv_sig = rule
+        .env_refs
+        .iter()
+        .filter(|name| c.dotenv_values.contains(*name))
+        .filter_map(|name| {
+            c.dotenv_source
+                .as_ref()
+                .map(|(path, hash)| format!("{name}={path}:{hash}"))
+        })
+        .collect::<Vec<_>>();
+    let sig = hash_text(&format!(
+        "recipe={recipe}\nmods={mods}\ndeps={dep_sig:?}\ndotenv={dotenv_sig:?}"
+    ));
     let saved = c.state.rules.get(&key).cloned();
     let mut stale = c.force || saved.as_ref().is_none_or(|x| x.signature != sig);
     let mut outsig = BTreeMap::new();
@@ -670,6 +841,7 @@ fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode) -> Result
             .arg("-c")
             .arg(recipe)
             .current_dir(&c.root)
+            .envs(&c.env_values)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
@@ -694,6 +866,7 @@ fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode) -> Result
             .arg("-c")
             .arg(recipe)
             .current_dir(&c.root)
+            .envs(&c.env_values)
             .output()
             .map_err(|e| e.to_string())?;
         (output.stdout, output.stderr, output.status)
@@ -797,7 +970,7 @@ fn is_leaf_rule(c: &BuildCtx, target: &str) -> bool {
     }
     let rule = &c.rules[ri];
     rule.deps.iter().all(|raw| {
-        let mut dep = expand(raw, &c.vars);
+        let mut dep = expand(raw, &c.vars, &c.env_values);
         if rule.pattern {
             dep = dep.replace('%', stem.as_deref().unwrap_or(""));
         }
@@ -914,10 +1087,16 @@ fn select_rule(c: &BuildCtx, t: &str) -> Result<(usize, Option<String>, Vec<Stri
 }
 fn eval_path(c: &BuildCtx, raw: &str) -> Result<String> {
     if let Some(x) = raw.strip_prefix("env(").and_then(|x| x.strip_suffix(')')) {
-        return Ok(format!(
-            "@value:env:{x}={}",
-            env::var(x).unwrap_or_default()
-        ));
+        let value = c.env_values.get(x).cloned().unwrap_or_default();
+        let source = if c.dotenv_values.contains(x) {
+            c.dotenv_source
+                .as_ref()
+                .map(|(path, hash)| format!(";dotenv={path}:{hash}"))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        return Ok(format!("@value:env:{x}={value}{source}"));
     }
     if let Some(x) = raw
         .strip_prefix("string(")
@@ -927,11 +1106,14 @@ fn eval_path(c: &BuildCtx, raw: &str) -> Result<String> {
     }
     for k in ["file(", "tree("] {
         if let Some(x) = raw.strip_prefix(k).and_then(|x| x.strip_suffix(')')) {
-            return norm_rel(&expand(x, &c.vars));
+            return norm_rel(&expand(x, &c.vars, &c.env_values));
         }
     }
     if let Some(x) = raw.strip_prefix("mtime(").and_then(|x| x.strip_suffix(')')) {
-        return Ok(format!("@mtime:{}", norm_rel(&expand(x, &c.vars))?));
+        return Ok(format!(
+            "@mtime:{}",
+            norm_rel(&expand(x, &c.vars, &c.env_values))?
+        ));
     }
     norm_rel(raw)
 }
@@ -1126,6 +1308,131 @@ mod tests {
             }
         }
         ctx
+    }
+
+    #[test]
+    fn parses_dotenv_values() {
+        let values = parse_dotenv(
+            "# comment
+            PLAIN=value
+            DOUBLE=\"quoted value\"
+            SINGLE='another value'
+            export EXPORTED=yes",
+        )
+        .unwrap();
+        assert_eq!(values["PLAIN"], "value");
+        assert_eq!(values["DOUBLE"], "quoted value");
+        assert_eq!(values["SINGLE"], "another value");
+        assert_eq!(values["EXPORTED"], "yes");
+    }
+
+    #[test]
+    fn dotenv_preserves_process_environment_by_default() {
+        let root = temp_project("dotenv-precedence");
+        let name = format!("NEED_TEST_{}", std::process::id());
+        fs::write(root.join(".env"), format!("{name}=from-file\n")).unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("need.env".into(), "load".into());
+        unsafe { env::set_var(&name, "from-process") };
+        let loaded = load_dotenv(&vars, &root).unwrap();
+        assert_eq!(loaded.values[&name], "from-process");
+        assert!(!loaded.loaded.contains(&name));
+        unsafe { env::remove_var(&name) };
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn dotenv_override_replaces_process_environment() {
+        let root = temp_project("dotenv-override");
+        let name = format!("NEED_TEST_OVERRIDE_{}", std::process::id());
+        fs::write(root.join(".env"), format!("{name}=from-file\n")).unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("need.env".into(), "load".into());
+        vars.insert("need.env.override".into(), "true".into());
+        unsafe { env::set_var(&name, "from-process") };
+        let loaded = load_dotenv(&vars, &root).unwrap();
+        assert_eq!(loaded.values[&name], "from-file");
+        assert!(loaded.loaded.contains(&name));
+        unsafe { env::remove_var(&name) };
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn dotenv_required_and_custom_file() {
+        let root = temp_project("dotenv-required");
+        let mut vars = HashMap::new();
+        vars.insert("need.env.required".into(), "true".into());
+        assert!(load_dotenv(&vars, &root).is_err());
+        fs::write(root.join(".env.local"), "MODE=debug\n").unwrap();
+        vars.insert("need.env.file".into(), ".env.local".into());
+        let loaded = load_dotenv(&vars, &root).unwrap();
+        assert_eq!(loaded.values["MODE"], "debug");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn dotenv_source_changes_environment_dependency_signature() {
+        let root = temp_project("dotenv-signature");
+        let name = "NEED_TEST_SIGNATURE";
+        fs::write(root.join(".env"), format!("{name}=same\n")).unwrap();
+        let mut vars = HashMap::new();
+        vars.insert("need.env".into(), "load".into());
+        vars.insert("need.env.override".into(), "true".into());
+        let first = load_dotenv(&vars, &root).unwrap();
+        fs::write(root.join(".env"), format!("# changed\n{name}=same\n")).unwrap();
+        let second = load_dotenv(&vars, &root).unwrap();
+        assert_ne!(first.source, second.source);
+        assert_eq!(first.values[name], "same");
+        assert_eq!(second.values[name], "same");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn dotenv_values_are_available_to_recipes() {
+        let root = temp_project("dotenv-recipe");
+        fs::write(root.join(".env"), "NEED_TEST_RECIPE=from-dotenv\n").unwrap();
+        let needfile = "need.env = load\nout.txt: env(NEED_TEST_RECIPE)\n  printf '%s' \"$NEED_TEST_RECIPE\" > {{out}}\n";
+        let mut ctx = context(&root, needfile);
+        let dotenv = load_dotenv(&ctx.vars, &root).unwrap();
+        ctx.env_values = dotenv.values;
+        ctx.dotenv_values = dotenv.loaded;
+        ctx.dotenv_source = dotenv.source;
+        build(&mut ctx, "out.txt", None).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("out.txt")).unwrap(),
+            "from-dotenv"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn changing_dotenv_content_rebuilds_even_when_value_is_unchanged() {
+        let root = temp_project("dotenv-freshness");
+        fs::write(root.join(".env"), "NEED_TEST_FRESHNESS=same\n").unwrap();
+        let needfile = "need.env = load\nout.txt: env(NEED_TEST_FRESHNESS)\n  printf '%s\\n' \"$NEED_TEST_FRESHNESS\" >> {{out}}\n";
+
+        let mut first = context(&root, needfile);
+        let dotenv = load_dotenv(&first.vars, &root).unwrap();
+        first.env_values = dotenv.values;
+        first.dotenv_values = dotenv.loaded;
+        first.dotenv_source = dotenv.source;
+        build(&mut first, "out.txt", None).unwrap();
+        save_state(&root, &first.state).unwrap();
+
+        fs::write(root.join(".env"), "# changed\nNEED_TEST_FRESHNESS=same\n").unwrap();
+        let mut second = context(&root, needfile);
+        let dotenv = load_dotenv(&second.vars, &root).unwrap();
+        second.env_values = dotenv.values;
+        second.dotenv_values = dotenv.loaded;
+        second.dotenv_source = dotenv.source;
+        second.state = load_state(&root).unwrap();
+        build(&mut second, "out.txt", None).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join("out.txt")).unwrap(),
+            "same\nsame\n"
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

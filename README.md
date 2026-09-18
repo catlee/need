@@ -134,9 +134,17 @@ build/app: src/main.c env(BUILD_MODE)
   compiler --mode "{{env.BUILD_MODE}}" {{in}} -o {{out}}
 ```
 
-The entire process environment is not hashed automatically.
+The entire process environment is not hashed automatically. To load a `.env`
+file, opt in from the `needfile`:
 
-Dotenv loading from `.env` is not implemented yet.
+```make
+need.env = load
+```
+
+`need` searches for `.env` next to the `needfile` and in its ancestors. Existing
+process variables win by default. Use `need.env.override = true` to let the
+file win, `need.env.required = true` to require a file, or
+`need.env.file = .env.local` to use another filename.
 
 ## Useful options
 
