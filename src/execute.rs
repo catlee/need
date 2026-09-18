@@ -145,6 +145,9 @@ pub(crate) fn build_inner(
     }
     for dependency in deps {
         let (path, should_build, should_input) = match &dependency {
+            Dependency::Deferred(_) => {
+                unreachable!("dependency expressions must be expanded first")
+            }
             Dependency::File(path) => (Some(path.as_str()), true, true),
             Dependency::Tree(path) | Dependency::Mtime(path) => (Some(path.as_str()), false, false),
             Dependency::Env(_) | Dependency::String(_) => (None, false, false),
@@ -419,6 +422,7 @@ impl Drop for Capture {
 
 pub(crate) fn record_cargo_dependency(c: &mut BuildCtx, dependency: &Dependency) {
     match dependency {
+        Dependency::Deferred(_) => unreachable!("dependency expressions must be expanded first"),
         Dependency::Env(name) => {
             c.cargo_env.insert(name.clone());
         }
@@ -519,6 +523,7 @@ pub(crate) fn resolve_dependency(
     stem: Option<&str>,
 ) -> Result<Dependency> {
     match dependency {
+        Dependency::Deferred(_) => unreachable!("dependency expressions must be expanded first"),
         Dependency::File(path) => Ok(Dependency::File(resolve_pattern_path(path, pattern, stem)?)),
         Dependency::Tree(path) => Ok(Dependency::Tree(resolve_pattern_path(path, pattern, stem)?)),
         Dependency::Mtime(path) => Ok(Dependency::Mtime(resolve_pattern_path(
@@ -786,6 +791,7 @@ pub(crate) fn interpolate(
 }
 pub(crate) fn dependency_signature(c: &BuildCtx, dependency: &Dependency) -> Result<String> {
     let path = match dependency {
+        Dependency::Deferred(_) => unreachable!("dependency expressions must be expanded first"),
         Dependency::File(path) => path,
         Dependency::Tree(path) => path,
         Dependency::Mtime(path) => path,

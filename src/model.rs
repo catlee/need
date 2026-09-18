@@ -18,6 +18,7 @@ pub(crate) struct Rule {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Dependency {
+    Deferred(String),
     File(String),
     Tree(String),
     Mtime(String),
@@ -28,7 +29,8 @@ pub(crate) enum Dependency {
 impl Dependency {
     pub(crate) fn template(&self) -> &str {
         match self {
-            Self::File(value)
+            Self::Deferred(value)
+            | Self::File(value)
             | Self::Tree(value)
             | Self::Mtime(value)
             | Self::Env(value)

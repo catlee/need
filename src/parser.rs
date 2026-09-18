@@ -61,7 +61,7 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
         let outputs = split_words(o)?;
         let deps = split_words(d)?
             .into_iter()
-            .map(|dependency| parse_dependency(&dependency))
+            .map(|dependency| parse_dependency_template(&dependency))
             .collect::<Result<Vec<_>>>()?;
         if outputs.is_empty() {
             return Err("rule has no outputs".into());
@@ -155,6 +155,15 @@ pub(crate) fn parse_dependency(raw: &str) -> Result<Dependency> {
         }
     }
     Ok(Dependency::File(raw))
+}
+
+fn parse_dependency_template(raw: &str) -> Result<Dependency> {
+    let raw = unquote(raw);
+    if raw.contains("{{") {
+        Ok(Dependency::Deferred(raw))
+    } else {
+        parse_dependency(&raw)
+    }
 }
 
 pub(crate) fn validate_modifier(modifier: &str) -> Result<()> {

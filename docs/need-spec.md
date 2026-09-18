@@ -1304,6 +1304,19 @@ Expansion and dependency resolution follow a deterministic order:
 
 Variable expansion MUST be deterministic and must not recursively re-parse arbitrary generated syntax.
 
+Dependency expressions are parsed after variable expansion, so a variable may
+provide a complete expression:
+
+```make
+tool = "file({{sdk}}/bin/monkeyc)"
+
+output.bin: {{tool}}
+  build-tool {{in}} -o {{out}}
+```
+
+Direct dependency expressions such as `file({{sdk}}/bin/monkeyc)` retain their
+existing semantics.
+
 A variable may reference previously defined variables:
 
 ```make

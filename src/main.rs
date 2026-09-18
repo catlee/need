@@ -1,4 +1,4 @@
-use std::env;
+use std::{collections::HashMap, env};
 
 mod cli;
 mod execute;
@@ -87,17 +87,7 @@ fn run() -> Result<()> {
             .iter()
             .map(|x| expand(x, &ctx.vars, &ctx.env_values))
             .collect();
-        rule.deps = rule
-            .deps
-            .iter()
-            .map(|dependency| match dependency {
-                Dependency::File(x) => Dependency::File(expand(x, &ctx.vars, &ctx.env_values)),
-                Dependency::Tree(x) => Dependency::Tree(expand(x, &ctx.vars, &ctx.env_values)),
-                Dependency::Mtime(x) => Dependency::Mtime(expand(x, &ctx.vars, &ctx.env_values)),
-                Dependency::Env(x) => Dependency::Env(expand(x, &ctx.vars, &ctx.env_values)),
-                Dependency::String(x) => Dependency::String(expand(x, &ctx.vars, &ctx.env_values)),
-            })
-            .collect();
+        rule.deps = expand_dependencies(&rule.deps, &ctx.vars, &ctx.env_values)?;
         rule.modifiers = rule
             .modifiers
             .iter()
@@ -143,6 +133,26 @@ fn run() -> Result<()> {
         emit_cargo_metadata(&ctx, &file);
     }
     Ok(())
+}
+
+fn expand_dependencies(
+    dependencies: &[Dependency],
+    vars: &HashMap<String, String>,
+    env_values: &HashMap<String, String>,
+) -> Result<Vec<Dependency>> {
+    dependencies
+        .iter()
+        .map(|dependency| match dependency {
+            Dependency::Deferred(expression) => {
+                parse_dependency(&expand(expression, vars, env_values))
+            }
+            Dependency::File(x) => Ok(Dependency::File(expand(x, vars, env_values))),
+            Dependency::Tree(x) => Ok(Dependency::Tree(expand(x, vars, env_values))),
+            Dependency::Mtime(x) => Ok(Dependency::Mtime(expand(x, vars, env_values))),
+            Dependency::Env(x) => Ok(Dependency::Env(expand(x, vars, env_values))),
+            Dependency::String(x) => Ok(Dependency::String(expand(x, vars, env_values))),
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -339,6 +349,28 @@ mod tests {
         );
         assert_eq!(rules[0].modifiers, vec!["@output(grouped)"]);
         assert!(rules[0].recipe.contains("{{in[0]}}"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn expands_variables_before_parsing_dependency_expressions() {
+        let root = temp_project("dependency-expression-variable");
+        let path = root.join("needfile");
+        fs::write(
+            &path,
+            "tool = file(toolchain)\nout: {{tool}} tree(resources)\n  touch {{out}}\n",
+        )
+        .unwrap();
+        let (raw_vars, rules) = parse_needfile(&path).unwrap();
+        let vars = resolve_variables(&raw_vars, &HashMap::new()).unwrap();
+
+        assert_eq!(
+            expand_dependencies(&rules[0].deps, &vars, &HashMap::new()).unwrap(),
+            vec![
+                Dependency::File("toolchain".into()),
+                Dependency::Tree("resources".into())
+            ]
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
