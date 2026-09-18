@@ -822,6 +822,53 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
     }
 
     #[test]
+    fn successful_log_retention_uses_effective_output_mode() {
+        let cases = [
+            (OutputMode::Stream, OutputMode::Stream, 1, 1),
+            (OutputMode::Grouped, OutputMode::Grouped, 1, 1),
+            (OutputMode::Silent, OutputMode::Silent, 1, 1),
+            (OutputMode::Log, OutputMode::Log, 1, 1),
+            (OutputMode::Stream, OutputMode::Log, 0, 1),
+            (OutputMode::Log, OutputMode::Silent, 0, 0),
+        ];
+
+        for (index, (global, effective, keep, expected)) in cases.into_iter().enumerate() {
+            let root = temp_project(&format!("log-retention-{index}"));
+            let ctx = BuildCtx {
+                root: root.clone(),
+                output: global,
+                log_keep: keep,
+                ..Default::default()
+            };
+            run_recipe(
+                &ctx,
+                "output.txt",
+                "printf output; printf error >&2",
+                effective,
+            )
+            .unwrap();
+
+            let successful_logs = root
+                .join(".need/logs")
+                .read_dir()
+                .ok()
+                .into_iter()
+                .flatten()
+                .flat_map(|group| fs::read_dir(group.unwrap().path()).unwrap())
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| {
+                    entry
+                        .file_name()
+                        .to_string_lossy()
+                        .ends_with(".success.stdout")
+                })
+                .count();
+            assert_eq!(successful_logs, expected, "case {index}");
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
     fn spools_large_successful_output_without_losing_log_bytes() {
         let root = temp_project("large-output");
         let ctx = BuildCtx {

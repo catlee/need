@@ -352,7 +352,7 @@ pub(crate) fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode
     } else if !success && matches!(mode, OutputMode::Silent | OutputMode::Log) {
         print_failure_output(key, &capture)?;
     }
-    if mode == OutputMode::Log || !success {
+    if mode == OutputMode::Log || c.log_keep > 0 || !success {
         write_log_files(c, key, &capture, success)?;
     }
     if !success {
@@ -527,9 +527,6 @@ pub(crate) fn exit_status(status: &ExitStatus) -> String {
 }
 
 fn write_log_files(c: &BuildCtx, key: &str, capture: &Capture, success: bool) -> Result<()> {
-    if success && c.output != OutputMode::Log && c.log_keep == 0 {
-        return Ok(());
-    }
     let group = &hash_text(key)[..16];
     let dir = c.root.join(".need/logs").join(group);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
