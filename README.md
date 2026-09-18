@@ -99,6 +99,9 @@ need build/app
 
 `need` searches upward for `needfile`, so it can be run from a project subdirectory. If the target is already current, the recipe is skipped.
 
+See the [complete `needfile` format reference](docs/needfile.md) for rules,
+variables, dependency types, interpolation, and output modes.
+
 Pattern rules work too:
 
 ```make
