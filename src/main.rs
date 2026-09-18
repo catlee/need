@@ -45,6 +45,7 @@ struct BuildCtx {
     jobs: usize,
     cargo_deps: BTreeSet<String>,
     cargo_env: BTreeSet<String>,
+    stack: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -404,12 +405,24 @@ fn abs(c: &BuildCtx, p: &str) -> PathBuf {
     }
 }
 
-fn build(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
+fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> Result<()> {
     let target = norm_rel(target)?;
-    if c.built.contains(&target) {
+    if let Some(index) = c.stack.iter().position(|x| x == &target) {
+        let mut cycle = c.stack[index..].to_vec();
+        cycle.push(target.clone());
+        return Err(format!("dependency cycle\n{}", cycle.join(" -> ")));
+    }
+    c.stack.push(target.clone());
+    let result = build_inner(c, &target, parent);
+    c.stack.pop();
+    result
+}
+
+fn build_inner(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
+    if c.built.contains(target) {
         return Ok(());
     }
-    let (ri, stem, outputs) = select_rule(c, &target)?;
+    let (ri, stem, outputs) = select_rule(c, target)?;
     if ri == usize::MAX {
         c.built.extend(outputs.iter().cloned());
         return Ok(());
@@ -474,7 +487,7 @@ fn build(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
                 if abs(c, &d).is_file() {
                     Ok(())
                 } else {
-                    Err(format!("{e}\nrequired by {target}"))
+                    Err(required_by(e, target))
                 }
             })?;
             let group = select_rule(c, &d)
@@ -502,7 +515,7 @@ fn build(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
                 Ok(()) => {}
                 Err(e) => {
                     if !abs(c, &d).is_file() {
-                        return Err(format!("{e}\nrequired by {target}"));
+                        return Err(required_by(e, target));
                     }
                 }
             }
@@ -585,6 +598,14 @@ fn build(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
     );
     c.built.extend(outputs.iter().cloned());
     Ok(())
+}
+
+fn required_by(error: String, target: &str) -> String {
+    if error.starts_with("dependency cycle") {
+        error
+    } else {
+        format!("{error}\nrequired by {target}")
+    }
 }
 
 fn rule_output(rule: &Rule) -> Option<OutputMode> {
@@ -1111,6 +1132,18 @@ mod tests {
             fs::read_to_string(root.join("build/output.txt")).unwrap(),
             "hello\n"
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn reports_dependency_cycles() {
+        let root = temp_project("cycle");
+        let mut ctx = context(
+            &root,
+            "a.txt: b.txt\n  touch {{out}}\nb.txt: a.txt\n  touch {{out}}\n",
+        );
+        let error = build(&mut ctx, "a.txt", None).unwrap_err();
+        assert_eq!(error, "dependency cycle\na.txt -> b.txt -> a.txt");
         fs::remove_dir_all(root).unwrap();
     }
 
