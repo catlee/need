@@ -690,9 +690,29 @@ mod tests {
             &["a file.txt".into(), "b.txt".into(), "c.txt".into()],
             &["out file".into()],
             None,
+            &HashMap::new(),
+            &HashMap::new(),
         )
         .unwrap();
         assert_eq!(rendered, "tool 'a file.txt' b.txt c.txt -> 'out file'");
+    }
+
+    #[test]
+    fn does_not_reparse_variable_or_environment_values() {
+        let vars = HashMap::from([(String::from("literal"), String::from("{{out}}"))]);
+        let env = HashMap::from([(String::from("LITERAL"), String::from("{{in}}"))]);
+
+        let rendered = interpolate(
+            "{{literal}} {{env.LITERAL}} {{out}}",
+            &["input.txt".into()],
+            &["output.txt".into()],
+            None,
+            &vars,
+            &env,
+        )
+        .unwrap();
+
+        assert_eq!(rendered, "{{out}} {{in}} output.txt");
     }
 
     #[test]

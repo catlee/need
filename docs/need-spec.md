@@ -898,7 +898,8 @@ For v0.2:
 - variable references are resolved depth-first and cycles are errors reported
   with the variable chain, such as `variable cycle: a -> b -> a`
 - expansion is single-pass after definitions are resolved; text produced by a
-  replacement is not re-parsed as new interpolation syntax
+  variable or environment replacement is not re-parsed as new interpolation
+  syntax
 - referenced variable values contribute to recipe/rule signatures
 
 Syntax should align with `just` where practical.
@@ -1302,7 +1303,10 @@ Expansion and dependency resolution follow a deterministic order:
 15. Record output signatures and commit successful state
 ```
 
-Variable expansion MUST be deterministic and must not recursively re-parse arbitrary generated syntax.
+Variable expansion MUST be deterministic and must not recursively re-parse
+arbitrary generated syntax. In particular, a variable or environment value
+containing `{{...}}` is literal text when inserted into a recipe; it does not
+introduce a new automatic-variable interpolation.
 
 Dependency expressions are parsed after variable expansion, so a variable may
 provide a complete expression:

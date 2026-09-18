@@ -112,8 +112,10 @@ Variables are strings. They can be used in outputs, dependencies, recipes, and r
 Variable definitions are resolved before rules are expanded, so nested
 references are supported regardless of assignment order. Cycles are rejected
 with the variable chain, for example `variable cycle: a -> b -> a`.
-Interpolation of a rule is single-pass; text produced by a variable is not
-re-parsed as additional interpolation syntax.
+Interpolation of a rule is single-pass; text produced by a variable or an
+environment reference is not re-parsed as additional interpolation syntax.
+For example, a value containing `{{out}}` remains literal `{{out}}` when it is
+inserted into a recipe.
 
 The built-in recipe values are:
 

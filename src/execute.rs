@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     env, fs,
     io::{self, IsTerminal, Read, Write},
     path::{Path, PathBuf},
@@ -231,7 +231,14 @@ pub(crate) fn build_inner(
             println!("{key}\n  stale");
         }
     }
-    let rendered = interpolate(&recipe, &inputs, &outputs, stem.as_deref())?;
+    let rendered = interpolate(
+        &rule.recipe,
+        &inputs,
+        &outputs,
+        stem.as_deref(),
+        &c.vars,
+        &c.env_values,
+    )?;
     if c.dry {
         status_line(c, "want", &key, "\x1b[36m");
         if c.cargo {
@@ -706,88 +713,97 @@ pub(crate) fn interpolate(
     ins: &[String],
     outs: &[String],
     stem: Option<&str>,
+    vars: &HashMap<String, String>,
+    env_values: &HashMap<String, String>,
 ) -> Result<String> {
     let esc = |x: &str| shell_escape::unix::escape(x.into()).into_owned();
-    let il = ins.iter().map(|x| esc(x)).collect::<Vec<_>>().join(" ");
-    let ol = outs.iter().map(|x| esc(x)).collect::<Vec<_>>().join(" ");
-    let mut s = recipe.replace("{{in}}", &il).replace("{{out}}", &ol);
-    if let Some(x) = stem {
-        s = s.replace("{{stem}}", &esc(x))
-    } else if s.contains("{{stem}}") {
-        return Err("{{stem}} is only valid in pattern rules".into());
-    }
-    for (name, list) in [("in", ins), ("out", outs)] {
-        for i in 0..100 {
-            let t = format!("{{{{{name}[{i}]}}}}");
-            if s.contains(&t) {
-                if let Some(x) = list.get(i) {
-                    s = s.replace(&t, &esc(x))
-                } else {
-                    return Err(format!("{name}[{i}] is out of range"));
-                }
-            }
+    let mut rendered = String::with_capacity(recipe.len());
+    let mut rest = recipe;
+    while let Some(start) = rest.find("{{") {
+        rendered.push_str(&rest[..start]);
+        let token_start = start + 2;
+        let Some(offset) = rest[token_start..].find("}}") else {
+            return Err(format!(
+                "unterminated interpolation starting with {}\nhelp: close interpolation tokens with }}}}",
+                &rest[start..],
+            ));
+        };
+        let end = token_start + offset;
+        let token = &rest[token_start..end];
+        if let Some(name) = token.strip_prefix("env.") {
+            rendered.push_str(env_values.get(name).map(String::as_str).unwrap_or_default());
+        } else if let Some(value) = vars.get(token) {
+            rendered.push_str(value);
+        } else {
+            rendered.push_str(&automatic_interpolation(token, ins, outs, stem, &esc)?);
         }
+        rest = &rest[end + 2..];
     }
-    for name in ["in", "out"] {
-        let mut pos = 0;
-        while let Some(found) = s[pos..].find(&format!("{{{{{name}[")) {
-            let open = pos + found;
-            let Some(offset) = s[open..].find("]}}") else {
-                break;
+    rendered.push_str(rest);
+    Ok(rendered)
+}
+
+fn automatic_interpolation(
+    token: &str,
+    ins: &[String],
+    outs: &[String],
+    stem: Option<&str>,
+    esc: &impl Fn(&str) -> String,
+) -> Result<String> {
+    match token {
+        "in" => Ok(ins.iter().map(|x| esc(x)).collect::<Vec<_>>().join(" ")),
+        "out" => Ok(outs.iter().map(|x| esc(x)).collect::<Vec<_>>().join(" ")),
+        "stem" => stem
+            .map(esc)
+            .ok_or_else(|| "{{stem}} is only valid in pattern rules".into()),
+        _ => {
+            let Some((name, spec)) = token
+                .split_once('[')
+                .filter(|(_, rest)| rest.ends_with(']'))
+            else {
+                return Err(format!(
+                    "unknown interpolation token: {{{{{token}}}}}\nhelp: use {{{{in}}}}, {{{{out}}}}, {{{{stem}}}}, or an indexed/slice form"
+                ));
             };
-            let close = open + offset;
-            let spec = &s[open + name.len() + 3..close];
-            if spec.contains(':') {
-                let parts: Vec<_> = spec.split(':').collect();
-                if parts.len() != 2 {
-                    return Err(format!("invalid slice: {spec}"));
+            let spec = &spec[..spec.len() - 1];
+            let list = match name {
+                "in" => ins,
+                "out" => outs,
+                _ => {
+                    return Err(format!(
+                        "unknown interpolation token: {{{{{token}}}}}\nhelp: use {{{{in}}}}, {{{{out}}}}, {{{{stem}}}}, or an indexed/slice form"
+                    ));
                 }
-                let start: usize = if parts[0].is_empty() {
+            };
+            if let Some((start, end)) = spec.split_once(':') {
+                let start = if start.is_empty() {
                     0
                 } else {
-                    parts[0]
+                    start
                         .parse()
                         .map_err(|_| format!("invalid slice: {spec}"))?
                 };
-                let list = if name == "in" { ins } else { outs };
-                let end: usize = if parts[1].is_empty() {
+                let end = if end.is_empty() {
                     list.len()
                 } else {
-                    parts[1]
-                        .parse()
-                        .map_err(|_| format!("invalid slice: {spec}"))?
+                    end.parse().map_err(|_| format!("invalid slice: {spec}"))?
                 };
                 if start > end || end > list.len() {
                     return Err(format!("slice out of range: {spec}"));
                 }
-                let replacement = list[start..end]
+                Ok(list[start..end]
                     .iter()
                     .map(|x| esc(x))
                     .collect::<Vec<_>>()
-                    .join(" ");
-                s.replace_range(open..close + 3, &replacement);
-                pos = open + replacement.len();
+                    .join(" "))
             } else {
-                pos = close + 3;
+                let index: usize = spec.parse().map_err(|_| format!("invalid slice: {spec}"))?;
+                list.get(index)
+                    .map(|value| esc(value))
+                    .ok_or_else(|| format!("{name}[{index}] is out of range"))
             }
         }
     }
-    let rest = s.as_str();
-    if let Some(start) = rest.find("{{") {
-        let token_start = start + 2;
-        let Some(end) = rest[token_start..].find("}}") else {
-            return Err(format!(
-                "unterminated interpolation starting with {}\nhelp: close interpolation tokens with }}}}",
-                &rest[start..]
-            ));
-        };
-        let end = token_start + end;
-        let token = &rest[token_start..end];
-        return Err(format!(
-            "unknown interpolation token: {{{{{token}}}}}\nhelp: use {{{{in}}}}, {{{{out}}}}, {{{{stem}}}}, or an indexed/slice form"
-        ));
-    }
-    Ok(s)
 }
 pub(crate) fn dependency_signature(c: &BuildCtx, dependency: &Dependency) -> Result<String> {
     let path = match dependency {
