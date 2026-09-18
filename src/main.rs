@@ -146,7 +146,7 @@ fn expand_rules(
             collect_env_refs(value, raw_vars, &mut rule.env_refs);
         }
         for dependency in &rule.deps {
-            collect_env_refs(dependency.template(), vars, &mut rule.env_refs);
+            collect_env_refs(dependency.template(), raw_vars, &mut rule.env_refs);
         }
         rule.outputs = rule
             .outputs
@@ -394,6 +394,39 @@ mod tests {
                 Dependency::File("toolchain".into()),
                 Dependency::Tree("resources".into())
             ]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn tracks_environment_references_through_dependency_variables() {
+        let root = temp_project("dependency-env-provenance");
+        let path = root.join("needfile");
+        fs::write(
+            &path,
+            "dependency = {{environment}}\nenvironment = {{env.NEED_TEST_DEPENDENCY_ENV}}\nout: string({{dependency}})\n  touch {{out}}\n",
+        )
+        .unwrap();
+        let (raw_vars, mut rules) = parse_needfile(&path).unwrap();
+        let env_values = HashMap::from([(
+            String::from("NEED_TEST_DEPENDENCY_ENV"),
+            String::from("debug"),
+        )]);
+        let vars = resolve_variables(&raw_vars, &env_values).unwrap();
+        expand_rules(&mut rules, &vars, &env_values, &raw_vars).unwrap();
+
+        assert!(rules[0].env_refs.contains("NEED_TEST_DEPENDENCY_ENV"));
+
+        let mut ctx = BuildCtx {
+            root: root.clone(),
+            rules,
+            ..Default::default()
+        };
+        ctx.exact.insert("out".into(), 0);
+        build(&mut ctx, "out", None).unwrap();
+        assert!(
+            cargo_metadata(&ctx, &path)
+                .contains(&"cargo:rerun-if-env-changed=NEED_TEST_DEPENDENCY_ENV".into())
         );
         fs::remove_dir_all(root).unwrap();
     }
