@@ -77,10 +77,11 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
                 && !l.trim_start().starts_with('#')
                 && continuation_indent.is_some_and(|level| line_indent <= level)
             {
-                return Err(
-                    "recipe or modifier must be indented deeper than dependency continuation"
-                        .into(),
-                );
+                return Err(format!(
+                    "{}:{}: recipe or modifier must be indented deeper than dependency continuation\nhelp: indent this line farther than the dependency continuation above it",
+                    display_path(path),
+                    i + 1,
+                ));
             }
             body.push(l.trim().into());
             i += 1
@@ -111,6 +112,18 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
         });
     }
     Ok((vars, rules))
+}
+
+fn display_path(path: &Path) -> String {
+    let Ok(current_dir) = env::current_dir() else {
+        return path.display().to_string();
+    };
+    let relative = path.strip_prefix(current_dir).unwrap_or(path);
+    if relative.is_absolute() {
+        relative.display().to_string()
+    } else {
+        format!("./{}", relative.display())
+    }
 }
 
 pub(crate) fn parse_dependency(raw: &str) -> Result<Dependency> {

@@ -62,6 +62,14 @@ build/app: src/main.c \
 The continuation lines must be indented farther than the rule header.
 Recipe commands and modifiers following a continued header must be indented farther than every continuation line.
 
+If the indentation is too shallow, `need` reports the `needfile` path and
+line number and suggests indenting the line farther than the continuation:
+
+```text
+error: ./needfile:19: recipe or modifier must be indented deeper than dependency continuation
+help: indent this line farther than the dependency continuation above it
+```
+
 ### Pattern rules
 
 Use one `%` as a stem:

@@ -24,6 +24,10 @@ specification, user documentation, and agent skill in sync.
 
 - Prefer small, behavior-preserving changes. Avoid adding syntax or
   configuration that is not described in the spec.
+- Always make errors helpful: include the relevant file path and line number
+  when available, explain what went wrong, and add a concise `help:` hint with
+  the likely fix. Keep diagnostics readable and actionable, like the Rust
+  compiler.
 
 ## Verification
 

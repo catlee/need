@@ -370,10 +370,9 @@ mod tests {
         )
         .unwrap();
         let error = parse_needfile(&path).unwrap_err();
-        assert_eq!(
-            error,
-            "recipe or modifier must be indented deeper than dependency continuation"
-        );
+        assert!(error.ends_with(
+            ":3: recipe or modifier must be indented deeper than dependency continuation\nhelp: indent this line farther than the dependency continuation above it"
+        ));
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -208,6 +208,11 @@ The grammar uses relative indentation rather than requiring a specific number of
 - recipe commands and rule modifiers MUST be indented deeper than dependency-continuation lines, if any
 - when there are no dependency-continuation lines, recipe commands and rule modifiers need only be indented deeper than the rule header
 
+If a recipe or modifier is not indented deeply enough after a continued
+header, the diagnostic MUST include the `needfile` path and offending line
+number and SHOULD include a `help:` hint explaining that the line must be
+indented farther than the dependency continuation.
+
 For example, both of these are valid:
 
 ```make
