@@ -541,6 +541,26 @@ mod tests {
     }
 
     #[test]
+    fn builds_complete_group_when_requested_pattern_is_not_first_output() {
+        let root = temp_project("pattern-group");
+        fs::write(root.join("input.txt"), "hello\n").unwrap();
+        let needfile = "build/%.txt build/%-meta.txt: input.txt\n  cp {{in}} {{out[0]}}\n  cp {{in}} {{out[1]}}\n";
+        let mut ctx = context(&root, needfile);
+
+        build(&mut ctx, "build/output-meta.txt", None).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join("build/output.txt")).unwrap(),
+            "hello\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("build/output-meta.txt")).unwrap(),
+            "hello\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn reports_dependency_cycles() {
         let root = temp_project("cycle");
         let mut ctx = context(

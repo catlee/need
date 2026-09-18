@@ -581,17 +581,29 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<(usize, Option<String
     if let Some(&i) = c.exact.get(t) {
         return Ok((i, None, c.rules[i].outputs.clone()));
     }
-    let mut found: Vec<(usize, String)> = Vec::new();
+    let mut found = Vec::new();
     for (i, r) in c.rules.iter().enumerate().filter(|(_, r)| r.pattern) {
-        let p = &r.outputs[0];
-        if let Some(pos) = p.find('%') {
-            let (a, b) = p.split_at(pos);
-            let b = &b[1..];
-            if t.starts_with(a) && t.ends_with(b) && t.len() >= a.len() + b.len() {
-                found.push((i, t[a.len()..t.len() - b.len()].to_string()))
+        let mut matches = Vec::new();
+        for p in &r.outputs {
+            if let Some(pos) = p.find('%') {
+                let (a, b) = p.split_at(pos);
+                let b = &b[1..];
+                if t.starts_with(a) && t.ends_with(b) && t.len() >= a.len() + b.len() {
+                    matches.push((p.len() - 1, t[a.len()..t.len() - b.len()].to_string()));
+                }
             }
         }
+        if let Some(specificity) = matches.iter().map(|(specificity, _)| *specificity).max() {
+            found.extend(
+                matches
+                    .into_iter()
+                    .filter(|(candidate, _)| *candidate == specificity)
+                    .map(|(_, stem)| (i, stem)),
+            );
+        }
     }
+    found.sort_unstable();
+    found.dedup();
     if found.len() > 1 {
         return Err(format!("ambiguous pattern rules for {t}"));
     }
