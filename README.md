@@ -187,3 +187,5 @@ fn main() {
 `--cargo` builds the target, then emits Cargo rerun metadata for the relevant source files and environment dependencies.
 
 `need` uses content signatures rather than timestamps alone. Build state and logs live under `.need/`.
+In `--cargo` mode, reachable environment references also emit Cargo
+`rerun-if-env-changed` metadata.

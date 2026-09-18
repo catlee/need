@@ -58,6 +58,7 @@ pub(crate) fn build_inner(
         return Ok(());
     }
     let rule = c.rules[ri].clone();
+    c.cargo_env.extend(rule.env_refs.iter().cloned());
     let key = outputs.join("\0");
     let mut deps = Vec::new();
     for dependency in &rule.deps {

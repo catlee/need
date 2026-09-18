@@ -1836,7 +1836,9 @@ Diagnostic output should go to stderr.
 
 Cargo metadata SHOULD include transitive source-file dependencies and the relevant `needfile`.
 
-Environment dependencies may also map to Cargo's environment rerun directives where appropriate.
+Every environment dependency in a reachable rule, including `env(NAME)` and
+`{{env.NAME}}` references (including references through variables), MUST map to
+`cargo:rerun-if-env-changed=NAME`.
 
 ---
 

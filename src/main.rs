@@ -181,6 +181,20 @@ mod tests {
                 ctx.exact.insert(output.clone(), i);
             }
         }
+        let raw_vars = ctx.vars.clone();
+        for rule in &mut ctx.rules {
+            for value in rule
+                .outputs
+                .iter()
+                .chain(std::iter::once(&rule.recipe))
+                .chain(&rule.modifiers)
+            {
+                collect_env_refs(value, &raw_vars, &mut rule.env_refs);
+            }
+            for dependency in &rule.deps {
+                collect_env_refs(dependency.template(), &raw_vars, &mut rule.env_refs);
+            }
+        }
         ctx
     }
 
@@ -549,6 +563,28 @@ mod tests {
         ctx.env_values.insert("MODE".into(), "debug".into());
         build(&mut ctx, "out", None).unwrap();
         assert_eq!(fs::read_to_string(root.join("out")).unwrap(), "input");
+        assert!(ctx.cargo_env.contains("MODE"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn cargo_metadata_includes_interpolated_environment_dependencies() {
+        let root = temp_project("cargo-env-ref");
+        let mut ctx = context(
+            &root,
+            "generated: input\n  printf '%s' '{{env.NEED_TEST_CARGO_ENV}}' > {{out}}\nout: generated\n  cp {{in}} {{out}}\n",
+        );
+        fs::write(root.join("input"), "input").unwrap();
+        ctx.env_values
+            .insert("NEED_TEST_CARGO_ENV".into(), "debug".into());
+        build(&mut ctx, "out", None).unwrap();
+
+        assert_eq!(fs::read_to_string(root.join("out")).unwrap(), "debug");
+        assert!(ctx.cargo_env.contains("NEED_TEST_CARGO_ENV"));
+        assert!(
+            cargo_metadata(&ctx, &root.join("needfile"))
+                .contains(&"cargo:rerun-if-env-changed=NEED_TEST_CARGO_ENV".into())
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
