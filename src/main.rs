@@ -240,25 +240,28 @@ fn take_value(args: &mut Vec<String>, name: &str) -> Result<Option<String>> {
 }
 fn take_jobs(args: &mut Vec<String>) -> Result<usize> {
     if let Some(value) = take_value(args, "--jobs")? {
-        return value
-            .parse()
-            .map_err(|_| format!("invalid job count: {value}"));
+        return parse_job_count(&value);
     }
     if let Some(i) = args.iter().position(|x| x == "-j") {
         args.remove(i);
         let value = args.get(i).cloned().ok_or("-j requires a value")?;
         args.remove(i);
-        return value
-            .parse()
-            .map_err(|_| format!("invalid job count: {value}"));
+        return parse_job_count(&value);
     }
     if let Some(i) = args.iter().position(|x| x.starts_with("-j") && x.len() > 2) {
         let value = args.remove(i)[2..].to_string();
-        return value
-            .parse()
-            .map_err(|_| format!("invalid job count: {value}"));
+        return parse_job_count(&value);
     }
     Ok(1)
+}
+fn parse_job_count(value: &str) -> Result<usize> {
+    let jobs = value
+        .parse()
+        .map_err(|_| format!("invalid job count: {value}"))?;
+    if jobs == 0 {
+        return Err("job count must be greater than zero".into());
+    }
+    Ok(jobs)
 }
 fn ctx_config(vars: &HashMap<String, String>, key: &str) -> Option<String> {
     vars.get(key).cloned()
@@ -677,41 +680,44 @@ fn build_inner(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<
                 parallel_deps.push(d.clone());
             }
         }
-        let results = std::thread::scope(|scope| {
-            let mut handles = Vec::new();
-            for d in parallel_deps {
-                let mut child = base.clone();
-                child.jobs = 1;
-                handles.push(scope.spawn(move || {
-                    let result = build(&mut child, &d, None);
-                    (d, child, result)
-                }));
-            }
-            handles
-                .into_iter()
-                .map(|h| {
-                    h.join()
-                        .map_err(|_| "parallel build worker panicked".to_string())
-                })
-                .collect::<Result<Vec<_>>>()
-        })?;
-        for (d, child, result) in results {
-            result.or_else(|e| {
-                if abs(c, &d).is_file() {
-                    Ok(())
-                } else {
-                    Err(required_by(e, target))
+        for batch in parallel_deps.chunks(c.jobs) {
+            let results = std::thread::scope(|scope| {
+                let mut handles = Vec::new();
+                for d in batch {
+                    let d = d.clone();
+                    let mut child = base.clone();
+                    child.jobs = 1;
+                    handles.push(scope.spawn(move || {
+                        let result = build(&mut child, &d, None);
+                        (d, child, result)
+                    }));
                 }
+                handles
+                    .into_iter()
+                    .map(|h| {
+                        h.join()
+                            .map_err(|_| "parallel build worker panicked".to_string())
+                    })
+                    .collect::<Result<Vec<_>>>()
             })?;
-            let group = select_rule(c, &d)
-                .map(|(_, _, outputs)| outputs.join("\0"))
-                .unwrap_or_else(|_| d.clone());
-            if let Some(saved) = child.state.rules.get(&group) {
-                c.state.rules.insert(group, saved.clone());
+            for (d, child, result) in results {
+                result.or_else(|e| {
+                    if abs(c, &d).is_file() {
+                        Ok(())
+                    } else {
+                        Err(required_by(e, target))
+                    }
+                })?;
+                let group = select_rule(c, &d)
+                    .map(|(_, _, outputs)| outputs.join("\0"))
+                    .unwrap_or_else(|_| d.clone());
+                if let Some(saved) = child.state.rules.get(&group) {
+                    c.state.rules.insert(group, saved.clone());
+                }
+                c.cargo_deps.extend(child.cargo_deps);
+                c.cargo_env.extend(child.cargo_env);
+                c.built.extend(child.built);
             }
-            c.cargo_deps.extend(child.cargo_deps);
-            c.cargo_env.extend(child.cargo_env);
-            c.built.extend(child.built);
         }
     }
     for d in deps {
@@ -1634,6 +1640,37 @@ all.txt: a.txt b.txt
     }
 
     #[test]
+    fn limits_parallel_workers_to_requested_job_count() {
+        let root = temp_project("parallel-limit");
+        for name in ["a", "b", "c", "d", "e"] {
+            fs::write(root.join(format!("input-{name}.txt")), name).unwrap();
+        }
+        let needfile = r#"out-%.txt: input-%.txt
+  while ! mkdir .counter-lock 2>/dev/null; do sleep 0.001; done
+  active=$(cat .active 2>/dev/null || echo 0)
+  active=$((active + 1))
+  printf '%s' "$active" > .active
+  if [ "$active" -gt 2 ]; then printf exceeded > .exceeded; fi
+  rmdir .counter-lock
+  sleep 0.05
+  while ! mkdir .counter-lock 2>/dev/null; do sleep 0.001; done
+  active=$(cat .active)
+  printf '%s' "$((active - 1))" > .active
+  rmdir .counter-lock
+  cp {{in}} {{out}}
+all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
+  cat {{in}} > {{out}}
+"#;
+        let mut ctx = context(&root, needfile);
+        ctx.jobs = 2;
+        ctx.output = OutputMode::Silent;
+        build(&mut ctx, "all.txt", None).unwrap();
+        assert!(!root.join(".exceeded").exists());
+        assert!(root.join("all.txt").is_file());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn emits_cargo_metadata_for_files_and_environment() {
         let root = temp_project("cargo-metadata");
         let mut ctx = BuildCtx {
@@ -1690,5 +1727,7 @@ all.txt: a.txt b.txt
         let mut args = vec!["-j8".into(), "target".into()];
         assert_eq!(take_jobs(&mut args).unwrap(), 8);
         assert_eq!(args, vec!["target"]);
+        let mut args = vec!["-j0".into()];
+        assert!(take_jobs(&mut args).is_err());
     }
 }
