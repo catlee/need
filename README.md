@@ -108,6 +108,33 @@ build/%.o: src/%.c
 
 The parent directory for an output is created automatically.
 
+## Environment dependencies
+
+Reference environment variables explicitly when they affect a build:
+
+```make
+sdk = "{{env.SDK_PATH}}"
+
+build/app: src/main.c "{{sdk}}/bin/compiler"
+  "{{sdk}}/bin/compiler" {{in}} -o {{out}}
+```
+
+The value of a referenced environment variable becomes part of the rule’s
+freshness signature. Changing `SDK_PATH` therefore retriggers the build,
+even if the input files have not changed.
+
+For environment values that are not part of a path or recipe, use an explicit
+dependency:
+
+```make
+build/app: src/main.c env(BUILD_MODE)
+  compiler --mode "{{env.BUILD_MODE}}" {{in}} -o {{out}}
+```
+
+The entire process environment is not hashed automatically.
+
+Dotenv loading from `.env` is not implemented yet.
+
 ## Useful options
 
 ```sh
