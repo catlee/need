@@ -1,3 +1,4 @@
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -132,13 +133,14 @@ fn run() -> Result<()> {
             }
         }
     }
-    ctx.state = load_state(&ctx.root)?;
     if list {
         for r in &ctx.rules {
             println!("{}", r.outputs.join(" "));
         }
         return Ok(());
     }
+    let _lock = BuildLock::acquire(&ctx.root)?;
+    ctx.state = load_state(&ctx.root)?;
     let targets = if args.is_empty() {
         let default_target = ctx
             .rules
@@ -162,6 +164,35 @@ fn run() -> Result<()> {
     }
     Ok(())
 }
+
+struct BuildLock {
+    file: fs::File,
+}
+
+impl BuildLock {
+    fn acquire(root: &Path) -> Result<Self> {
+        let directory = root.join(".need");
+        fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+        let path = directory.join("lock");
+        let file = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .map_err(|e| format!("could not open {}: {e}", path.display()))?;
+        file.lock_exclusive()
+            .map_err(|e| format!("could not acquire {}: {e}", path.display()))?;
+        Ok(Self { file })
+    }
+}
+
+impl Drop for BuildLock {
+    fn drop(&mut self) {
+        let _ = self.file.unlock();
+    }
+}
+
 fn take_value(args: &mut Vec<String>, name: &str) -> Result<Option<String>> {
     if let Some(i) = args.iter().position(|x| x == name) {
         args.remove(i);
@@ -1144,6 +1175,32 @@ mod tests {
         );
         let error = build(&mut ctx, "a.txt", None).unwrap_err();
         assert_eq!(error, "dependency cycle\na.txt -> b.txt -> a.txt");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn serializes_build_locks() {
+        let root = temp_project("lock");
+        let first = BuildLock::acquire(&root).unwrap();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let other_root = root.clone();
+        let thread = std::thread::spawn(move || {
+            let _second = BuildLock::acquire(&other_root).unwrap();
+            sender.send(()).unwrap();
+        });
+
+        assert!(
+            receiver
+                .recv_timeout(std::time::Duration::from_millis(50))
+                .is_err()
+        );
+        drop(first);
+        assert!(
+            receiver
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .is_ok()
+        );
+        thread.join().unwrap();
         fs::remove_dir_all(root).unwrap();
     }
 

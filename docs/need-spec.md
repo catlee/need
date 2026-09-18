@@ -42,6 +42,7 @@ core artifact graph, including:
 - dry-run, explain, list, force, parallel jobs, and configurable output modes
 - Cargo metadata mode with transitive source and environment dependencies
 - dependency-cycle detection
+- cross-process advisory locking for build state and output groups
 
 The following specified features are not implemented yet:
 
@@ -59,8 +60,6 @@ The following specified features are not implemented yet:
   dependency, recipe, or output that made a rule stale.
 - **Interruption and recovery handling** (Section 30): signal-aware cleanup and
   recovery metadata for interrupted builds.
-- **Cross-process locking** (Section 48): preventing concurrent `need` processes
-  from racing over the same output group or state database.
 - **Hash and output scalability improvements** (Sections 17 and 21): metadata
   assisted hash caching and spool-to-disk capture for very large recipe output.
 
@@ -1478,11 +1477,12 @@ Future implementations MAY support intra-process parallelism such as:
 need -j 8 build/app
 ```
 
-Cross-process locking is desirable but is not required for the initial serial implementation.
-
-This is an explicit initial limitation: running multiple independent `need` processes against the same project concurrently may be unsupported until cross-process locking is implemented.
-
-When cross-process concurrency is implemented, separate `need` processes MUST NOT execute the same output group concurrently or corrupt shared build state.
+Each invocation acquires an exclusive OS-level advisory lock at `.need/lock`
+before loading build state and holds it until the invocation exits. This
+serializes independent `need` processes for a project, including dry runs, and
+prevents concurrent state writes or output-group execution. The lock is held by
+the open file descriptor, so it is released automatically if the process exits
+or crashes.
 
 ## 32. Force Rebuild
 
@@ -2004,7 +2004,7 @@ How should command execution, escaping, and path normalization work on Windows?
 
 ### Cross-process build locking
 
-What locking mechanism should be used when two independent `need` processes build the same project simultaneously?
+Cross-process build locking is implemented as described in Section 31.
 
 ---
 
