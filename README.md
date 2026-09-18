@@ -149,6 +149,7 @@ file win, `need.env.required = true` to require a file, or
 ## Useful options
 
 ```sh
+need --version
 need                         # build the first concrete target
 need build/app               # build a target
 need --dry-run build/app     # show what would run

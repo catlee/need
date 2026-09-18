@@ -256,6 +256,7 @@ The state is content-based rather than timestamp-only. The `.need/` directory ca
 ## Useful commands
 
 ```sh
+need --version
 need                          # build the first concrete target
 need TARGET                   # build a target
 need TARGET...               # build several targets
@@ -276,4 +277,4 @@ The larger design in [the specification](need-spec.md) includes features that ar
 * dynamic output manifests;
 * compiler depfiles;
 * re-evaluating globs after upstream rules create or remove files;
-* some planned CLI options, including `--file`, `-n`, and `--version`.
+* some planned CLI options, including `--file` and `-n`.

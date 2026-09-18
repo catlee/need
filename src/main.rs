@@ -82,6 +82,10 @@ fn main() {
 }
 fn run() -> Result<()> {
     let mut args: Vec<String> = env::args().skip(1).collect();
+    if take_flag(&mut args, "--version") {
+        println!("need {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
     let force = take_flag(&mut args, "--force");
     let dry = take_flag(&mut args, "--dry-run");
     let explain = take_flag(&mut args, "--explain");
@@ -91,7 +95,7 @@ fn run() -> Result<()> {
     let jobs = take_jobs(&mut args)?;
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "usage: need [--force] [--dry-run] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [target ...]"
+            "usage: need [--version] [--force] [--dry-run] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [target ...]"
         );
         return Ok(());
     }

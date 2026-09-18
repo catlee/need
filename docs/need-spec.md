@@ -41,6 +41,7 @@ core artifact graph, including:
 - opt-in dotenv loading with precedence, custom files, and freshness tracking
 - content-based freshness and persistent state under `.need/`
 - dry-run, explain, list, force, parallel jobs, and configurable output modes
+- `--version` and `--help` command-line queries
 - Cargo metadata mode with transitive source and environment dependencies
 - dependency-cycle detection
 - cross-process advisory locking for build state and output groups
@@ -54,7 +55,7 @@ The following specified features are not implemented yet:
   dependency discovery for C/C++ and similar tools.
 - **Glob re-evaluation** (Section 10.1): re-expanding globs after upstream rules
   create or remove matching files.
-- **Complete CLI surface** (Section 46): `--file`, `-n`, and `--version`.
+- **Complete CLI surface** (Section 46): `--file` and `-n`.
 - **Detailed explain reasons** (Section 34): reporting the specific changed
   dependency, recipe, or output that made a rule stale.
 - **Interruption and recovery handling** (Section 30): signal-aware cleanup and
