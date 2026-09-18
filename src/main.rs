@@ -474,7 +474,12 @@ fn build(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
                     Err(format!("{e}\nrequired by {target}"))
                 }
             })?;
-            c.state.rules.extend(child.state.rules);
+            let group = select_rule(c, &d)
+                .map(|(_, _, outputs)| outputs.join("\0"))
+                .unwrap_or_else(|_| d.clone());
+            if let Some(saved) = child.state.rules.get(&group) {
+                c.state.rules.insert(group, saved.clone());
+            }
             c.built.extend(child.built);
         }
     }
@@ -526,7 +531,7 @@ fn build(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
     }
     let rendered = interpolate(&recipe, &inputs, &outputs, stem.as_deref())?;
     if c.dry {
-        status_line("would build", &key, "\x1b[36m");
+        status_line("want", &key, "\x1b[36m");
         println!("{}", rendered);
         c.built.extend(outputs.iter().cloned());
         return Ok(());
@@ -536,7 +541,7 @@ fn build(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
             fs::create_dir_all(p).map_err(|e| e.to_string())?
         }
     }
-    status_line("building", &key, "\x1b[33m");
+    status_line("need", &key, "\x1b[33m");
     let mode = rule_output(&rule).unwrap_or(c.output);
     run_recipe(c, &key, &rendered, mode)?;
     for o in &outputs {
@@ -545,7 +550,7 @@ fn build(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
         }
         outsig.insert(o.clone(), hash_file(&abs(c, o))?);
     }
-    status_line("built", &key, "\x1b[32m");
+    status_line("got", &key, "\x1b[32m");
     c.state.rules.insert(
         key,
         SavedRule {
@@ -569,7 +574,7 @@ fn display_key(key: &str) -> String {
 }
 fn status_line(status: &str, key: &str, color: &str) {
     let label = format!("[{status}]");
-    let label = format!("{label:<11}");
+    let label = format!("{label:<9}");
     let color = if io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none() {
         color
     } else {
@@ -1050,6 +1055,33 @@ mod tests {
         second.state = load_state(&root).unwrap();
         build(&mut second, "out.txt", None).unwrap();
         assert_eq!(second.state.rules.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn preserves_parallel_workers_state() {
+        let root = temp_project("parallel-state");
+        fs::write(root.join("input-a.txt"), "a\n").unwrap();
+        fs::write(root.join("input-b.txt"), "b\n").unwrap();
+        let needfile = r#"a.txt: input-a.txt
+  test ! -e a.ran && touch a.ran && cp {{in}} {{out}}
+b.txt: input-b.txt
+  test ! -e b.ran && touch b.ran && cp {{in}} {{out}}
+all.txt: a.txt b.txt
+  cat {{in}} > {{out}}
+"#;
+        let mut first = context(&root, needfile);
+        first.jobs = 2;
+        build(&mut first, "all.txt", None).unwrap();
+        save_state(&root, &first.state).unwrap();
+
+        let mut second = context(&root, needfile);
+        second.jobs = 2;
+        second.state = load_state(&root).unwrap();
+        build(&mut second, "all.txt", None).unwrap();
+
+        assert!(root.join("a.ran").is_file());
+        assert!(root.join("b.ran").is_file());
         fs::remove_dir_all(root).unwrap();
     }
 
