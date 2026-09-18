@@ -416,6 +416,10 @@ A glob dependency tracks:
 
 Adding or removing a matching file makes the dependent target stale.
 
+Malformed glob patterns and errors encountered while traversing a glob MUST
+fail dependency resolution with a diagnostic that identifies the glob and the
+underlying error; they MUST NOT be treated as empty dependency sets.
+
 Dependency globs are not necessarily expanded only once at process startup. If an upstream rule can create or remove files that affect a downstream glob, `need` MUST re-evaluate that glob after the upstream rule completes and before the downstream rule executes.
 
 ### 10.2 Generated Files and Globs

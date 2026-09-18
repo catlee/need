@@ -561,6 +561,34 @@ mod tests {
     }
 
     #[test]
+    fn rejects_malformed_dependency_glob() {
+        let root = temp_project("malformed-glob");
+        let mut ctx = context(&root, "out.txt: *[\n  touch {{out}}\n");
+        let error = build(&mut ctx, "out.txt", None).unwrap_err();
+        assert!(error.starts_with("invalid glob pattern '*[': Pattern syntax error"));
+        assert!(error.ends_with("help: fix the glob syntax"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_dependency_glob_traversal_errors() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temp_project("glob-traversal-error");
+        let blocked = root.join("blocked");
+        fs::create_dir(&blocked).unwrap();
+        fs::set_permissions(&blocked, fs::Permissions::from_mode(0o000)).unwrap();
+        let mut ctx = context(&root, "out.txt: blocked/*\n  touch {{out}}\n");
+        let error = build(&mut ctx, "out.txt", None).unwrap_err();
+        assert!(error.starts_with("failed to traverse glob 'blocked/*' at "));
+        assert!(error.contains("Permission denied"));
+        assert!(error.ends_with("help: check that the path exists and is readable"));
+        fs::set_permissions(&blocked, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn reports_dependency_cycles() {
         let root = temp_project("cycle");
         let mut ctx = context(

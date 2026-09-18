@@ -73,7 +73,7 @@ pub(crate) fn build_inner(
         if let Dependency::File(path) = &resolved[0]
             && is_glob(path)
         {
-            resolved = expand_glob(c, path)
+            resolved = expand_glob(c, path)?
                 .into_iter()
                 .map(Dependency::File)
                 .collect();
@@ -86,11 +86,14 @@ pub(crate) fn build_inner(
     deps.retain(|d| seen_deps.insert(d.clone()));
     let mut inputs = Vec::new();
     let mut dep_sig = Vec::new();
-    let parallel_candidates: Vec<Dependency> = deps
-        .iter()
-        .filter(|d| matches!(d, Dependency::File(path) if is_leaf_rule(c, path)))
-        .cloned()
-        .collect();
+    let mut parallel_candidates = Vec::new();
+    for dependency in &deps {
+        if let Dependency::File(path) = dependency
+            && is_leaf_rule(c, path)?
+        {
+            parallel_candidates.push(dependency.clone());
+        }
+    }
     let parallel = c.jobs > 1 && parallel_candidates.len() > 1;
     let parallel_targets: HashSet<String> = parallel_candidates
         .iter()
@@ -476,17 +479,17 @@ fn spool_stream<R: Read>(mut reader: R, path: &Path, forward: bool, stderr: bool
     Ok(())
 }
 
-pub(crate) fn is_leaf_rule(c: &BuildCtx, target: &str) -> bool {
+pub(crate) fn is_leaf_rule(c: &BuildCtx, target: &str) -> Result<bool> {
     let Ok((ri, stem, _)) = select_rule(c, target) else {
-        return false;
+        return Ok(false);
     };
     if ri == usize::MAX {
-        return false;
+        return Ok(false);
     }
     let rule = &c.rules[ri];
-    rule.deps.iter().all(|dependency| {
+    for dependency in &rule.deps {
         let Dependency::File(path) = dependency else {
-            return true;
+            continue;
         };
         let path = if rule.pattern {
             path.replace('%', stem.as_deref().unwrap_or(""))
@@ -494,17 +497,20 @@ pub(crate) fn is_leaf_rule(c: &BuildCtx, target: &str) -> bool {
             path.clone()
         };
         let paths = if is_glob(&path) {
-            expand_glob(c, &path)
+            expand_glob(c, &path)?
         } else {
             vec![path]
         };
-        paths.into_iter().all(|path| {
+        if !paths.into_iter().all(|path| {
             select_rule(c, &path)
                 .ok()
                 .map(|(i, _, _)| i == usize::MAX)
                 .unwrap_or(false)
-        })
-    })
+        }) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn print_failure_output(key: &str, capture: &Capture) -> Result<()> {
@@ -620,23 +626,36 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<(usize, Option<String
 pub(crate) fn is_glob(s: &str) -> bool {
     s.contains('*') || s.contains('?')
 }
-pub(crate) fn expand_glob(c: &BuildCtx, p: &str) -> Vec<String> {
+pub(crate) fn expand_glob(c: &BuildCtx, p: &str) -> Result<Vec<String>> {
     let mut set = BTreeSet::new();
-    if let Ok(xs) = glob::glob(&abs(c, p).to_string_lossy()) {
-        for x in xs.flatten().filter(|x| x.is_file()) {
-            if let Ok(r) = x.strip_prefix(&c.root) {
-                set.insert(r.to_string_lossy().replace('\\', "/"));
-            }
+    let pattern = glob::Pattern::new(p).map_err(|error| {
+        format!("invalid glob pattern '{p}': {error}\nhelp: fix the glob syntax")
+    })?;
+    let xs = glob::glob(&abs(c, p).to_string_lossy()).map_err(|error| {
+        format!("invalid glob pattern '{p}': {error}\nhelp: fix the glob syntax")
+    })?;
+    for x in xs {
+        let x = x.map_err(|error| {
+            format!(
+                "failed to traverse glob '{p}' at {}: {}",
+                error.path().display(),
+                error.error()
+            ) + "\nhelp: check that the path exists and is readable"
+        })?;
+        if x.is_file()
+            && let Ok(r) = x.strip_prefix(&c.root)
+        {
+            set.insert(r.to_string_lossy().replace('\\', "/"));
         }
     }
     for r in &c.rules {
         for o in &r.outputs {
-            if !o.contains('%') && glob::Pattern::new(p).map(|x| x.matches(o)).unwrap_or(false) {
+            if !o.contains('%') && pattern.matches(o) {
                 set.insert(o.clone());
             }
         }
     }
-    set.into_iter().collect()
+    Ok(set.into_iter().collect())
 }
 pub(crate) fn interpolate(
     recipe: &str,
