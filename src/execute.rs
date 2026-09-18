@@ -4,6 +4,7 @@ use std::{
     io::{self, IsTerminal, Read, Write},
     path::{Path, PathBuf},
     process::{Command, ExitStatus},
+    sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -309,63 +310,63 @@ pub(crate) fn status_line(c: &BuildCtx, status: &str, key: &str, color: &str) {
 }
 
 pub(crate) fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode) -> Result<()> {
-    let (stdout, stderr, status) = if mode == OutputMode::Stream {
-        let mut child = Command::new("sh")
-            .arg("-c")
-            .arg(recipe)
-            .current_dir(&c.root)
-            .envs(&c.env_values)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| e.to_string())?;
-        let stdout_reader = child
-            .stdout
-            .take()
-            .ok_or("failed to capture child stdout")?;
-        let stderr_reader = child
-            .stderr
-            .take()
-            .ok_or("failed to capture child stderr")?;
-        let cargo = c.cargo;
-        let stdout_thread = std::thread::spawn(move || forward_stream(stdout_reader, cargo));
-        let stderr_thread = std::thread::spawn(|| forward_stream(stderr_reader, true));
-        let status = child.wait().map_err(|e| e.to_string())?;
-        let stdout = stdout_thread.join().map_err(|_| "stdout reader panicked")?;
-        let stderr = stderr_thread.join().map_err(|_| "stderr reader panicked")?;
-        (stdout, stderr, status)
-    } else {
-        let output = Command::new("sh")
-            .arg("-c")
-            .arg(recipe)
-            .current_dir(&c.root)
-            .envs(&c.env_values)
-            .output()
-            .map_err(|e| e.to_string())?;
-        (output.stdout, output.stderr, output.status)
-    };
+    let capture = Capture::new(c)?;
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg(recipe)
+        .current_dir(&c.root)
+        .envs(&c.env_values)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let stdout_reader = child
+        .stdout
+        .take()
+        .ok_or("failed to capture child stdout")?;
+    let stderr_reader = child
+        .stderr
+        .take()
+        .ok_or("failed to capture child stderr")?;
+    let stdout_path = capture.stdout.clone();
+    let stderr_path = capture.stderr.clone();
+    let stdout_thread = std::thread::spawn(move || {
+        spool_stream(
+            stdout_reader,
+            &stdout_path,
+            mode == OutputMode::Stream,
+            false,
+        )
+    });
+    let stderr_thread = std::thread::spawn(move || {
+        spool_stream(
+            stderr_reader,
+            &stderr_path,
+            mode == OutputMode::Stream,
+            true,
+        )
+    });
+    let status = child.wait().map_err(|e| e.to_string())?;
+    stdout_thread
+        .join()
+        .map_err(|_| "stdout reader panicked")??;
+    stderr_thread
+        .join()
+        .map_err(|_| "stderr reader panicked")??;
     let success = status.success();
-    if mode == OutputMode::Grouped && (!stdout.is_empty() || !stderr.is_empty()) {
+    if mode == OutputMode::Grouped && (!capture.is_empty(true)? || !capture.is_empty(false)?) {
         if c.cargo {
             eprintln!("[{}]", display_key(key));
         } else {
             println!("[{}]", display_key(key));
         }
-        if !stdout.is_empty() {
-            if c.cargo {
-                io::stderr().write_all(&stdout).map_err(|e| e.to_string())?;
-            } else {
-                io::stdout().write_all(&stdout).map_err(|e| e.to_string())?;
-            }
-        }
-        if !stderr.is_empty() {
-            io::stderr().write_all(&stderr).map_err(|e| e.to_string())?;
-        }
+        capture.copy_to(true, c.cargo)?;
+        capture.copy_to(false, true)?;
     } else if !success && matches!(mode, OutputMode::Silent | OutputMode::Log) {
-        print_failure_output(key, &stdout, &stderr);
+        print_failure_output(key, &capture)?;
     }
     if mode == OutputMode::Log || !success {
-        write_log(c, key, &stdout, &stderr, success)?;
+        write_log_files(c, key, &capture, success)?;
     }
     if !success {
         return Err(format!(
@@ -374,6 +375,58 @@ pub(crate) fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode
         ));
     }
     Ok(())
+}
+
+static NEXT_CAPTURE_ID: AtomicU64 = AtomicU64::new(0);
+
+struct Capture {
+    dir: PathBuf,
+    stdout: PathBuf,
+    stderr: PathBuf,
+}
+
+impl Capture {
+    fn new(c: &BuildCtx) -> Result<Self> {
+        let dir = c.root.join(".need/tmp").join(format!(
+            "{}-{}",
+            std::process::id(),
+            NEXT_CAPTURE_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        Ok(Self {
+            stdout: dir.join("stdout"),
+            stderr: dir.join("stderr"),
+            dir,
+        })
+    }
+
+    fn path(&self, stdout: bool) -> &Path {
+        if stdout { &self.stdout } else { &self.stderr }
+    }
+
+    fn is_empty(&self, stdout: bool) -> Result<bool> {
+        Ok(fs::metadata(self.path(stdout))
+            .map_err(|e| e.to_string())?
+            .len()
+            == 0)
+    }
+
+    fn copy_to(&self, stdout: bool, stderr: bool) -> Result<()> {
+        let mut source = fs::File::open(self.path(stdout)).map_err(|e| e.to_string())?;
+        let mut destination: Box<dyn Write> = if stderr {
+            Box::new(io::stderr())
+        } else {
+            Box::new(io::stdout())
+        };
+        io::copy(&mut source, &mut destination).map_err(|e| e.to_string())?;
+        destination.flush().map_err(|e| e.to_string())
+    }
+}
+
+impl Drop for Capture {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.dir);
+    }
 }
 
 pub(crate) fn record_cargo_dependency(c: &mut BuildCtx, dependency: &Dependency) {
@@ -414,23 +467,26 @@ pub(crate) fn cargo_metadata(c: &BuildCtx, needfile: &Path) -> Vec<String> {
     lines
 }
 
-pub(crate) fn forward_stream<R: Read>(mut reader: R, stderr: bool) -> Vec<u8> {
-    let mut captured = Vec::new();
+fn spool_stream<R: Read>(mut reader: R, path: &Path, forward: bool, stderr: bool) -> Result<()> {
+    let mut captured = fs::File::create(path).map_err(|e| e.to_string())?;
     let mut chunk = [0_u8; 8192];
-    while let Ok(count) = reader.read(&mut chunk) {
+    loop {
+        let count = reader.read(&mut chunk).map_err(|e| e.to_string())?;
         if count == 0 {
             break;
         }
-        captured.extend_from_slice(&chunk[..count]);
-        if stderr {
+        captured
+            .write_all(&chunk[..count])
+            .map_err(|e| e.to_string())?;
+        if forward && stderr {
             let _ = io::stderr().write_all(&chunk[..count]);
             let _ = io::stderr().flush();
-        } else {
+        } else if forward {
             let _ = io::stdout().write_all(&chunk[..count]);
             let _ = io::stdout().flush();
         }
     }
-    captured
+    Ok(())
 }
 
 pub(crate) fn is_leaf_rule(c: &BuildCtx, target: &str) -> bool {
@@ -464,16 +520,17 @@ pub(crate) fn is_leaf_rule(c: &BuildCtx, target: &str) -> bool {
     })
 }
 
-pub(crate) fn print_failure_output(key: &str, stdout: &[u8], stderr: &[u8]) {
+fn print_failure_output(key: &str, capture: &Capture) -> Result<()> {
     eprintln!("error: recipe failed for {}", display_key(key));
-    if !stdout.is_empty() {
+    if !capture.is_empty(true)? {
         eprintln!("--- stdout ---");
-        let _ = io::stderr().write_all(stdout);
+        capture.copy_to(true, true)?;
     }
-    if !stderr.is_empty() {
+    if !capture.is_empty(false)? {
         eprintln!("--- stderr ---");
-        let _ = io::stderr().write_all(stderr);
+        capture.copy_to(false, true)?;
     }
+    Ok(())
 }
 pub(crate) fn exit_status(status: &ExitStatus) -> String {
     status
@@ -482,13 +539,7 @@ pub(crate) fn exit_status(status: &ExitStatus) -> String {
         .unwrap_or_else(|| "terminated by signal".into())
 }
 
-pub(crate) fn write_log(
-    c: &BuildCtx,
-    key: &str,
-    stdout: &[u8],
-    stderr: &[u8],
-    success: bool,
-) -> Result<()> {
+fn write_log_files(c: &BuildCtx, key: &str, capture: &Capture, success: bool) -> Result<()> {
     if success && c.output != OutputMode::Log && c.log_keep == 0 {
         return Ok(());
     }
@@ -501,15 +552,22 @@ pub(crate) fn write_log(
         .as_millis();
     let status = if success { "success" } else { "failure" };
     let base = dir.join(format!("{stamp}.{status}"));
-    fs::write(PathBuf::from(format!("{}.stdout", base.display())), stdout)
-        .map_err(|e| e.to_string())?;
-    fs::write(PathBuf::from(format!("{}.stderr", base.display())), stderr)
-        .map_err(|e| e.to_string())?;
+    fs::copy(
+        &capture.stdout,
+        PathBuf::from(format!("{}.stdout", base.display())),
+    )
+    .map_err(|e| e.to_string())?;
+    fs::copy(
+        &capture.stderr,
+        PathBuf::from(format!("{}.stderr", base.display())),
+    )
+    .map_err(|e| e.to_string())?;
     if success {
         rotate_success_logs(&dir, c.log_keep.max(1))?;
     }
     Ok(())
 }
+
 pub(crate) fn rotate_success_logs(dir: &Path, keep: usize) -> Result<()> {
     let mut logs: Vec<PathBuf> = fs::read_dir(dir)
         .map_err(|e| e.to_string())?

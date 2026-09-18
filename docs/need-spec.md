@@ -60,8 +60,8 @@ The following specified features are not implemented yet:
   dependency, recipe, or output that made a rule stale.
 - **Interruption and recovery handling** (Section 30): signal-aware cleanup and
   recovery metadata for interrupted builds.
-- **Hash and output scalability improvements** (Sections 17 and 21): metadata
-  assisted hash caching and spool-to-disk capture for very large recipe output.
+- **Hash scalability improvements** (Sections 17 and 21): metadata-assisted hash
+  caching.
 
 These omissions are intentional implementation work remaining against the
 specification; they are not alternate semantics.

@@ -714,28 +714,114 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
     #[test]
     fn retains_only_configured_successful_logs() {
         let root = temp_project("logs");
-        let ctx = BuildCtx {
-            root: root.clone(),
-            output: OutputMode::Log,
-            log_keep: 2,
-            ..Default::default()
-        };
-        for _ in 0..3 {
-            write_log(&ctx, "out.txt", b"out", b"err", true).unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(1));
+        let log_dir = root.join(".need/logs/out");
+        fs::create_dir_all(&log_dir).unwrap();
+        for index in 0..3 {
+            fs::write(log_dir.join(format!("{index}.success.stdout")), b"out").unwrap();
+            fs::write(log_dir.join(format!("{index}.success.stderr")), b"err").unwrap();
         }
-        let logs = fs::read_dir(root.join(".need/logs"))
-            .unwrap()
-            .next()
-            .unwrap()
-            .unwrap()
-            .path();
-        let count = fs::read_dir(logs)
+        rotate_success_logs(&log_dir, 2).unwrap();
+        let count = fs::read_dir(log_dir)
             .unwrap()
             .filter_map(|x| x.ok())
             .filter(|x| x.file_name().to_string_lossy().ends_with(".success.stdout"))
             .count();
         assert_eq!(count, 2);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn spools_large_successful_output_without_losing_log_bytes() {
+        let root = temp_project("large-output");
+        let ctx = BuildCtx {
+            root: root.clone(),
+            output: OutputMode::Log,
+            ..Default::default()
+        };
+        run_recipe(
+            &ctx,
+            "large.txt",
+            "awk 'BEGIN { for (i = 0; i < 1048576; i++) printf \"x\" }'",
+            OutputMode::Log,
+        )
+        .unwrap();
+
+        let log_dir = fs::read_dir(root.join(".need/logs"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let stdout = fs::read_dir(log_dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .find(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".success.stdout")
+            })
+            .unwrap()
+            .path();
+        assert_eq!(fs::metadata(stdout).unwrap().len(), 1_048_576);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn retains_large_failure_stdout_and_stderr_for_diagnostics() {
+        let root = temp_project("large-failure");
+        let ctx = BuildCtx {
+            root: root.clone(),
+            output: OutputMode::Silent,
+            ..Default::default()
+        };
+        let error = run_recipe(
+            &ctx,
+            "failed.txt",
+            "printf 'stdout-start\\n'; awk 'BEGIN { for (i = 0; i < 1024; i++) printf \"o\" }'; printf 'stderr-start\\n' >&2; awk 'BEGIN { for (i = 0; i < 1024; i++) printf \"e\" > \"/dev/stderr\" }'; exit 7",
+            OutputMode::Silent,
+        )
+        .unwrap_err();
+        assert!(error.contains("recipe failed for failed.txt"));
+
+        let log_dir = fs::read_dir(root.join(".need/logs"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let files: Vec<_> = fs::read_dir(log_dir)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .collect();
+        let stdout = files
+            .iter()
+            .find(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".failure.stdout")
+            })
+            .unwrap();
+        let stderr = files
+            .iter()
+            .find(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".failure.stderr")
+            })
+            .unwrap();
+        assert!(
+            fs::read(stdout.path())
+                .unwrap()
+                .starts_with(b"stdout-start\n")
+        );
+        assert!(
+            fs::read(stderr.path())
+                .unwrap()
+                .starts_with(b"stderr-start\n")
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
