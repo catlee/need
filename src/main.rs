@@ -967,3 +967,127 @@ fn save_state(r: &Path, s: &State) -> Result<()> {
     fs::write(&t, serde_json::to_string_pretty(s).unwrap()).map_err(|e| e.to_string())?;
     fs::rename(t, p).map_err(|e| e.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_project(name: &str) -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = env::temp_dir().join(format!("need-{name}-{}-{suffix}", std::process::id()));
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    fn context(root: &Path, needfile: &str) -> BuildCtx {
+        let path = root.join("needfile");
+        fs::write(&path, needfile).unwrap();
+        let (vars, rules) = parse_needfile(&path).unwrap();
+        let mut ctx = BuildCtx {
+            root: root.to_path_buf(),
+            vars,
+            rules,
+            ..Default::default()
+        };
+        for (i, rule) in ctx.rules.iter().enumerate() {
+            for output in &rule.outputs {
+                ctx.exact.insert(output.clone(), i);
+            }
+        }
+        ctx
+    }
+
+    #[test]
+    fn parses_variables_continuations_and_modifiers() {
+        let root = temp_project("parse");
+        let path = root.join("needfile");
+        fs::write(&path, "name = value\nout.txt: input.txt \\\n  config.txt\n  @output(grouped)\n  cp {{in[0]}} {{out}}\n").unwrap();
+        let (vars, rules) = parse_needfile(&path).unwrap();
+        assert_eq!(vars["name"], "value");
+        assert_eq!(rules[0].deps, vec!["input.txt", "config.txt"]);
+        assert_eq!(rules[0].modifiers, vec!["@output(grouped)"]);
+        assert!(rules[0].recipe.contains("{{in[0]}}"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn interpolates_lists_safely_and_supports_slices() {
+        let rendered = interpolate(
+            "tool {{in[0]}} {{in[1:]}} -> {{out}}",
+            &["a file.txt".into(), "b.txt".into(), "c.txt".into()],
+            &["out file".into()],
+            None,
+        )
+        .unwrap();
+        assert_eq!(rendered, "tool 'a file.txt' b.txt c.txt -> 'out file'");
+    }
+
+    #[test]
+    fn builds_pattern_target_and_creates_parent_directory() {
+        let root = temp_project("pattern");
+        fs::write(root.join("input.txt"), "hello\n").unwrap();
+        let mut ctx = context(&root, "build/%.txt: input.txt\n  cp {{in}} {{out}}\n");
+        build(&mut ctx, "build/output.txt", None).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("build/output.txt")).unwrap(),
+            "hello\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn records_incremental_build_state() {
+        let root = temp_project("incremental");
+        fs::write(root.join("input.txt"), "hello\n").unwrap();
+        let needfile = "out.txt: input.txt\n  cp {{in}} {{out}}\n";
+        let mut first = context(&root, needfile);
+        build(&mut first, "out.txt", None).unwrap();
+        save_state(&root, &first.state).unwrap();
+        let mut second = context(&root, needfile);
+        second.state = load_state(&root).unwrap();
+        build(&mut second, "out.txt", None).unwrap();
+        assert_eq!(second.state.rules.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn retains_only_configured_successful_logs() {
+        let root = temp_project("logs");
+        let ctx = BuildCtx {
+            root: root.clone(),
+            output: OutputMode::Log,
+            log_keep: 2,
+            ..Default::default()
+        };
+        for _ in 0..3 {
+            write_log(&ctx, "out.txt", b"out", b"err", true).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        let logs = fs::read_dir(root.join(".need/logs"))
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let count = fs::read_dir(logs)
+            .unwrap()
+            .filter_map(|x| x.ok())
+            .filter(|x| x.file_name().to_string_lossy().ends_with(".success.stdout"))
+            .count();
+        assert_eq!(count, 2);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn parses_output_modes_and_job_counts() {
+        assert_eq!(OutputMode::parse("stream").unwrap(), OutputMode::Stream);
+        assert_eq!(OutputMode::parse("silent").unwrap(), OutputMode::Silent);
+        assert!(OutputMode::parse("nope").is_err());
+        let mut args = vec!["-j8".into(), "target".into()];
+        assert_eq!(take_jobs(&mut args).unwrap(), 8);
+        assert_eq!(args, vec!["target"]);
+    }
+}
