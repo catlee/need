@@ -1286,9 +1286,16 @@ fn walk(p: &Path) -> Result<Vec<PathBuf>> {
 }
 fn hash_file(p: &Path) -> Result<String> {
     let mut f = fs::File::open(p).map_err(|e| e.to_string())?;
-    let mut b = Vec::new();
-    f.read_to_end(&mut b).map_err(|e| e.to_string())?;
-    Ok(blake3::hash(&b).to_hex().to_string())
+    let mut hasher = blake3::Hasher::new();
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let count = f.read(&mut buffer).map_err(|e| e.to_string())?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    Ok(hasher.finalize().to_hex().to_string())
 }
 fn hash_text(s: &str) -> String {
     blake3::hash(s.as_bytes()).to_hex().to_string()
@@ -1514,6 +1521,19 @@ mod tests {
         )
         .unwrap();
         assert_eq!(rendered, "tool 'a file.txt' b.txt c.txt -> 'out file'");
+    }
+
+    #[test]
+    fn hashes_files_with_streaming_blake3() {
+        let root = temp_project("streaming-hash");
+        let data: Vec<u8> = (0..100_000).map(|n| (n % 251) as u8).collect();
+        let path = root.join("large.bin");
+        fs::write(&path, &data).unwrap();
+        assert_eq!(
+            hash_file(&path).unwrap(),
+            blake3::hash(&data).to_hex().to_string()
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
