@@ -297,6 +297,7 @@ pub(crate) fn display_key(key: &str) -> String {
     key.replace('\0', " ")
 }
 pub(crate) fn status_line(c: &BuildCtx, status: &str, key: &str, color: &str) {
+    let _guard = OUTPUT_LOCK.lock().expect("output lock poisoned");
     let label = format!("[{status}]");
     let label = format!("{label:<9}");
     let color = if io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none() {

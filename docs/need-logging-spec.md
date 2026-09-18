@@ -411,6 +411,10 @@ The guarantee is:
 
 `need`'s own status messages are separate from child stdout/stderr.
 
+Need-owned status messages are serialized with other need-owned terminal output,
+including grouped and failure blocks, so they cannot interrupt a coherent
+block. Child output in `stream` mode remains intentionally interleavable.
+
 Examples:
 
 ```text

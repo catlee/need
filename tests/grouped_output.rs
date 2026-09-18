@@ -48,6 +48,12 @@ all: a b
         {
             assert!(end < other_start, "{job} block was interleaved: {stdout}");
         }
+        if let (Some(start), Some(end)) = (start, end) {
+            assert!(
+                !stdout[start..end].contains("[got]") && !stdout[start..end].contains("[need]"),
+                "status output interrupted {job} block: {stdout}"
+            );
+        }
     }
 
     fs::remove_dir_all(root).unwrap();
