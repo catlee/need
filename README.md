@@ -1,5 +1,7 @@
 # need
 
+For when you just need simple build dependencies.
+
 `need` is a small build tool for making files exist and keeping them up to date.
 
 It handles artifact dependencies. Use `just` for commands such as testing, running a simulator, or cleaning a project.
@@ -57,5 +59,25 @@ For parallel builds:
 ```sh
 need -j8 build/app
 ```
+
+## Cargo
+
+Call `need` from `build.rs` when Cargo owns the Rust build and `need` owns generated artifacts:
+
+```rust
+use std::process::{Command, Stdio};
+
+fn main() {
+    let status = Command::new("need")
+        .args(["--cargo", "build/generated.rs"])
+        .stdout(Stdio::inherit())
+        .status()
+        .expect("failed to run need");
+
+    assert!(status.success());
+}
+```
+
+`--cargo` builds the target, then emits Cargo rerun metadata for the relevant source files and environment dependencies.
 
 `need` uses content signatures rather than timestamps alone. Build state and logs live under `.need/`.

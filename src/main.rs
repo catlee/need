@@ -39,9 +39,12 @@ struct BuildCtx {
     force: bool,
     dry: bool,
     explain: bool,
+    cargo: bool,
     output: OutputMode,
     log_keep: usize,
     jobs: usize,
+    cargo_deps: BTreeSet<String>,
+    cargo_env: BTreeSet<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,11 +85,12 @@ fn run() -> Result<()> {
     let dry = take_flag(&mut args, "--dry-run");
     let explain = take_flag(&mut args, "--explain");
     let list = take_flag(&mut args, "--list");
+    let cargo = take_flag(&mut args, "--cargo");
     let cli_output = take_value(&mut args, "--output")?;
     let jobs = take_jobs(&mut args)?;
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "usage: need [--force] [--dry-run] [--explain] [--list] [--output=MODE] [--jobs N] [target ...]"
+            "usage: need [--force] [--dry-run] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [target ...]"
         );
         return Ok(());
     }
@@ -108,6 +112,7 @@ fn run() -> Result<()> {
         force,
         dry,
         explain,
+        cargo,
         output,
         log_keep,
         jobs,
@@ -155,6 +160,9 @@ fn run() -> Result<()> {
     }
     if !ctx.dry {
         save_state(&ctx.root, &ctx.state)?;
+    }
+    if ctx.cargo {
+        emit_cargo_metadata(&ctx, &file);
     }
     Ok(())
 }
@@ -480,14 +488,20 @@ fn build(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
             if let Some(saved) = child.state.rules.get(&group) {
                 c.state.rules.insert(group, saved.clone());
             }
+            c.cargo_deps.extend(child.cargo_deps);
+            c.cargo_env.extend(child.cargo_env);
             c.built.extend(child.built);
         }
     }
     for d in deps {
         if d.starts_with("@value:") {
+            record_cargo_dependency(c, &d);
             dep_sig.push(d);
             continue;
         }
+        let generated = select_rule(c, &d)
+            .map(|(ri, _, _)| ri != usize::MAX)
+            .unwrap_or(false);
         if !parallel || !parallel_targets.contains(&d) {
             match build(c, &d, None) {
                 Ok(()) => {}
@@ -497,6 +511,9 @@ fn build(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
                     }
                 }
             }
+        }
+        if !generated {
+            record_cargo_dependency(c, &d);
         }
         inputs.push(d.clone());
         dep_sig.push(format!("{d}={}", signature(c, &d)?));
@@ -521,18 +538,30 @@ fn build(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
     }
     if !stale {
         if c.explain {
-            println!("{key}\n  current")
+            if c.cargo {
+                eprintln!("{key}\n  current");
+            } else {
+                println!("{key}\n  current");
+            }
         }
         c.built.extend(outputs.iter().cloned());
         return Ok(());
     }
     if c.explain {
-        println!("{key}\n  stale")
+        if c.cargo {
+            eprintln!("{key}\n  stale");
+        } else {
+            println!("{key}\n  stale");
+        }
     }
     let rendered = interpolate(&recipe, &inputs, &outputs, stem.as_deref())?;
     if c.dry {
-        status_line("want", &key, "\x1b[36m");
-        println!("{}", rendered);
+        status_line(c, "want", &key, "\x1b[36m");
+        if c.cargo {
+            eprintln!("{}", rendered);
+        } else {
+            println!("{}", rendered);
+        }
         c.built.extend(outputs.iter().cloned());
         return Ok(());
     }
@@ -541,7 +570,7 @@ fn build(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
             fs::create_dir_all(p).map_err(|e| e.to_string())?
         }
     }
-    status_line("need", &key, "\x1b[33m");
+    status_line(c, "need", &key, "\x1b[33m");
     let mode = rule_output(&rule).unwrap_or(c.output);
     run_recipe(c, &key, &rendered, mode)?;
     for o in &outputs {
@@ -550,7 +579,7 @@ fn build(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
         }
         outsig.insert(o.clone(), hash_file(&abs(c, o))?);
     }
-    status_line("got", &key, "\x1b[32m");
+    status_line(c, "got", &key, "\x1b[32m");
     c.state.rules.insert(
         key,
         SavedRule {
@@ -572,7 +601,7 @@ fn rule_output(rule: &Rule) -> Option<OutputMode> {
 fn display_key(key: &str) -> String {
     key.replace('\0', " ")
 }
-fn status_line(status: &str, key: &str, color: &str) {
+fn status_line(c: &BuildCtx, status: &str, key: &str, color: &str) {
     let label = format!("[{status}]");
     let label = format!("{label:<9}");
     let color = if io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none() {
@@ -581,7 +610,11 @@ fn status_line(status: &str, key: &str, color: &str) {
         ""
     };
     let reset = if color.is_empty() { "" } else { "\x1b[0m" };
-    println!("{color}{label}{reset}{}", display_key(key));
+    if c.cargo {
+        eprintln!("{color}{label}{reset}{}", display_key(key));
+    } else {
+        println!("{color}{label}{reset}{}", display_key(key));
+    }
 }
 
 fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode) -> Result<()> {
@@ -602,7 +635,8 @@ fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode) -> Result
             .stderr
             .take()
             .ok_or("failed to capture child stderr")?;
-        let stdout_thread = std::thread::spawn(|| forward_stream(stdout_reader, false));
+        let cargo = c.cargo;
+        let stdout_thread = std::thread::spawn(move || forward_stream(stdout_reader, cargo));
         let stderr_thread = std::thread::spawn(|| forward_stream(stderr_reader, true));
         let status = child.wait().map_err(|e| e.to_string())?;
         let stdout = stdout_thread.join().map_err(|_| "stdout reader panicked")?;
@@ -619,9 +653,17 @@ fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode) -> Result
     };
     let success = status.success();
     if mode == OutputMode::Grouped && (!stdout.is_empty() || !stderr.is_empty()) {
-        println!("[{}]", display_key(key));
+        if c.cargo {
+            eprintln!("[{}]", display_key(key));
+        } else {
+            println!("[{}]", display_key(key));
+        }
         if !stdout.is_empty() {
-            io::stdout().write_all(&stdout).map_err(|e| e.to_string())?;
+            if c.cargo {
+                io::stderr().write_all(&stdout).map_err(|e| e.to_string())?;
+            } else {
+                io::stdout().write_all(&stdout).map_err(|e| e.to_string())?;
+            }
         }
         if !stderr.is_empty() {
             io::stderr().write_all(&stderr).map_err(|e| e.to_string())?;
@@ -641,6 +683,45 @@ fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode) -> Result
         ));
     }
     Ok(())
+}
+
+fn record_cargo_dependency(c: &mut BuildCtx, dependency: &str) {
+    if let Some(value) = dependency.strip_prefix("@value:env:") {
+        if let Some((name, _)) = value.split_once('=') {
+            c.cargo_env.insert(name.to_string());
+        }
+        return;
+    }
+    let path = dependency.strip_prefix("@mtime:").unwrap_or(dependency);
+    if !path.is_empty() {
+        c.cargo_deps.insert(path.to_string());
+    }
+}
+
+fn emit_cargo_metadata(c: &BuildCtx, needfile: &Path) {
+    for line in cargo_metadata(c, needfile) {
+        println!("{line}");
+    }
+}
+
+fn cargo_metadata(c: &BuildCtx, needfile: &Path) -> Vec<String> {
+    let mut lines = Vec::new();
+    let needfile = needfile
+        .strip_prefix(&c.root)
+        .unwrap_or(needfile)
+        .to_string_lossy();
+    lines.push(format!("cargo:rerun-if-changed={needfile}"));
+    lines.extend(
+        c.cargo_deps
+            .iter()
+            .map(|dependency| format!("cargo:rerun-if-changed={dependency}")),
+    );
+    lines.extend(
+        c.cargo_env
+            .iter()
+            .map(|name| format!("cargo:rerun-if-env-changed={name}")),
+    );
+    lines
 }
 
 fn forward_stream<R: Read>(mut reader: R, stderr: bool) -> Vec<u8> {
@@ -1082,6 +1163,27 @@ all.txt: a.txt b.txt
 
         assert!(root.join("a.ran").is_file());
         assert!(root.join("b.ran").is_file());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn emits_cargo_metadata_for_files_and_environment() {
+        let root = temp_project("cargo-metadata");
+        let mut ctx = BuildCtx {
+            root: root.clone(),
+            ..Default::default()
+        };
+        ctx.cargo_deps.insert("src/input.txt".into());
+        ctx.cargo_env.insert("MODE".into());
+
+        assert_eq!(
+            cargo_metadata(&ctx, &root.join("needfile")),
+            vec![
+                "cargo:rerun-if-changed=needfile",
+                "cargo:rerun-if-changed=src/input.txt",
+                "cargo:rerun-if-env-changed=MODE",
+            ]
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
