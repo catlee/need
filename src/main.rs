@@ -867,7 +867,7 @@ mod tests {
         .unwrap();
         let (raw_vars, mut rules) = parse_needfile(&path).unwrap();
         let vars = resolve_variables(&raw_vars, &HashMap::new()).unwrap();
-        expand_rules(&mut rules, &vars, &HashMap::new(), &raw_vars);
+        expand_rules(&mut rules, &vars, &HashMap::new(), &raw_vars).unwrap();
         let mut ctx = BuildCtx {
             root: root.clone(),
             vars,
