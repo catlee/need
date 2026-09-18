@@ -34,7 +34,16 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
                 .chars()
                 .all(|c| c == '_' || c == '.' || c == '-' || c.is_ascii_alphanumeric())
         {
-            vars.insert(k.trim().into(), unquote(v.trim()));
+            let key = k.trim();
+            let value = unquote(v.trim());
+            if key == "need.log.keep" && value.parse::<usize>().is_err() {
+                return Err(format!(
+                    "{}:{}: invalid need.log.keep value: {value}\nhelp: set need.log.keep to a non-negative integer",
+                    display_path(path),
+                    i,
+                ));
+            }
+            vars.insert(key.into(), value);
             continue;
         }
         if !trimmed.contains(':') {

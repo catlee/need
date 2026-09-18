@@ -51,7 +51,7 @@ fn run() -> Result<()> {
     } else {
         OutputMode::Stream
     };
-    let log_keep = cli_or_config_keep(&vars);
+    let log_keep = cli_or_config_keep(&vars)?;
     let mut ctx = BuildCtx {
         root,
         vars,
@@ -385,6 +385,36 @@ mod tests {
                 Dependency::Tree("resources".into())
             ]
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_invalid_log_retention_configuration() {
+        let root = temp_project("invalid-log-keep");
+        let path = root.join("needfile");
+        fs::write(
+            &path,
+            "need.log.keep = -1\nout.txt: input.txt\n  touch {{out}}\n",
+        )
+        .unwrap();
+
+        let error = parse_needfile(&path).unwrap_err();
+
+        assert!(error.ends_with(
+            ":1: invalid need.log.keep value: -1\nhelp: set need.log.keep to a non-negative integer"
+        ));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn accepts_zero_log_retention_configuration() {
+        let root = temp_project("zero-log-keep");
+        let path = root.join("needfile");
+        fs::write(&path, "need.log.keep = 0\n").unwrap();
+
+        let (vars, _) = parse_needfile(&path).unwrap();
+
+        assert_eq!(cli_or_config_keep(&vars).unwrap(), 0);
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -211,6 +211,9 @@ Successful logs use bounded per-output-group retention.
 need.log.keep = 5
 ```
 
+`need.log.keep` must be a non-negative integer. Invalid values are rejected
+with an error that points to the setting in the `needfile`.
+
 means:
 
 > retain the five most recent successful logs for each output group.

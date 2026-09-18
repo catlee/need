@@ -51,10 +51,14 @@ pub(crate) fn parse_job_count(value: &str) -> Result<usize> {
 pub(crate) fn ctx_config(vars: &HashMap<String, String>, key: &str) -> Option<String> {
     vars.get(key).cloned()
 }
-pub(crate) fn cli_or_config_keep(vars: &HashMap<String, String>) -> usize {
-    vars.get("need.log.keep")
-        .and_then(|x| x.parse().ok())
-        .unwrap_or(0)
+pub(crate) fn cli_or_config_keep(vars: &HashMap<String, String>) -> Result<usize> {
+    vars.get("need.log.keep").map_or(Ok(0), |value| {
+        value.parse().map_err(|_| {
+            format!(
+                "invalid need.log.keep value: {value}\nhelp: set need.log.keep to a non-negative integer"
+            )
+        })
+    })
 }
 pub(crate) fn take_flag(a: &mut Vec<String>, f: &str) -> bool {
     if let Some(i) = a.iter().position(|x| x == f) {
