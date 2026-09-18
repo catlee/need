@@ -100,6 +100,12 @@ build/%.o: src/%.c
 
 Variables are strings. They can be used in outputs, dependencies, recipes, and rule modifiers. Referenced values contribute to the rule signature, so changing a variable causes the affected rule to become stale.
 
+Variable definitions are resolved before rules are expanded, so nested
+references are supported regardless of assignment order. Cycles are rejected
+with the variable chain, for example `variable cycle: a -> b -> a`.
+Interpolation of a rule is single-pass; text produced by a variable is not
+re-parsed as additional interpolation syntax.
+
 The built-in recipe values are:
 
 | Expression | Meaning |

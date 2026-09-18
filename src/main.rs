@@ -68,6 +68,8 @@ fn run() -> Result<()> {
         dotenv_source: dotenv.source,
         ..Default::default()
     };
+    let raw_vars = ctx.vars.clone();
+    ctx.vars = resolve_variables(&raw_vars, &ctx.env_values)?;
     for rule in &mut ctx.rules {
         for value in rule
             .outputs
@@ -75,7 +77,7 @@ fn run() -> Result<()> {
             .chain(std::iter::once(&rule.recipe))
             .chain(&rule.modifiers)
         {
-            collect_env_refs(value, &ctx.vars, &mut rule.env_refs);
+            collect_env_refs(value, &raw_vars, &mut rule.env_refs);
         }
         for dependency in &rule.deps {
             collect_env_refs(dependency.template(), &ctx.vars, &mut rule.env_refs);

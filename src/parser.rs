@@ -287,36 +287,110 @@ pub(crate) fn unquote(s: &str) -> String {
         s.into()
     }
 }
+
+struct VariableResolver {
+    vars: HashMap<String, String>,
+    env_values: HashMap<String, String>,
+    resolved: HashMap<String, String>,
+    stack: Vec<String>,
+}
+
+impl VariableResolver {
+    fn new(vars: HashMap<String, String>, env_values: HashMap<String, String>) -> Self {
+        Self {
+            vars,
+            env_values,
+            resolved: HashMap::new(),
+            stack: Vec::new(),
+        }
+    }
+
+    fn resolve_all(mut self) -> Result<HashMap<String, String>> {
+        let mut names: Vec<_> = self.vars.keys().cloned().collect();
+        names.sort();
+        for name in names {
+            self.resolve_variable(&name)?;
+        }
+        Ok(self.resolved)
+    }
+
+    fn resolve_variable(&mut self, name: &str) -> Result<String> {
+        if let Some(value) = self.resolved.get(name) {
+            return Ok(value.clone());
+        }
+        if let Some(index) = self.stack.iter().position(|value| value == name) {
+            let mut cycle = self.stack[index..].to_vec();
+            cycle.push(name.to_string());
+            return Err(format!("variable cycle: {}", cycle.join(" -> ")));
+        }
+        let value = self
+            .vars
+            .get(name)
+            .cloned()
+            .ok_or_else(|| format!("undefined variable: {name}"))?;
+        self.stack.push(name.to_string());
+        let resolved = self.expand(&value)?;
+        self.stack.pop();
+        self.resolved.insert(name.to_string(), resolved.clone());
+        Ok(resolved)
+    }
+
+    fn expand(&mut self, text: &str) -> Result<String> {
+        expand_tokens(text, |token| {
+            if let Some(name) = token.strip_prefix("env.") {
+                Ok(self.env_values.get(name).cloned().unwrap_or_default())
+            } else if self.vars.contains_key(token) {
+                self.resolve_variable(token)
+            } else {
+                Ok(format!("{{{{{token}}}}}"))
+            }
+        })
+    }
+}
+
+pub(crate) fn resolve_variables(
+    vars: &HashMap<String, String>,
+    env_values: &HashMap<String, String>,
+) -> Result<HashMap<String, String>> {
+    VariableResolver::new(vars.clone(), env_values.clone()).resolve_all()
+}
+
 pub(crate) fn expand(
     s: &str,
     v: &HashMap<String, String>,
     env_values: &HashMap<String, String>,
 ) -> String {
-    let mut o: String = s.into();
-    for _ in 0..v.len().max(1) {
-        let old = o.clone();
-        for (k, x) in v {
-            o = o.replace(&format!("{{{{{k}}}}}"), x)
+    expand_tokens(s, |token| {
+        if let Some(name) = token.strip_prefix("env.") {
+            Ok(env_values.get(name).cloned().unwrap_or_default())
+        } else {
+            Ok(v.get(token)
+                .cloned()
+                .unwrap_or_else(|| format!("{{{{{token}}}}}")))
         }
-        if o == old {
-            break;
-        }
-    }
-    let mut start = 0;
-    while let Some(found) = o[start..].find("{{env.") {
-        let begin = start + found;
-        let Some(offset) = o[begin..].find("}}") else {
-            break;
+    })
+    .unwrap_or_else(|_| s.into())
+}
+
+fn expand_tokens<F>(text: &str, mut replacement: F) -> Result<String>
+where
+    F: FnMut(&str) -> Result<String>,
+{
+    let mut output = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("{{") {
+        output.push_str(&rest[..start]);
+        let token_start = start + 2;
+        let Some(end) = rest[token_start..].find("}}") else {
+            output.push_str(&rest[start..]);
+            return Ok(output);
         };
-        let end = begin + offset;
-        let name = &o[begin + 6..end];
-        o.replace_range(
-            begin..end + 2,
-            env_values.get(name).cloned().unwrap_or_default().as_str(),
-        );
-        start = begin;
+        let end = token_start + end;
+        output.push_str(&replacement(&rest[token_start..end])?);
+        rest = &rest[end + 2..];
     }
-    o
+    output.push_str(rest);
+    Ok(output)
 }
 
 pub(crate) fn collect_env_refs(
@@ -374,4 +448,54 @@ pub(crate) fn norm_rel(s: &str) -> Result<String> {
         return Err("empty path".into());
     }
     Ok(o.to_string_lossy().replace('\\', "/"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolves_nested_variables() {
+        let vars = HashMap::from([
+            ("sdk".into(), "{{home}}/sdk".into()),
+            ("home".into(), "{{env.HOME}}".into()),
+        ]);
+        let env = HashMap::from([("HOME".into(), "/home/test".into())]);
+        let resolved = resolve_variables(&vars, &env).unwrap();
+        assert_eq!(resolved["sdk"], "/home/test/sdk");
+    }
+
+    #[test]
+    fn reports_variable_cycles() {
+        let vars = HashMap::from([("a".into(), "{{b}}".into()), ("b".into(), "{{a}}".into())]);
+        let error = resolve_variables(&vars, &HashMap::new()).unwrap_err();
+        assert_eq!(error, "variable cycle: a -> b -> a");
+    }
+
+    #[test]
+    fn preserves_quoted_values_and_does_not_reparse_replacements() {
+        assert_eq!(unquote("\"Ada Lovelace\""), "Ada Lovelace");
+        let vars = HashMap::from([
+            ("name".into(), "Ada Lovelace".into()),
+            ("greeting".into(), "Hello, {{name}}".into()),
+            ("literal".into(), "{{name}}".into()),
+        ]);
+        let resolved = resolve_variables(&vars, &HashMap::new()).unwrap();
+        assert_eq!(resolved["greeting"], "Hello, Ada Lovelace");
+        assert_eq!(
+            expand("'{{literal}}'", &resolved, &HashMap::new()),
+            "'Ada Lovelace'"
+        );
+    }
+
+    #[test]
+    fn interpolates_environment_values() {
+        let vars = HashMap::from([("sdk".into(), "{{env.SDK}}/current".into())]);
+        let env = HashMap::from([("SDK".into(), "/opt/sdk".into())]);
+        let resolved = resolve_variables(&vars, &env).unwrap();
+        assert_eq!(
+            expand("{{sdk}}/{{env.MODE}}", &resolved, &env),
+            "/opt/sdk/current/"
+        );
+    }
 }

@@ -877,7 +877,12 @@ For v0.2:
 - assignment uses `name = value`
 - interpolation uses `{{name}}`
 - values are strings
-- recursive variable expansion should be avoided
+- variable definitions are resolved before rules are expanded
+- a variable may reference another variable, including one defined later
+- variable references are resolved depth-first and cycles are errors reported
+  with the variable chain, such as `variable cycle: a -> b -> a`
+- expansion is single-pass after definitions are resolved; text produced by a
+  replacement is not re-parsed as new interpolation syntax
 - referenced variable values contribute to recipe/rule signatures
 
 Syntax should align with `just` where practical.
