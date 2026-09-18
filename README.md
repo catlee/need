@@ -18,6 +18,23 @@ cargo install --path . --root "$HOME/.local"
 
 That installs `need` in `~/.local/bin`. Make sure that directory is in your `PATH`.
 
+## Agent skill
+
+This repository includes an agent skill for working with `need` and `needfile`.
+Install it globally for Codex with:
+
+```sh
+npx skills add catlee/need --skill need --global
+```
+
+The same command works from a local checkout:
+
+```sh
+npx skills add ./skills/need --global
+```
+
+Omit `--global` to install it for the current project instead.
+
 ## Basic usage
 
 Create a file named `needfile`:
