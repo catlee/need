@@ -9,8 +9,9 @@ use crate::Result;
 pub(crate) fn walk(p: &Path) -> Result<Vec<PathBuf>> {
     let mut v = Vec::new();
     for e in fs::read_dir(p).map_err(|e| e.to_string())? {
-        let q = e.map_err(|e| e.to_string())?.path();
-        if q.is_dir() {
+        let e = e.map_err(|e| e.to_string())?;
+        let q = e.path();
+        if e.file_type().map_err(|e| e.to_string())?.is_dir() {
             v.extend(walk(&q)?)
         } else {
             v.push(q)
@@ -31,6 +32,10 @@ pub(crate) fn hash_file(p: &Path) -> Result<String> {
         hasher.update(&buffer[..count]);
     }
     Ok(hasher.finalize().to_hex().to_string())
+}
+pub(crate) fn hash_symlink(p: &Path) -> Result<String> {
+    let target = fs::read_link(p).map_err(|e| e.to_string())?;
+    Ok(hash_text(&format!("symlink:{}", target.to_string_lossy())))
 }
 pub(crate) fn hash_text(s: &str) -> String {
     blake3::hash(s.as_bytes()).to_hex().to_string()

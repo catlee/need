@@ -1049,6 +1049,10 @@ foo: tree(config/)
 
 Changes anywhere in the tree make the dependency stale.
 
+Symlinks are included as leaf entries using their link targets, but `tree()`
+does not follow them. This prevents directory symlink cycles while keeping
+changes to symlink targets observable.
+
 This may be expensive for large trees and should be used intentionally.
 
 ### 15.4 Environment Value

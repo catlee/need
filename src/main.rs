@@ -464,6 +464,32 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn tree_does_not_follow_directory_symlink_cycles() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_project("tree-symlink-cycle");
+        let tree = root.join("resources");
+        fs::create_dir(&tree).unwrap();
+        fs::write(tree.join("input"), "input").unwrap();
+        symlink(".", tree.join("self")).unwrap();
+        let ctx = BuildCtx {
+            root: root.clone(),
+            ..Default::default()
+        };
+
+        let first = dependency_signature(&ctx, &Dependency::Tree("resources".into())).unwrap();
+        let second = dependency_signature(&ctx, &Dependency::Tree("resources".into())).unwrap();
+
+        assert_eq!(first, second);
+        assert_eq!(
+            walk(&tree).unwrap(),
+            vec![tree.join("input"), tree.join("self")]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn only_file_dependencies_are_recipe_inputs() {
         let root = temp_project("dependency-inputs");

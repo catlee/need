@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     Result,
-    hash::{hash_file, hash_text, walk},
+    hash::{hash_file, hash_symlink, hash_text, walk},
     model::{BuildCtx, Dependency, OutputMode, Rule, SavedRule},
     parser::{expand, norm_rel},
 };
@@ -790,10 +790,19 @@ pub(crate) fn dependency_signature(c: &BuildCtx, dependency: &Dependency) -> Res
     if matches!(dependency, Dependency::Tree(_)) {
         let mut a = Vec::new();
         for e in walk(&q)? {
+            let hash = if fs::symlink_metadata(&e)
+                .map_err(|error| error.to_string())?
+                .file_type()
+                .is_symlink()
+            {
+                hash_symlink(&e)?
+            } else {
+                hash_file(&e)?
+            };
             a.push(format!(
                 "{}:{}",
                 e.strip_prefix(&q).unwrap().to_string_lossy(),
-                hash_file(&e)?
+                hash
             ))
         }
         return Ok(hash_text(&a.join("\n")));
