@@ -1946,7 +1946,7 @@ Proposed options:
 
 ```text
 -f, --file PATH       use a specific needfile
--j, --jobs N          maximum parallel jobs (when parallel execution is supported)
+-j [N], --jobs N       maximum parallel jobs; bare -j means unlimited
 -n, --dry-run         show what would run
     --explain         explain freshness decisions
     --force           force requested target/group rebuild

@@ -261,6 +261,7 @@ need                          # build the first concrete target
 need TARGET                   # build a target
 need TARGET...               # build several targets
 need -j8 TARGET              # build independent work in parallel
+need -j TARGET               # build with unlimited parallelism
 need --dry-run TARGET        # show recipes without running them
 need --explain TARGET        # show whether targets are current or stale
 need --force TARGET          # rebuild the target

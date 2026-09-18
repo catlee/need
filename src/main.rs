@@ -95,7 +95,7 @@ fn run() -> Result<()> {
     let jobs = take_jobs(&mut args)?;
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "usage: need [--version] [--force] [--dry-run] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [target ...]"
+            "usage: need [--version] [--force] [--dry-run] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]"
         );
         return Ok(());
     }
@@ -244,9 +244,14 @@ fn take_jobs(args: &mut Vec<String>) -> Result<usize> {
     }
     if let Some(i) = args.iter().position(|x| x == "-j") {
         args.remove(i);
-        let value = args.get(i).cloned().ok_or("-j requires a value")?;
-        args.remove(i);
-        return parse_job_count(&value);
+        if args
+            .get(i)
+            .is_some_and(|value| value.parse::<usize>().is_ok())
+        {
+            let value = args.remove(i);
+            return parse_job_count(&value);
+        }
+        return Ok(usize::MAX);
     }
     if let Some(i) = args.iter().position(|x| x.starts_with("-j") && x.len() > 2) {
         let value = args.remove(i)[2..].to_string();
@@ -1727,6 +1732,14 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
         let mut args = vec!["-j8".into(), "target".into()];
         assert_eq!(take_jobs(&mut args).unwrap(), 8);
         assert_eq!(args, vec!["target"]);
+        let mut args = vec!["-j".into(), "8".into(), "target".into()];
+        assert_eq!(take_jobs(&mut args).unwrap(), 8);
+        assert_eq!(args, vec!["target"]);
+        let mut args = vec!["-j".into(), "target".into()];
+        assert_eq!(take_jobs(&mut args).unwrap(), usize::MAX);
+        assert_eq!(args, vec!["target"]);
+        let mut args = vec!["-j".into()];
+        assert_eq!(take_jobs(&mut args).unwrap(), usize::MAX);
         let mut args = vec!["-j0".into()];
         assert!(take_jobs(&mut args).is_err());
     }
