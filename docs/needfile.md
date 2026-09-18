@@ -35,7 +35,7 @@ build/app: "assets/My App.json" file("SDKs/current/bin/compiler")
   compiler {{in}} -o {{out}}
 ```
 
-Recipes can use any indentation. Unlike Make, a tab is not required. Blank lines and lines whose first non-whitespace character is `#` are ignored. Recipe lines are passed to `sh -c`.
+Indentation is relative: recipe commands and modifiers must be indented deeper than the rule header, and deeper than dependency-continuation lines when the header uses them. Unlike Make, a tab is not required. Blank lines and lines whose first non-whitespace character is `#` are ignored. Recipe lines are passed to `sh -c`.
 
 ### Multiple outputs
 
@@ -60,6 +60,7 @@ build/app: src/main.c \
 ```
 
 The continuation lines must be indented farther than the rule header.
+Recipe commands and modifiers following a continued header must be indented farther than every continuation line.
 
 ### Pattern rules
 

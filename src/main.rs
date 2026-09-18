@@ -303,12 +303,55 @@ mod tests {
     fn parses_variables_continuations_and_modifiers() {
         let root = temp_project("parse");
         let path = root.join("needfile");
-        fs::write(&path, "name = value\nout.txt: input.txt \\\n  config.txt\n  @output(grouped)\n  cp {{in[0]}} {{out}}\n").unwrap();
+        fs::write(&path, "name = value\nout.txt: input.txt \\\n  config.txt\n    @output(grouped)\n    cp {{in[0]}} {{out}}\n").unwrap();
         let (vars, rules) = parse_needfile(&path).unwrap();
         assert_eq!(vars["name"], "value");
         assert_eq!(rules[0].deps, vec!["input.txt", "config.txt"]);
         assert_eq!(rules[0].modifiers, vec!["@output(grouped)"]);
         assert!(rules[0].recipe.contains("{{in[0]}}"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn parses_urls_and_quoted_variable_values() {
+        let root = temp_project("parse-values");
+        let path = root.join("needfile");
+        fs::write(
+            &path,
+            "server = \"https://example.com/api?a=1\"\nmessage = 'value: with spaces'\n",
+        )
+        .unwrap();
+
+        let (vars, rules) = parse_needfile(&path).unwrap();
+        assert!(rules.is_empty());
+        assert_eq!(vars["server"], "https://example.com/api?a=1");
+        assert_eq!(vars["message"], "value: with spaces");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn enforces_recipe_indentation_after_continuations() {
+        let root = temp_project("parse-indentation");
+        let path = root.join("needfile");
+
+        fs::write(
+            &path,
+            "out.txt: input.txt \\\n  config.txt\n    @output(grouped)\n    touch {{out}}\n",
+        )
+        .unwrap();
+        let (_, rules) = parse_needfile(&path).unwrap();
+        assert_eq!(rules[0].deps, vec!["input.txt", "config.txt"]);
+
+        fs::write(
+            &path,
+            "out.txt: input.txt \\\n  config.txt\n  touch {{out}}\n",
+        )
+        .unwrap();
+        let error = parse_needfile(&path).unwrap_err();
+        assert_eq!(
+            error,
+            "recipe or modifier must be indented deeper than dependency continuation"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

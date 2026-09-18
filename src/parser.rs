@@ -27,9 +27,13 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
             continue;
         }
         let indent = raw.len() - raw.trim_start().len();
-        if !raw.starts_with(char::is_whitespace) && trimmed.contains('=') && !trimmed.contains(':')
+        if !raw.starts_with(char::is_whitespace)
+            && let Some((k, v)) = trimmed.split_once('=')
+            && !k.trim().is_empty()
+            && k.trim()
+                .chars()
+                .all(|c| c == '_' || c == '.' || c == '-' || c.is_ascii_alphanumeric())
         {
-            let (k, v) = trimmed.split_once('=').unwrap();
             vars.insert(k.trim().into(), unquote(v.trim()));
             continue;
         }
@@ -37,6 +41,7 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
             return Err(format!("invalid line: {raw}"));
         }
         let mut header = trimmed.to_string();
+        let mut continuation_indent = None;
         while header.trim_end().ends_with('\\') {
             header = header.trim_end().trim_end_matches('\\').trim_end().into();
             if i >= lines.len() {
@@ -47,6 +52,7 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
             if ni <= indent {
                 return Err("dependency continuation must be indented".into());
             }
+            continuation_indent = Some(continuation_indent.unwrap_or(0).max(ni));
             header.push(' ');
             header.push_str(n.trim());
             i += 1
@@ -60,8 +66,18 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
         let mut body: Vec<String> = Vec::new();
         while i < lines.len() {
             let l = &lines[i];
-            if !l.trim().is_empty() && l.len() - l.trim_start().len() <= indent {
+            let line_indent = l.len() - l.trim_start().len();
+            if !l.trim().is_empty() && line_indent <= indent {
                 break;
+            }
+            if !l.trim().is_empty()
+                && !l.trim_start().starts_with('#')
+                && continuation_indent.is_some_and(|level| line_indent <= level)
+            {
+                return Err(
+                    "recipe or modifier must be indented deeper than dependency continuation"
+                        .into(),
+                );
             }
             body.push(l.trim().into());
             i += 1
