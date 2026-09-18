@@ -8,6 +8,53 @@ For when you just need simple build dependencies.
 
 It handles artifact dependencies. Use `just` for commands such as testing, running a simulator, or cleaning a project.
 
+## Why do you need `need`?
+
+There’s still a useful gap between **Make** and **task runners like `just`**.
+
+Make has the right core idea: describe dependencies and rebuild only what’s stale. But its ergonomics are dated and error-prone: tab-sensitive recipes, awkward directory handling, `.PHONY`, stamp files, weak support for multi-output generators, and timestamp-centric semantics. I’ve wasted more time than I’d like on recipes that failed because of whitespace, plus the painful boilerplate for creating directories and stamp files.
+
+`just` fixes the command-running experience, but it deliberately does not solve incremental artifact builds.
+
+`need` is meant to be the small missing layer:
+
+> **`just` does things. `need` makes things exist.**
+
+The goal is a modern, narrow artifact build tool with:
+
+* Make-like `target: dependencies` rules
+* normal indentation
+* automatic parent-directory creation
+* content hashing instead of relying only on mtimes
+* pattern rules and globs
+* first-class multi-output and dynamic-output generators
+* explicit dependency types for files, trees, environment values, strings, and so on
+* strong interoperability with `just`, Cargo, compilers, and existing tooling
+* no phony targets, workflow commands, deployment concepts, or general-purpose scripting language
+
+The underlying philosophy is that artifact relationships should be declarative, while workflows should remain imperative.
+
+So instead of forcing everything into one build system:
+
+```text
+needfile   → what files derive from what
+justfile   → build, test, run, clean, deploy, emulator, Docker…
+Cargo      → Rust compilation
+```
+
+`need` stays small enough to understand, but sophisticated enough that generated assets, codegen, SDK dependencies, and real incremental builds don’t require Make’s historical baggage.
+
+Some of the capabilities above are still being implemented. See [Implementation Status](docs/need-spec.md#implementation-status) for the current state.
+
+## Alternatives
+
+* **Make** is still a reasonable choice when portability and existing Makefiles matter more than ergonomics. If you use it, watch the whitespace. It has opinions.
+* **`just`** is a good task runner for commands such as testing, running, cleaning, and deployment. It complements `need`; it does not replace artifact dependency tracking.
+* **Cargo** should own Rust compilation. `need` is useful for generated assets, code generation, SDK tools, and other artifacts that Cargo does not naturally manage.
+* **Ninja, Bazel, Meson, and similar tools** make sense for larger projects that need a broader build system, multiple languages, or distributed builds.
+
+The point is not to replace every build tool. It is to make the small, common artifact-build case pleasant.
+
 ## Install
 
 From this checkout:
