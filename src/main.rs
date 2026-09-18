@@ -47,18 +47,13 @@ struct BuildCtx {
     cargo_env: BTreeSet<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum OutputMode {
+    #[default]
     Stream,
     Grouped,
     Log,
     Silent,
-}
-
-impl Default for OutputMode {
-    fn default() -> Self {
-        Self::Stream
-    }
 }
 
 impl OutputMode {
@@ -522,7 +517,7 @@ fn build(c: &mut BuildCtx, target: &str, _parent: Option<&str>) -> Result<()> {
     let mods = expand(&rule.modifiers.join("\n"), &c.vars);
     let sig = hash_text(&format!("recipe={recipe}\nmods={mods}\ndeps={dep_sig:?}"));
     let saved = c.state.rules.get(&key).cloned();
-    let mut stale = c.force || saved.as_ref().map_or(true, |x| x.signature != sig);
+    let mut stale = c.force || saved.as_ref().is_none_or(|x| x.signature != sig);
     let mut outsig = BTreeMap::new();
     for o in &outputs {
         let p = abs(c, o);
@@ -668,9 +663,7 @@ fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode) -> Result
         if !stderr.is_empty() {
             io::stderr().write_all(&stderr).map_err(|e| e.to_string())?;
         }
-    } else if !success && mode == OutputMode::Silent {
-        print_failure_output(key, &stdout, &stderr);
-    } else if !success && mode == OutputMode::Log {
+    } else if !success && matches!(mode, OutputMode::Silent | OutputMode::Log) {
         print_failure_output(key, &stdout, &stderr);
     }
     if mode == OutputMode::Log || !success {
