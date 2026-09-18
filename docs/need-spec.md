@@ -977,9 +977,10 @@ need.env.override = true
 ```
 
 Loaded environment values participate in rule freshness wherever they are
-referenced. The dotenv file itself MUST participate in freshness for rules
-whose resolved environment dependencies use values from that file. Dotenv
-contents MUST NOT be printed as part of normal diagnostics.
+referenced. Freshness uses the resolved value of each referenced environment
+variable, not the dotenv file's bytes, so unrelated dotenv changes such as
+comments or unreferenced variables do not rebuild a rule. Dotenv contents MUST
+NOT be printed as part of normal diagnostics.
 
 ---
 

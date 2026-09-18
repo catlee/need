@@ -185,18 +185,18 @@ pub(crate) fn build_inner(
         .map(|modifier| expand(modifier, &c.vars, &c.env_values))
         .collect::<Vec<_>>()
         .join("\n");
-    let dotenv_sig = rule
+    let env_sig = rule
         .env_refs
         .iter()
-        .filter(|name| c.dotenv_values.contains(*name))
-        .filter_map(|name| {
-            c.dotenv_source
-                .as_ref()
-                .map(|(path, hash)| format!("{name}={path}:{hash}"))
+        .map(|name| {
+            format!(
+                "{name}={}",
+                c.env_values.get(name).cloned().unwrap_or_default()
+            )
         })
         .collect::<Vec<_>>();
     let sig = hash_text(&format!(
-        "recipe={recipe}\nmods={mods}\ndeps={dep_sig:?}\ndotenv={dotenv_sig:?}"
+        "recipe={recipe}\nmods={mods}\ndeps={dep_sig:?}\nenv={env_sig:?}"
     ));
     let saved = c.state.rules.get(&key).cloned();
     let mut stale = force || saved.as_ref().is_none_or(|x| x.signature != sig);
@@ -813,15 +813,7 @@ pub(crate) fn dependency_signature(c: &BuildCtx, dependency: &Dependency) -> Res
         Dependency::Mtime(path) => path,
         Dependency::Env(name) => {
             let value = c.env_values.get(name).cloned().unwrap_or_default();
-            let dotenv = if c.dotenv_values.contains(name) {
-                c.dotenv_source
-                    .as_ref()
-                    .map(|(path, hash)| format!(";dotenv={path}:{hash}"))
-                    .unwrap_or_default()
-            } else {
-                String::new()
-            };
-            return Ok(hash_text(&format!("{name}={value}{dotenv}")));
+            return Ok(hash_text(&format!("{name}={value}")));
         }
         Dependency::String(value) => return Ok(hash_text(value)),
     };

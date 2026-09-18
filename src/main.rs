@@ -64,8 +64,6 @@ fn run() -> Result<()> {
         log_keep,
         jobs,
         env_values: dotenv.values,
-        dotenv_values: dotenv.loaded,
-        dotenv_source: dotenv.source,
         ..Default::default()
     };
     let raw_vars = ctx.vars.clone();
@@ -248,7 +246,6 @@ mod tests {
         unsafe { env::set_var(&name, "from-process") };
         let loaded = load_dotenv(&vars, &root).unwrap();
         assert_eq!(loaded.values[&name], "from-process");
-        assert!(!loaded.loaded.contains(&name));
         unsafe { env::remove_var(&name) };
         fs::remove_dir_all(root).unwrap();
     }
@@ -264,7 +261,6 @@ mod tests {
         unsafe { env::set_var(&name, "from-process") };
         let loaded = load_dotenv(&vars, &root).unwrap();
         assert_eq!(loaded.values[&name], "from-file");
-        assert!(loaded.loaded.contains(&name));
         unsafe { env::remove_var(&name) };
         fs::remove_dir_all(root).unwrap();
     }
@@ -283,7 +279,7 @@ mod tests {
     }
 
     #[test]
-    fn dotenv_source_changes_environment_dependency_signature() {
+    fn dotenv_values_change_environment_dependency_signature() {
         let root = temp_project("dotenv-signature");
         let name = "NEED_TEST_SIGNATURE";
         fs::write(root.join(".env"), format!("{name}=same\n")).unwrap();
@@ -291,11 +287,10 @@ mod tests {
         vars.insert("need.env".into(), "load".into());
         vars.insert("need.env.override".into(), "true".into());
         let first = load_dotenv(&vars, &root).unwrap();
-        fs::write(root.join(".env"), format!("# changed\n{name}=same\n")).unwrap();
+        fs::write(root.join(".env"), format!("# changed\n{name}=changed\n")).unwrap();
         let second = load_dotenv(&vars, &root).unwrap();
-        assert_ne!(first.source, second.source);
         assert_eq!(first.values[name], "same");
-        assert_eq!(second.values[name], "same");
+        assert_eq!(second.values[name], "changed");
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -307,8 +302,6 @@ mod tests {
         let mut ctx = context(&root, needfile);
         let dotenv = load_dotenv(&ctx.vars, &root).unwrap();
         ctx.env_values = dotenv.values;
-        ctx.dotenv_values = dotenv.loaded;
-        ctx.dotenv_source = dotenv.source;
         build(&mut ctx, "out.txt", None).unwrap();
         assert_eq!(
             fs::read_to_string(root.join("out.txt")).unwrap(),
@@ -318,31 +311,48 @@ mod tests {
     }
 
     #[test]
-    fn changing_dotenv_content_rebuilds_even_when_value_is_unchanged() {
+    fn dotenv_freshness_uses_referenced_values_only() {
         let root = temp_project("dotenv-freshness");
-        fs::write(root.join(".env"), "NEED_TEST_FRESHNESS=same\n").unwrap();
+        fs::write(
+            root.join(".env"),
+            "NEED_TEST_FRESHNESS=same\nNEED_TEST_UNRELATED=one\n",
+        )
+        .unwrap();
         let needfile = "need.env = load\nout.txt: env(NEED_TEST_FRESHNESS)\n  printf '%s\\n' \"$NEED_TEST_FRESHNESS\" >> {{out}}\n";
 
         let mut first = context(&root, needfile);
         let dotenv = load_dotenv(&first.vars, &root).unwrap();
         first.env_values = dotenv.values;
-        first.dotenv_values = dotenv.loaded;
-        first.dotenv_source = dotenv.source;
         build(&mut first, "out.txt", None).unwrap();
         save_state(&root, &first.state).unwrap();
 
-        fs::write(root.join(".env"), "# changed\nNEED_TEST_FRESHNESS=same\n").unwrap();
+        fs::write(
+            root.join(".env"),
+            "# changed\nNEED_TEST_FRESHNESS=same\nNEED_TEST_UNRELATED=two\n",
+        )
+        .unwrap();
         let mut second = context(&root, needfile);
         let dotenv = load_dotenv(&second.vars, &root).unwrap();
         second.env_values = dotenv.values;
-        second.dotenv_values = dotenv.loaded;
-        second.dotenv_source = dotenv.source;
         second.state = load_state(&root).unwrap();
         build(&mut second, "out.txt", None).unwrap();
 
+        assert_eq!(fs::read_to_string(root.join("out.txt")).unwrap(), "same\n");
+
+        fs::write(
+            root.join(".env"),
+            "NEED_TEST_FRESHNESS=changed\nNEED_TEST_UNRELATED=two\n",
+        )
+        .unwrap();
+        let mut third = context(&root, needfile);
+        let dotenv = load_dotenv(&third.vars, &root).unwrap();
+        third.env_values = dotenv.values;
+        third.state = load_state(&root).unwrap();
+        build(&mut third, "out.txt", None).unwrap();
+
         assert_eq!(
             fs::read_to_string(root.join("out.txt")).unwrap(),
-            "same\nsame\n"
+            "same\nchanged\n"
         );
         fs::remove_dir_all(root).unwrap();
     }

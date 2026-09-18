@@ -1,12 +1,11 @@
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     env, fs,
     path::{Path, PathBuf},
 };
 
 use crate::{
     Result,
-    hash::hash_text,
     model::{Dependency, OutputMode, Rule},
 };
 
@@ -192,8 +191,6 @@ pub(crate) fn validate_modifier(modifier: &str) -> Result<()> {
 #[derive(Default)]
 pub(crate) struct Dotenv {
     pub(crate) values: HashMap<String, String>,
-    pub(crate) loaded: HashSet<String>,
-    pub(crate) source: Option<(String, String)>,
 }
 
 pub(crate) fn load_dotenv(vars: &HashMap<String, String>, root: &Path) -> Result<Dotenv> {
@@ -205,10 +202,7 @@ pub(crate) fn load_dotenv(vars: &HashMap<String, String>, root: &Path) -> Result
         || vars.get("need.env.override").is_some_and(|x| x == "true");
     let mut values: HashMap<String, String> = env::vars().collect();
     if !requested {
-        return Ok(Dotenv {
-            values,
-            ..Default::default()
-        });
+        return Ok(Dotenv { values });
     }
     let filename = vars
         .get("need.env.file")
@@ -220,28 +214,18 @@ pub(crate) fn load_dotenv(vars: &HashMap<String, String>, root: &Path) -> Result
         if required {
             return Err(format!("required environment file not found: {filename}"));
         }
-        return Ok(Dotenv {
-            values,
-            ..Default::default()
-        });
+        return Ok(Dotenv { values });
     };
     let text =
         fs::read_to_string(&path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
     let parsed = parse_dotenv(&text)?;
     let override_env = vars.get("need.env.override").is_some_and(|x| x == "true");
-    let mut loaded = HashSet::new();
     for (name, value) in parsed {
         if override_env || !values.contains_key(&name) {
             values.insert(name.clone(), value);
-            loaded.insert(name);
         }
     }
-    let source = Some((path.to_string_lossy().into_owned(), hash_text(&text)));
-    Ok(Dotenv {
-        values,
-        loaded,
-        source,
-    })
+    Ok(Dotenv { values })
 }
 
 pub(crate) fn find_dotenv(root: &Path, filename: &str) -> Option<PathBuf> {

@@ -69,8 +69,6 @@ pub(crate) struct BuildCtx {
     pub(crate) cargo_deps: BTreeSet<String>,
     pub(crate) cargo_env: BTreeSet<String>,
     pub(crate) env_values: HashMap<String, String>,
-    pub(crate) dotenv_values: HashSet<String>,
-    pub(crate) dotenv_source: Option<(String, String)>,
     pub(crate) stack: Vec<String>,
 }
 
