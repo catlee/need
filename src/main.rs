@@ -70,38 +70,12 @@ fn run() -> Result<()> {
     };
     let raw_vars = ctx.vars.clone();
     ctx.vars = resolve_variables(&raw_vars, &ctx.env_values)?;
-    for rule in &mut ctx.rules {
-        for value in rule
-            .outputs
-            .iter()
-            .chain(std::iter::once(&rule.recipe))
-            .chain(&rule.modifiers)
-        {
-            collect_env_refs(value, &raw_vars, &mut rule.env_refs);
-        }
-        for dependency in &rule.deps {
-            collect_env_refs(dependency.template(), &ctx.vars, &mut rule.env_refs);
-        }
-        rule.outputs = rule
-            .outputs
-            .iter()
-            .map(|x| expand(x, &ctx.vars, &ctx.env_values))
-            .collect();
-        rule.deps = expand_dependencies(&rule.deps, &ctx.vars, &ctx.env_values)?;
-        rule.modifiers = rule
-            .modifiers
-            .iter()
-            .map(|x| expand(x, &ctx.vars, &ctx.env_values))
-            .collect();
-        for modifier in &rule.modifiers {
-            validate_modifier(modifier)?;
-        }
-    }
-    for (i, r) in ctx.rules.iter().enumerate() {
-        if !r.pattern {
-            for o in &r.outputs {
-                if ctx.exact.insert(o.clone(), i).is_some() {
-                    return Err(format!("duplicate rule output: {o}"));
+    expand_rules(&mut ctx.rules, &ctx.vars, &ctx.env_values, &raw_vars)?;
+    for (i, rule) in ctx.rules.iter().enumerate() {
+        if !rule.pattern {
+            for output in &rule.outputs {
+                if ctx.exact.insert(output.clone(), i).is_some() {
+                    return Err(format!("duplicate rule output: {output}"));
                 }
             }
         }
@@ -156,6 +130,43 @@ fn expand_dependencies(
             Dependency::String(x) => Ok(Dependency::String(expand(x, vars, env_values))),
         })
         .collect()
+}
+
+fn expand_rules(
+    rules: &mut [Rule],
+    vars: &HashMap<String, String>,
+    env_values: &HashMap<String, String>,
+    raw_vars: &HashMap<String, String>,
+) -> Result<()> {
+    for rule in rules {
+        for value in rule
+            .outputs
+            .iter()
+            .chain(std::iter::once(&rule.recipe))
+            .chain(&rule.modifiers)
+        {
+            collect_env_refs(value, raw_vars, &mut rule.env_refs);
+        }
+        for dependency in &rule.deps {
+            collect_env_refs(dependency.template(), vars, &mut rule.env_refs);
+        }
+        rule.outputs = rule
+            .outputs
+            .iter()
+            .map(|x| expand(x, vars, env_values))
+            .collect();
+        rule.deps = expand_dependencies(&rule.deps, vars, env_values)?;
+        rule.modifiers = rule
+            .modifiers
+            .iter()
+            .map(|x| expand(x, vars, env_values))
+            .collect();
+        for modifier in &rule.modifiers {
+            validate_modifier(modifier)?;
+        }
+        rule.pattern = rule.outputs.iter().any(|x| x.contains('%'));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -776,6 +787,43 @@ mod tests {
         let root = temp_project("pattern");
         fs::write(root.join("input.txt"), "hello\n").unwrap();
         let mut ctx = context(&root, "build/%.txt: input.txt\n  cp {{in}} {{out}}\n");
+        build(&mut ctx, "build/output.txt", None).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("build/output.txt")).unwrap(),
+            "hello\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn variable_expansion_preserves_pattern_matching_and_exact_targets() {
+        let root = temp_project("variable-pattern");
+        fs::write(root.join("input.txt"), "hello\n").unwrap();
+        let path = root.join("needfile");
+        fs::write(
+            &path,
+            "output = build/%.txt\n{{output}}: input.txt\n  cp {{in}} {{out}}\nplain.txt: input.txt\n  cp {{in}} {{out}}\n",
+        )
+        .unwrap();
+        let (raw_vars, mut rules) = parse_needfile(&path).unwrap();
+        let vars = resolve_variables(&raw_vars, &HashMap::new()).unwrap();
+        expand_rules(&mut rules, &vars, &HashMap::new(), &raw_vars);
+        let mut ctx = BuildCtx {
+            root: root.clone(),
+            vars,
+            rules,
+            ..Default::default()
+        };
+        for (i, rule) in ctx.rules.iter().enumerate() {
+            if !rule.pattern {
+                for output in &rule.outputs {
+                    ctx.exact.insert(output.clone(), i);
+                }
+            }
+        }
+
+        assert_eq!(select_rule(&ctx, "build/output.txt").unwrap().0, 0);
+        assert_eq!(select_rule(&ctx, "plain.txt").unwrap().0, 1);
         build(&mut ctx, "build/output.txt", None).unwrap();
         assert_eq!(
             fs::read_to_string(root.join("build/output.txt")).unwrap(),
