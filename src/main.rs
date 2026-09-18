@@ -159,6 +159,19 @@ fn expand_rules(
             .iter()
             .map(|x| expand(x, vars, env_values))
             .collect();
+        if rule
+            .outputs
+            .iter()
+            .chain(rule.deps.iter().filter_map(|dependency| match dependency {
+                Dependency::File(path) | Dependency::Tree(path) | Dependency::Mtime(path) => {
+                    Some(path)
+                }
+                Dependency::Deferred(_) | Dependency::Env(_) | Dependency::String(_) => None,
+            }))
+            .any(|value| value.matches('%').count() > 1)
+        {
+            return Err("only one % is supported per pattern".into());
+        }
         for modifier in &rule.modifiers {
             validate_modifier(modifier)?;
         }
@@ -921,6 +934,44 @@ mod tests {
         assert_eq!(
             fs::read_to_string(root.join("build/output.txt")).unwrap(),
             "hello\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_multiple_percent_signs_in_expanded_output() {
+        let root = temp_project("invalid-expanded-output-pattern");
+        let path = root.join("needfile");
+        fs::write(
+            &path,
+            "output = build/%.%.txt\n{{output}}: input.txt\n  cp {{in}} {{out}}\n",
+        )
+        .unwrap();
+        let (raw_vars, mut rules) = parse_needfile(&path).unwrap();
+        let vars = resolve_variables(&raw_vars, &HashMap::new()).unwrap();
+
+        assert_eq!(
+            expand_rules(&mut rules, &vars, &HashMap::new(), &raw_vars).unwrap_err(),
+            "only one % is supported per pattern"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_multiple_percent_signs_in_expanded_dependency_pattern() {
+        let root = temp_project("invalid-expanded-dependency-pattern");
+        let path = root.join("needfile");
+        fs::write(
+            &path,
+            "dependency = file(src/%.c%)\nout: {{dependency}}\n  cp {{in}} {{out}}\n",
+        )
+        .unwrap();
+        let (raw_vars, mut rules) = parse_needfile(&path).unwrap();
+        let vars = resolve_variables(&raw_vars, &HashMap::new()).unwrap();
+
+        assert_eq!(
+            expand_rules(&mut rules, &vars, &HashMap::new(), &raw_vars).unwrap_err(),
+            "only one % is supported per pattern"
         );
         fs::remove_dir_all(root).unwrap();
     }
