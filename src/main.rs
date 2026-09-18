@@ -93,6 +93,9 @@ fn run() -> Result<()> {
             .iter()
             .map(|x| expand(x, &ctx.vars, &ctx.env_values))
             .collect();
+        for modifier in &rule.modifiers {
+            validate_modifier(modifier)?;
+        }
     }
     for (i, r) in ctx.rules.iter().enumerate() {
         if !r.pattern {
@@ -637,8 +640,35 @@ mod tests {
             "out.txt: input.txt\n  @output(nope)\n  touch {{out}}\n",
         )
         .unwrap();
-        let error = parse_needfile(&path).unwrap_err();
+        let (_, rules) = parse_needfile(&path).unwrap();
+        let error = validate_modifier(&rules[0].modifiers[0]).unwrap_err();
         assert_eq!(error, "invalid output mode in rule modifier @output(nope)");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn expands_variables_before_validating_output_modifier() {
+        let root = temp_project("modifier-variable");
+        let path = root.join("needfile");
+        fs::write(
+            &path,
+            "mode = grouped\nout.txt: input.txt\n  @output({{mode}})\n  touch {{out}}\n",
+        )
+        .unwrap();
+        let (raw_vars, rules) = parse_needfile(&path).unwrap();
+        let vars = resolve_variables(&raw_vars, &HashMap::new()).unwrap();
+        let modifier = expand(&rules[0].modifiers[0], &vars, &HashMap::new());
+        assert_eq!(modifier, "@output(grouped)");
+        validate_modifier(&modifier).unwrap();
+        let invalid = expand(
+            &rules[0].modifiers[0],
+            &HashMap::from([(String::from("mode"), String::from("nope"))]),
+            &HashMap::new(),
+        );
+        assert_eq!(
+            validate_modifier(&invalid).unwrap_err(),
+            "invalid output mode in rule modifier @output(nope)"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

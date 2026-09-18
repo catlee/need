@@ -105,7 +105,7 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
                 ""
             };
             if l.starts_with('@') {
-                validate_modifier(l)?;
+                parse_modifier_value(l)?;
                 modifiers.push(l.into())
             } else if !l.is_empty() && !l.starts_with('#') {
                 recipe.push(l.into())
@@ -166,13 +166,15 @@ fn parse_dependency_template(raw: &str) -> Result<Dependency> {
     }
 }
 
-pub(crate) fn validate_modifier(modifier: &str) -> Result<()> {
-    let Some(value) = modifier
+pub(crate) fn parse_modifier_value(modifier: &str) -> Result<&str> {
+    modifier
         .strip_prefix("@output(")
         .and_then(|x| x.strip_suffix(')'))
-    else {
-        return Err(format!("unsupported rule modifier {modifier}"));
-    };
+        .ok_or_else(|| format!("unsupported rule modifier {modifier}"))
+}
+
+pub(crate) fn validate_modifier(modifier: &str) -> Result<()> {
+    let value = parse_modifier_value(modifier)?;
     OutputMode::parse(value)
         .map(|_| ())
         .map_err(|_| format!("invalid output mode in rule modifier {modifier}"))
