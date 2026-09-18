@@ -52,3 +52,16 @@ working, then run the full `just check` before handing off.
 - Content signatures, not timestamps alone, determine freshness.
 - `.need/lock` protects state and output groups from concurrent `need`
   processes.
+
+## Parallel issue work
+
+For independent issues, use one Herdr worktree and tab per issue. `herdr
+worktree create` creates the linked Git checkout, branch, Herdr workspace, tab,
+and root pane; start the agent in the returned pane with `-- --yolo`. Keep
+`.worktrees/` ignored.
+
+Agents should commit locally but not push. Rebase each completed branch onto
+the latest `main`, integrate with `git merge --ff-only`, run `just check` on
+the combined result, push, and only then close the issue. Remove temporary
+worktrees with `herdr worktree remove` after integration; this preserves their
+branches and commits.
