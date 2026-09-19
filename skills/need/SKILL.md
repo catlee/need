@@ -13,7 +13,7 @@ Discovery
 
 - `need --help` Print command-line usage
 - `need --list` List declared targets and rules
-- `need --explain TARGET` Show whether targets are current or stale
+- `need --explain TARGET` Show whether targets are current or stale, including actionable stale reasons
 - `need --dry-run TARGET` Show recipes that would run
 - `need -n TARGET` Short alias for `--dry-run`
 - `need --file PATH TARGET` Use a specific needfile; relative paths start at the invocation directory

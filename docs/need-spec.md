@@ -55,8 +55,6 @@ The following specified features are not implemented yet:
 
 - **Depfiles** (Section 12, `@depfile(...)`, and Section 44): compiler-generated
   dependency discovery for C/C++ and similar tools.
-- **Detailed explain reasons** (Section 34): reporting the specific changed
-  dependency, recipe, or output that made a rule stale.
 - **Interruption and recovery handling** (Section 30): signal-aware cleanup and
   recovery metadata for interrupted builds.
 - **Hash scalability improvements** (Sections 17 and 21): metadata-assisted hash
@@ -1576,7 +1574,7 @@ It SHOULD also show why targets are considered stale.
 
 ## 34. Explain Mode
 
-A first-class explanation mode is strongly desirable:
+A first-class explanation mode reports why each target is current or stale:
 
 ```sh
 need --explain build/app
@@ -1600,17 +1598,20 @@ build/app
 Possible reasons include:
 
 ```text
-target missing
-output group incomplete
-input content changed
-glob membership changed
-tree dependency changed
-mtime dependency changed
-environment value changed
-string dependency changed
-recipe changed
 forced rebuild
+build state missing
+recipe or dependency signature changed
+output missing: build/app
+output changed: build/app
+output manifest missing: .need/generated.outputs
+output manifest changed: .need/generated.outputs
 ```
+
+The current persisted state stores one combined recipe/dependency signature, so
+`need` reports a combined signature change rather than naming an individual
+dependency. Reasons that identify a file are reported for outputs and output
+manifests when their current content or presence can be compared with saved
+state.
 
 ---
 

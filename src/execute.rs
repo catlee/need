@@ -339,17 +339,25 @@ pub(crate) fn build_inner(
     ));
     let manifest = rule.options.outputs.clone();
     let saved = c.session.state.rules.get(&key).cloned();
-    let mut stale = force || saved.as_ref().is_none_or(|x| x.signature != sig);
+    let mut reasons = Vec::new();
+    if force {
+        reasons.push("forced rebuild".to_owned());
+    }
+    if saved.is_none() {
+        reasons.push("build state missing".to_owned());
+    } else if saved.as_ref().is_some_and(|x| x.signature != sig) {
+        reasons.push("recipe or dependency signature changed".to_owned());
+    }
     let mut outsig = BTreeMap::new();
     let known_dynamic = saved.as_ref().map_or(&[][..], |saved| &saved.dynamic);
     for o in outputs.iter().chain(known_dynamic) {
         let p = abs(c, o);
         if !p.is_file() {
-            stale = true
+            reasons.push(format!("output missing: {o}"));
         } else {
             let h = hash_file(&p)?;
-            if saved.as_ref().and_then(|x| x.outputs.get(o)) != Some(&h) {
-                stale = true
+            if saved.is_some() && saved.as_ref().and_then(|x| x.outputs.get(o)) != Some(&h) {
+                reasons.push(format!("output changed: {o}"));
             }
             outsig.insert(o.clone(), h);
         }
@@ -357,15 +365,18 @@ pub(crate) fn build_inner(
     if let Some(path) = &manifest {
         let manifest_state = saved.as_ref().and_then(|saved| saved.manifest.as_ref());
         let p = abs(c, path);
-        if !p.is_file()
-            || manifest_state.is_none_or(|saved| {
+        if !p.is_file() {
+            reasons.push(format!("output manifest missing: {path}"));
+        } else if saved.is_some()
+            && manifest_state.is_none_or(|saved| {
                 saved.path.as_str() != path.as_str()
                     || hash_file(&p).ok().as_deref() != Some(&saved.hash)
             })
         {
-            stale = true;
+            reasons.push(format!("output manifest changed: {path}"));
         }
     }
+    let stale = !reasons.is_empty();
     if !stale {
         if c.options.explain {
             if c.options.cargo {
@@ -379,10 +390,15 @@ pub(crate) fn build_inner(
         return Ok(());
     }
     if c.options.explain {
+        let reasons = reasons
+            .iter()
+            .map(|reason| format!("  {reason}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         if c.options.cargo {
-            eprintln!("{key}\n  stale");
+            eprintln!("{key}\n  stale\n{reasons}");
         } else {
-            println!("{key}\n  stale");
+            println!("{key}\n  stale\n{reasons}");
         }
     }
     let rendered = interpolate(
