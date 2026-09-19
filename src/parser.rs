@@ -148,11 +148,26 @@ fn display_path(path: &Path) -> String {
 pub(crate) fn parse_dependency(raw: &str) -> Result<ParsedDependency> {
     let raw = unquote(raw);
     for (prefix, constructor) in [
-        ("file(", ParsedDependency::File as fn(String) -> ParsedDependency),
-        ("tree(", ParsedDependency::Tree as fn(String) -> ParsedDependency),
-        ("mtime(", ParsedDependency::Mtime as fn(String) -> ParsedDependency),
-        ("env(", ParsedDependency::Env as fn(String) -> ParsedDependency),
-        ("string(", ParsedDependency::String as fn(String) -> ParsedDependency),
+        (
+            "file(",
+            ParsedDependency::File as fn(String) -> ParsedDependency,
+        ),
+        (
+            "tree(",
+            ParsedDependency::Tree as fn(String) -> ParsedDependency,
+        ),
+        (
+            "mtime(",
+            ParsedDependency::Mtime as fn(String) -> ParsedDependency,
+        ),
+        (
+            "env(",
+            ParsedDependency::Env as fn(String) -> ParsedDependency,
+        ),
+        (
+            "string(",
+            ParsedDependency::String as fn(String) -> ParsedDependency,
+        ),
     ] {
         if let Some(value) = raw.strip_prefix(prefix).and_then(|x| x.strip_suffix(')')) {
             return Ok(constructor(unquote(value)));

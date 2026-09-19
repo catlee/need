@@ -103,13 +103,16 @@ pub(crate) struct SavedManifest {
 }
 
 #[derive(Clone, Default)]
-pub(crate) struct BuildCtx {
+pub(crate) struct ProjectData {
     pub(crate) root: PathBuf,
     pub(crate) vars: HashMap<String, String>,
     pub(crate) rules: Vec<Rule>,
     pub(crate) exact: HashMap<String, usize>,
-    pub(crate) state: State,
-    pub(crate) built: HashSet<String>,
+    pub(crate) env_values: HashMap<String, String>,
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct BuildOptions {
     pub(crate) force: bool,
     pub(crate) dry: bool,
     pub(crate) explain: bool,
@@ -117,10 +120,22 @@ pub(crate) struct BuildCtx {
     pub(crate) output: OutputMode,
     pub(crate) log_keep: usize,
     pub(crate) jobs: usize,
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct BuildSession {
+    pub(crate) state: State,
+    pub(crate) built: HashSet<String>,
     pub(crate) cargo_deps: BTreeSet<String>,
     pub(crate) cargo_env: BTreeSet<String>,
-    pub(crate) env_values: HashMap<String, String>,
     pub(crate) stack: Vec<String>,
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct BuildCtx {
+    pub(crate) project: ProjectData,
+    pub(crate) options: BuildOptions,
+    pub(crate) session: BuildSession,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

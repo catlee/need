@@ -1,4 +1,7 @@
-use std::{collections::{BTreeSet, HashMap}, env};
+use std::{
+    collections::{BTreeSet, HashMap},
+    env,
+};
 
 mod cli;
 mod execute;
@@ -58,38 +61,44 @@ fn run() -> Result<()> {
     };
     let log_keep = cli_or_config_keep(&vars)?;
     let mut ctx = BuildCtx {
-        root,
-        vars: resolved_vars.clone(),
-        rules: resolve_rules(&parsed_rules, &resolved_vars, &dotenv.values, &vars)?,
-        force,
-        dry,
-        explain,
-        cargo,
-        output,
-        log_keep,
-        jobs,
-        env_values: dotenv.values,
+        project: ProjectData {
+            root,
+            vars: resolved_vars.clone(),
+            rules: resolve_rules(&parsed_rules, &resolved_vars, &dotenv.values, &vars)?,
+            env_values: dotenv.values,
+            ..Default::default()
+        },
+        options: BuildOptions {
+            force,
+            dry,
+            explain,
+            cargo,
+            output,
+            log_keep,
+            jobs,
+        },
         ..Default::default()
     };
-    for (i, rule) in ctx.rules.iter().enumerate() {
+    for (i, rule) in ctx.project.rules.iter().enumerate() {
         if !rule.pattern {
             for output in &rule.outputs {
-                if ctx.exact.insert(output.clone(), i).is_some() {
+                if ctx.project.exact.insert(output.clone(), i).is_some() {
                     return Err(format!("duplicate rule output: {output}"));
                 }
             }
         }
     }
     if list {
-        for r in &ctx.rules {
+        for r in &ctx.project.rules {
             println!("{}", r.outputs.join(" "));
         }
         return Ok(());
     }
-    let _lock = BuildLock::acquire(&ctx.root)?;
-    ctx.state = load_state(&ctx.root)?;
+    let _lock = BuildLock::acquire(&ctx.project.root)?;
+    ctx.session.state = load_state(&ctx.project.root)?;
     let targets = if args.is_empty() {
         let default_target = ctx
+            .project
             .rules
             .iter()
             .find(|r| !r.pattern)
@@ -105,10 +114,10 @@ fn run() -> Result<()> {
         .map(|target| norm_rel(&target))
         .collect::<Result<Vec<_>>>()?;
     build_targets(&mut ctx, &targets)?;
-    if !ctx.dry {
-        save_state(&ctx.root, &ctx.state)?;
+    if !ctx.options.dry {
+        save_state(&ctx.project.root, &ctx.session.state)?;
     }
-    if ctx.cargo {
+    if ctx.options.cargo {
         emit_cargo_metadata(&ctx, &file);
     }
     Ok(())
@@ -174,12 +183,23 @@ fn resolve_rules(
             .iter()
             .map(|x| expand(x, vars, env_values))
             .collect();
-        if let Some(value) = parsed.options.output.as_deref().map(|x| expand(x, vars, env_values)) {
-            rule.options.output = Some(OutputMode::parse(&value).map_err(|_| {
-                format!("invalid output mode in rule modifier @output({value})")
-            })?);
+        if let Some(value) = parsed
+            .options
+            .output
+            .as_deref()
+            .map(|x| expand(x, vars, env_values))
+        {
+            rule.options.output =
+                Some(OutputMode::parse(&value).map_err(|_| {
+                    format!("invalid output mode in rule modifier @output({value})")
+                })?);
         }
-        if let Some(value) = parsed.options.outputs.as_deref().map(|x| expand(x, vars, env_values)) {
+        if let Some(value) = parsed
+            .options
+            .outputs
+            .as_deref()
+            .map(|x| expand(x, vars, env_values))
+        {
             if value.is_empty() {
                 return Err("output manifest path is empty in rule modifier @outputs()".into());
             }
@@ -232,23 +252,22 @@ mod tests {
         let vars = resolve_variables(&raw_vars, &HashMap::new()).unwrap();
         let rules = resolve_rules(&parsed_rules, &vars, &HashMap::new(), &raw_vars).unwrap();
         let mut ctx = BuildCtx {
-            root: root.to_path_buf(),
-            vars,
-            rules,
+            project: ProjectData {
+                root: root.to_path_buf(),
+                vars,
+                rules,
+                ..Default::default()
+            },
             ..Default::default()
         };
-        for (i, rule) in ctx.rules.iter().enumerate() {
+        for (i, rule) in ctx.project.rules.iter().enumerate() {
             for output in &rule.outputs {
-                ctx.exact.insert(output.clone(), i);
+                ctx.project.exact.insert(output.clone(), i);
             }
         }
-        let raw_vars = ctx.vars.clone();
-        for rule in &mut ctx.rules {
-            for value in rule
-                .outputs
-                .iter()
-                .chain(std::iter::once(&rule.recipe))
-            {
+        let raw_vars = ctx.project.vars.clone();
+        for rule in &mut ctx.project.rules {
+            for value in rule.outputs.iter().chain(std::iter::once(&rule.recipe)) {
                 collect_env_refs(value, &raw_vars, &mut rule.env_refs);
             }
         }
@@ -335,8 +354,8 @@ mod tests {
         fs::write(root.join(".env"), "NEED_TEST_RECIPE=from-dotenv\n").unwrap();
         let needfile = "need.env = load\nout.txt: env(NEED_TEST_RECIPE)\n  printf '%s' \"$NEED_TEST_RECIPE\" > {{out}}\n";
         let mut ctx = context(&root, needfile);
-        let dotenv = load_dotenv(&ctx.vars, &root).unwrap();
-        ctx.env_values = dotenv.values;
+        let dotenv = load_dotenv(&ctx.project.vars, &root).unwrap();
+        ctx.project.env_values = dotenv.values;
         build(&mut ctx, "out.txt", None).unwrap();
         assert_eq!(
             fs::read_to_string(root.join("out.txt")).unwrap(),
@@ -356,10 +375,10 @@ mod tests {
         let needfile = "need.env = load\nout.txt: env(NEED_TEST_FRESHNESS)\n  printf '%s\\n' \"$NEED_TEST_FRESHNESS\" >> {{out}}\n";
 
         let mut first = context(&root, needfile);
-        let dotenv = load_dotenv(&first.vars, &root).unwrap();
-        first.env_values = dotenv.values;
+        let dotenv = load_dotenv(&first.project.vars, &root).unwrap();
+        first.project.env_values = dotenv.values;
         build(&mut first, "out.txt", None).unwrap();
-        save_state(&root, &first.state).unwrap();
+        save_state(&root, &first.session.state).unwrap();
 
         fs::write(
             root.join(".env"),
@@ -367,9 +386,9 @@ mod tests {
         )
         .unwrap();
         let mut second = context(&root, needfile);
-        let dotenv = load_dotenv(&second.vars, &root).unwrap();
-        second.env_values = dotenv.values;
-        second.state = load_state(&root).unwrap();
+        let dotenv = load_dotenv(&second.project.vars, &root).unwrap();
+        second.project.env_values = dotenv.values;
+        second.session.state = load_state(&root).unwrap();
         build(&mut second, "out.txt", None).unwrap();
 
         assert_eq!(fs::read_to_string(root.join("out.txt")).unwrap(), "same\n");
@@ -380,9 +399,9 @@ mod tests {
         )
         .unwrap();
         let mut third = context(&root, needfile);
-        let dotenv = load_dotenv(&third.vars, &root).unwrap();
-        third.env_values = dotenv.values;
-        third.state = load_state(&root).unwrap();
+        let dotenv = load_dotenv(&third.project.vars, &root).unwrap();
+        third.project.env_values = dotenv.values;
+        third.session.state = load_state(&root).unwrap();
         build(&mut third, "out.txt", None).unwrap();
 
         assert_eq!(
@@ -464,11 +483,14 @@ mod tests {
         assert!(rules[0].env_refs.contains("NEED_TEST_DEPENDENCY_ENV"));
 
         let mut ctx = BuildCtx {
-            root: root.clone(),
-            rules,
+            project: ProjectData {
+                root: root.clone(),
+                rules,
+                ..Default::default()
+            },
             ..Default::default()
         };
-        ctx.exact.insert("out".into(), 0);
+        ctx.project.exact.insert("out".into(), 0);
         build(&mut ctx, "out", None).unwrap();
         assert!(
             cargo_metadata(&ctx, &path)
@@ -534,13 +556,13 @@ mod tests {
 
         let mut first = context(&root, needfile);
         build(&mut first, "out.txt", None).unwrap();
-        save_state(&root, &first.state).unwrap();
+        save_state(&root, &first.session.state).unwrap();
 
         let mut second = context(
             &root,
             "out.txt: input.txt\n  @output(silent)\n  printf '%s\\n' run >> runs.txt\n  cp {{in}} {{out}}\n",
         );
-        second.state = load_state(&root).unwrap();
+        second.session.state = load_state(&root).unwrap();
         build(&mut second, "out.txt", None).unwrap();
 
         assert_eq!(fs::read_to_string(root.join("runs.txt")).unwrap(), "run\n");
@@ -551,17 +573,16 @@ mod tests {
     fn changing_output_manifest_modifier_rebuilds() {
         let root = temp_project("semantic-modifier-signature");
         fs::write(root.join("input.txt"), "input\n").unwrap();
-        let needfile =
-            "out.txt: input.txt\n  printf '%s\\n' run >> runs.txt\n  cp {{in}} {{out}}\n  touch extra.txt\n  printf 'extra.txt\\n' > manifest-one\n  printf 'extra.txt\\n' > manifest-two\n";
+        let needfile = "out.txt: input.txt\n  printf '%s\\n' run >> runs.txt\n  cp {{in}} {{out}}\n  touch extra.txt\n  printf 'extra.txt\\n' > manifest-one\n  printf 'extra.txt\\n' > manifest-two\n";
 
         let mut first = context(&root, needfile);
-        first.rules[0].options.outputs = Some("manifest-one".into());
+        first.project.rules[0].options.outputs = Some("manifest-one".into());
         build(&mut first, "out.txt", None).unwrap();
-        save_state(&root, &first.state).unwrap();
+        save_state(&root, &first.session.state).unwrap();
 
         let mut second = context(&root, needfile);
-        second.rules[0].options.outputs = Some("manifest-two".into());
-        second.state = load_state(&root).unwrap();
+        second.project.rules[0].options.outputs = Some("manifest-two".into());
+        second.session.state = load_state(&root).unwrap();
         build(&mut second, "out.txt", None).unwrap();
 
         assert_eq!(
@@ -666,7 +687,10 @@ mod tests {
         fs::write(root.join("resources/input"), "one").unwrap();
         fs::write(root.join("tool"), "tool").unwrap();
         let ctx = BuildCtx {
-            root: root.clone(),
+            project: ProjectData {
+                root: root.clone(),
+                ..Default::default()
+            },
             ..Default::default()
         };
         let file = dependency_signature(&ctx, &Dependency::File("resources/input".into())).unwrap();
@@ -699,7 +723,10 @@ mod tests {
         fs::write(tree.join("input"), "input").unwrap();
         symlink(".", tree.join("self")).unwrap();
         let ctx = BuildCtx {
-            root: root.clone(),
+            project: ProjectData {
+                root: root.clone(),
+                ..Default::default()
+            },
             ..Default::default()
         };
 
@@ -725,10 +752,10 @@ mod tests {
             &root,
             "out: input tree(resources) mtime(tool) env(MODE) string(v3)\n  printf '%s' '{{in}}' > {{out}}\n",
         );
-        ctx.env_values.insert("MODE".into(), "debug".into());
+        ctx.project.env_values.insert("MODE".into(), "debug".into());
         build(&mut ctx, "out", None).unwrap();
         assert_eq!(fs::read_to_string(root.join("out")).unwrap(), "input");
-        assert!(ctx.cargo_env.contains("MODE"));
+        assert!(ctx.session.cargo_env.contains("MODE"));
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -740,12 +767,13 @@ mod tests {
             "generated: input\n  printf '%s' '{{env.NEED_TEST_CARGO_ENV}}' > {{out}}\nout: generated\n  cp {{in}} {{out}}\n",
         );
         fs::write(root.join("input"), "input").unwrap();
-        ctx.env_values
+        ctx.project
+            .env_values
             .insert("NEED_TEST_CARGO_ENV".into(), "debug".into());
         build(&mut ctx, "out", None).unwrap();
 
         assert_eq!(fs::read_to_string(root.join("out")).unwrap(), "debug");
-        assert!(ctx.cargo_env.contains("NEED_TEST_CARGO_ENV"));
+        assert!(ctx.session.cargo_env.contains("NEED_TEST_CARGO_ENV"));
         assert!(
             cargo_metadata(&ctx, &root.join("needfile"))
                 .contains(&"cargo:rerun-if-env-changed=NEED_TEST_CARGO_ENV".into())
@@ -790,20 +818,20 @@ mod tests {
         build(&mut first, "out.txt", None).unwrap();
         assert!(root.join("a.txt").is_file());
         assert!(root.join("b.txt").is_file());
-        save_state(&root, &first.state).unwrap();
+        save_state(&root, &first.session.state).unwrap();
 
         let mut current = context(&root, needfile);
-        current.state = load_state(&root).unwrap();
+        current.session.state = load_state(&root).unwrap();
         build(&mut current, "a.txt", None).unwrap();
 
         fs::write(root.join("mode"), "one").unwrap();
         let mut second = context(&root, needfile);
-        second.state = load_state(&root).unwrap();
+        second.session.state = load_state(&root).unwrap();
         build(&mut second, "out.txt", None).unwrap();
         assert!(root.join("a.txt").is_file());
         assert!(!root.join("b.txt").exists());
         assert_eq!(
-            second.state.rules.values().next().unwrap().dynamic,
+            second.session.state.rules.values().next().unwrap().dynamic,
             vec!["a.txt"]
         );
         fs::remove_dir_all(root).unwrap();
@@ -848,11 +876,11 @@ final: generated.txt generated/*
 "#;
         let mut first = context(&root, needfile);
         build(&mut first, "final", None).unwrap();
-        save_state(&root, &first.state).unwrap();
+        save_state(&root, &first.session.state).unwrap();
 
         fs::write(root.join("mode"), "one\n").unwrap();
         let mut second = context(&root, needfile);
-        second.state = load_state(&root).unwrap();
+        second.session.state = load_state(&root).unwrap();
         build(&mut second, "final", None).unwrap();
 
         assert_eq!(
@@ -1036,15 +1064,18 @@ final: generated.txt generated/*
         let vars = resolve_variables(&raw_vars, &HashMap::new()).unwrap();
         let rules = resolve_rules(&parsed_rules, &vars, &HashMap::new(), &raw_vars).unwrap();
         let mut ctx = BuildCtx {
-            root: root.clone(),
-            vars,
-            rules,
+            project: ProjectData {
+                root: root.clone(),
+                vars,
+                rules,
+                ..Default::default()
+            },
             ..Default::default()
         };
-        for (i, rule) in ctx.rules.iter().enumerate() {
+        for (i, rule) in ctx.project.rules.iter().enumerate() {
             if !rule.pattern {
                 for output in &rule.outputs {
-                    ctx.exact.insert(output.clone(), i);
+                    ctx.project.exact.insert(output.clone(), i);
                 }
             }
         }
@@ -1222,11 +1253,11 @@ final: generated.txt generated/*
         let needfile = "out.txt: input.txt\n  cp {{in}} {{out}}\n";
         let mut first = context(&root, needfile);
         build(&mut first, "out.txt", None).unwrap();
-        save_state(&root, &first.state).unwrap();
+        save_state(&root, &first.session.state).unwrap();
         let mut second = context(&root, needfile);
-        second.state = load_state(&root).unwrap();
+        second.session.state = load_state(&root).unwrap();
         build(&mut second, "out.txt", None).unwrap();
-        assert_eq!(second.state.rules.len(), 1);
+        assert_eq!(second.session.state.rules.len(), 1);
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1247,12 +1278,12 @@ final.txt: current.txt stale.txt
 
         let mut first = context(&root, needfile);
         build(&mut first, "final.txt", None).unwrap();
-        save_state(&root, &first.state).unwrap();
+        save_state(&root, &first.session.state).unwrap();
 
         fs::write(root.join("stale-source.txt"), "new\n").unwrap();
         let mut second = context(&root, needfile);
-        second.force = true;
-        second.state = load_state(&root).unwrap();
+        second.options.force = true;
+        second.session.state = load_state(&root).unwrap();
         build(&mut second, "final.txt", None).unwrap();
 
         assert_eq!(
@@ -1283,13 +1314,13 @@ all.txt: a.txt b.txt
   cat {{in}} > {{out}}
 "#;
         let mut first = context(&root, needfile);
-        first.jobs = 2;
+        first.options.jobs = 2;
         build(&mut first, "all.txt", None).unwrap();
-        save_state(&root, &first.state).unwrap();
+        save_state(&root, &first.session.state).unwrap();
 
         let mut second = context(&root, needfile);
-        second.jobs = 2;
-        second.state = load_state(&root).unwrap();
+        second.options.jobs = 2;
+        second.session.state = load_state(&root).unwrap();
         build(&mut second, "all.txt", None).unwrap();
 
         assert!(root.join("a.ran").is_file());
@@ -1310,12 +1341,12 @@ final.txt: generated.txt
 "#;
         let mut first = context(&root, needfile);
         build(&mut first, "final.txt", None).unwrap();
-        save_state(&root, &first.state).unwrap();
+        save_state(&root, &first.session.state).unwrap();
 
         fs::write(root.join("source.txt"), "new\n").unwrap();
         fs::write(root.join("fail"), "").unwrap();
         let mut second = context(&root, needfile);
-        second.state = load_state(&root).unwrap();
+        second.session.state = load_state(&root).unwrap();
         let error = build(&mut second, "final.txt", None).unwrap_err();
 
         assert!(error.contains("recipe failed for generated.txt"));
@@ -1345,20 +1376,20 @@ b.txt: source-b.txt
 "#;
 
         let mut first = context(&root, needfile);
-        first.jobs = 2;
+        first.options.jobs = 2;
         build_targets(&mut first, &["a.txt".into(), "b.txt".into()]).unwrap();
-        save_state(&root, &first.state).unwrap();
+        save_state(&root, &first.session.state).unwrap();
         fs::remove_file(root.join("a.txt")).unwrap();
 
         let mut second = context(&root, needfile);
-        second.jobs = 2;
-        second.state = load_state(&root).unwrap();
+        second.options.jobs = 2;
+        second.session.state = load_state(&root).unwrap();
         build_targets(&mut second, &["a.txt".into(), "b.txt".into()]).unwrap();
-        save_state(&root, &second.state).unwrap();
+        save_state(&root, &second.session.state).unwrap();
 
         let mut third = context(&root, needfile);
-        third.jobs = 2;
-        third.state = load_state(&root).unwrap();
+        third.options.jobs = 2;
+        third.session.state = load_state(&root).unwrap();
         build_targets(&mut third, &["a.txt".into(), "b.txt".into()]).unwrap();
 
         assert_eq!(fs::read_to_string(root.join("a.runs")).unwrap(), "runrun");
@@ -1381,15 +1412,15 @@ final.txt: a.txt b.txt
   cat {{in}} > {{out}}
 "#;
         let mut first = context(&root, needfile);
-        first.jobs = 2;
+        first.options.jobs = 2;
         build(&mut first, "final.txt", None).unwrap();
-        save_state(&root, &first.state).unwrap();
+        save_state(&root, &first.session.state).unwrap();
 
         fs::write(root.join("source-a.txt"), "new-a\n").unwrap();
         fs::write(root.join("fail"), "").unwrap();
         let mut second = context(&root, needfile);
-        second.jobs = 2;
-        second.state = load_state(&root).unwrap();
+        second.options.jobs = 2;
+        second.session.state = load_state(&root).unwrap();
         let error = build(&mut second, "final.txt", None).unwrap_err();
 
         assert!(error.contains("recipe failed for a.txt"));
@@ -1425,8 +1456,8 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
   cat {{in}} > {{out}}
 "#;
         let mut ctx = context(&root, needfile);
-        ctx.jobs = 2;
-        ctx.output = OutputMode::Silent;
+        ctx.options.jobs = 2;
+        ctx.options.output = OutputMode::Silent;
         build(&mut ctx, "all.txt", None).unwrap();
         assert!(!root.join(".exceeded").exists());
         assert!(root.join("all.txt").is_file());
@@ -1437,11 +1468,14 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
     fn emits_cargo_metadata_for_files_and_environment() {
         let root = temp_project("cargo-metadata");
         let mut ctx = BuildCtx {
-            root: root.clone(),
+            project: ProjectData {
+                root: root.clone(),
+                ..Default::default()
+            },
             ..Default::default()
         };
-        ctx.cargo_deps.insert("src/input.txt".into());
-        ctx.cargo_env.insert("MODE".into());
+        ctx.session.cargo_deps.insert("src/input.txt".into());
+        ctx.session.cargo_env.insert("MODE".into());
 
         assert_eq!(
             cargo_metadata(&ctx, &root.join("needfile")),
@@ -1487,9 +1521,15 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
         for (index, (global, effective, keep, expected)) in cases.into_iter().enumerate() {
             let root = temp_project(&format!("log-retention-{index}"));
             let ctx = BuildCtx {
-                root: root.clone(),
-                output: global,
-                log_keep: keep,
+                project: ProjectData {
+                    root: root.clone(),
+                    ..Default::default()
+                },
+                options: BuildOptions {
+                    output: global,
+                    log_keep: keep,
+                    ..Default::default()
+                },
                 ..Default::default()
             };
             run_recipe(
@@ -1530,8 +1570,14 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
     fn spools_large_successful_output_without_losing_log_bytes() {
         let root = temp_project("large-output");
         let ctx = BuildCtx {
-            root: root.clone(),
-            output: OutputMode::Log,
+            project: ProjectData {
+                root: root.clone(),
+                ..Default::default()
+            },
+            options: BuildOptions {
+                output: OutputMode::Log,
+                ..Default::default()
+            },
             ..Default::default()
         };
         run_recipe(
@@ -1567,8 +1613,14 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
     fn retains_large_failure_stdout_and_stderr_for_diagnostics() {
         let root = temp_project("large-failure");
         let ctx = BuildCtx {
-            root: root.clone(),
-            output: OutputMode::Silent,
+            project: ProjectData {
+                root: root.clone(),
+                ..Default::default()
+            },
+            options: BuildOptions {
+                output: OutputMode::Silent,
+                ..Default::default()
+            },
             ..Default::default()
         };
         let error = run_recipe(

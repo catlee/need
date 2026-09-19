@@ -14,9 +14,7 @@ use std::{
 use crate::{
     Result,
     hash::{hash_file, hash_symlink, hash_text, walk},
-    model::{
-        BuildCtx, Dependency, OutputMode, RuleId, SavedManifest, SavedRule, TargetMatch,
-    },
+    model::{BuildCtx, Dependency, OutputMode, RuleId, SavedManifest, SavedRule, TargetMatch},
     parser::{expand, norm_rel},
 };
 
@@ -24,29 +22,29 @@ pub(crate) fn abs(c: &BuildCtx, p: &str) -> PathBuf {
     if Path::new(p).is_absolute() {
         p.into()
     } else {
-        c.root.join(p)
+        c.project.root.join(p)
     }
 }
 
 pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> Result<()> {
     let target = norm_rel(target)?;
-    let force = c.force && c.stack.is_empty();
-    if c.built.contains(&target) && !force {
+    let force = c.options.force && c.session.stack.is_empty();
+    if c.session.built.contains(&target) && !force {
         return Ok(());
     }
-    if let Some(index) = c.stack.iter().position(|x| x == &target) {
-        let mut cycle = c.stack[index..].to_vec();
+    if let Some(index) = c.session.stack.iter().position(|x| x == &target) {
+        let mut cycle = c.session.stack[index..].to_vec();
         cycle.push(target.clone());
         return Err(format!("dependency cycle\n{}", cycle.join(" -> ")));
     }
-    c.stack.push(target.clone());
+    c.session.stack.push(target.clone());
     let result = build_inner(c, &target, parent, force);
-    c.stack.pop();
+    c.session.stack.pop();
     result
 }
 
 pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[String]) -> Result<()> {
-    if c.jobs <= 1 || targets.len() <= 1 {
+    if c.options.jobs <= 1 || targets.len() <= 1 {
         for target in targets {
             build(c, target, None)?;
         }
@@ -66,14 +64,14 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[String]) -> Result<()> 
             parallel_targets.push(target.clone());
         }
     }
-    for batch in parallel_targets.chunks(c.jobs) {
+    for batch in parallel_targets.chunks(c.options.jobs) {
         let base = c.clone();
         let results = std::thread::scope(|scope| {
             let mut handles = Vec::new();
             for target in batch {
                 let target = target.clone();
                 let mut child = base.clone();
-                child.jobs = 1;
+                child.options.jobs = 1;
                 handles.push(scope.spawn(move || {
                     let result = build(&mut child, &target, None);
                     (child, result)
@@ -90,14 +88,14 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[String]) -> Result<()> 
         })?;
         for (child, result) in results {
             result?;
-            for (key, saved) in child.state.rules {
-                if base.state.rules.get(&key) != Some(&saved) {
-                    c.state.rules.insert(key, saved);
+            for (key, saved) in child.session.state.rules {
+                if base.session.state.rules.get(&key) != Some(&saved) {
+                    c.session.state.rules.insert(key, saved);
                 }
             }
-            c.built.extend(child.built);
-            c.cargo_deps.extend(child.cargo_deps);
-            c.cargo_env.extend(child.cargo_env);
+            c.session.built.extend(child.session.built);
+            c.session.cargo_deps.extend(child.session.cargo_deps);
+            c.session.cargo_env.extend(child.session.cargo_env);
         }
     }
     Ok(())
@@ -109,16 +107,16 @@ pub(crate) fn build_inner(
     _parent: Option<&str>,
     force: bool,
 ) -> Result<()> {
-    if c.built.contains(target) && !force {
+    if c.session.built.contains(target) && !force {
         return Ok(());
     }
     let TargetMatch::Rule { id, stem, outputs } = select_rule(c, target)? else {
-        c.built.insert(target.to_owned());
+        c.session.built.insert(target.to_owned());
         return Ok(());
     };
     let ri = id.0;
-    let rule = c.rules[ri].clone();
-    c.cargo_env.extend(rule.env_refs.iter().cloned());
+    let rule = c.project.rules[ri].clone();
+    c.session.cargo_env.extend(rule.env_refs.iter().cloned());
     let key = outputs.join("\0");
     let mut resolved_deps = Vec::new();
     let mut has_glob = false;
@@ -159,7 +157,7 @@ pub(crate) fn build_inner(
             }
         }
     }
-    let parallel = !has_glob && c.jobs > 1 && parallel_candidates.len() > 1;
+    let parallel = !has_glob && c.options.jobs > 1 && parallel_candidates.len() > 1;
     let parallel_targets: HashSet<String> = parallel_candidates
         .iter()
         .filter_map(|d| match d {
@@ -183,13 +181,13 @@ pub(crate) fn build_inner(
                 parallel_deps.push(path.clone());
             }
         }
-        for batch in parallel_deps.chunks(c.jobs) {
+        for batch in parallel_deps.chunks(c.options.jobs) {
             let results = std::thread::scope(|scope| {
                 let mut handles = Vec::new();
                 for d in batch {
                     let d = d.clone();
                     let mut child = base.clone();
-                    child.jobs = 1;
+                    child.options.jobs = 1;
                     handles.push(scope.spawn(move || {
                         let result = build(&mut child, &d, None);
                         (d, child, result)
@@ -211,12 +209,12 @@ pub(crate) fn build_inner(
                         TargetMatch::Rule { outputs, .. } => outputs.join("\0"),
                     })
                     .unwrap_or_else(|_| d.clone());
-                if let Some(saved) = child.state.rules.get(&group) {
-                    c.state.rules.insert(group, saved.clone());
+                if let Some(saved) = child.session.state.rules.get(&group) {
+                    c.session.state.rules.insert(group, saved.clone());
                 }
-                c.cargo_deps.extend(child.cargo_deps);
-                c.cargo_env.extend(child.cargo_env);
-                c.built.extend(child.built);
+                c.session.cargo_deps.extend(child.session.cargo_deps);
+                c.session.cargo_env.extend(child.session.cargo_env);
+                c.session.built.extend(child.session.built);
             }
         }
     }
@@ -268,14 +266,14 @@ pub(crate) fn build_inner(
             ));
         }
     }
-    let recipe = expand(&rule.recipe, &c.vars, &c.env_values);
+    let recipe = expand(&rule.recipe, &c.project.vars, &c.project.env_values);
     let env_sig = rule
         .env_refs
         .iter()
         .map(|name| {
             format!(
                 "{name}={}",
-                c.env_values.get(name).cloned().unwrap_or_default()
+                c.project.env_values.get(name).cloned().unwrap_or_default()
             )
         })
         .collect::<Vec<_>>();
@@ -284,7 +282,7 @@ pub(crate) fn build_inner(
         rule.options.outputs
     ));
     let manifest = rule.options.outputs.clone();
-    let saved = c.state.rules.get(&key).cloned();
+    let saved = c.session.state.rules.get(&key).cloned();
     let mut stale = force || saved.as_ref().is_none_or(|x| x.signature != sig);
     let mut outsig = BTreeMap::new();
     let known_dynamic = saved.as_ref().map_or(&[][..], |saved| &saved.dynamic);
@@ -312,19 +310,19 @@ pub(crate) fn build_inner(
         }
     }
     if !stale {
-        if c.explain {
-            if c.cargo {
+        if c.options.explain {
+            if c.options.cargo {
                 eprintln!("{key}\n  current");
             } else {
                 println!("{key}\n  current");
             }
         }
-        c.built.extend(outputs.iter().cloned());
-        c.built.extend(known_dynamic.iter().cloned());
+        c.session.built.extend(outputs.iter().cloned());
+        c.session.built.extend(known_dynamic.iter().cloned());
         return Ok(());
     }
-    if c.explain {
-        if c.cargo {
+    if c.options.explain {
+        if c.options.cargo {
             eprintln!("{key}\n  stale");
         } else {
             println!("{key}\n  stale");
@@ -335,17 +333,17 @@ pub(crate) fn build_inner(
         &inputs,
         &outputs,
         stem.as_deref(),
-        &c.vars,
-        &c.env_values,
+        &c.project.vars,
+        &c.project.env_values,
     )?;
-    if c.dry {
+    if c.options.dry {
         status_line(c, "want", &key, "\x1b[36m");
-        if c.cargo {
+        if c.options.cargo {
             eprintln!("{}", rendered);
         } else {
             println!("{}", rendered);
         }
-        c.built.extend(outputs.iter().cloned());
+        c.session.built.extend(outputs.iter().cloned());
         return Ok(());
     }
     for o in &outputs {
@@ -359,7 +357,7 @@ pub(crate) fn build_inner(
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     status_line(c, "need", &key, "\x1b[33m");
-    let mode = rule.options.output.unwrap_or(c.output);
+    let mode = rule.options.output.unwrap_or(c.options.output);
     run_recipe(c, &key, &rendered, mode)?;
     for o in &outputs {
         if !abs(c, o).is_file() {
@@ -395,7 +393,7 @@ pub(crate) fn build_inner(
         Vec::new()
     };
     status_line(c, "got", &key, "\x1b[32m");
-    c.state.rules.insert(
+    c.session.state.rules.insert(
         key,
         SavedRule {
             signature: sig,
@@ -407,8 +405,8 @@ pub(crate) fn build_inner(
             }),
         },
     );
-    c.built.extend(outputs.iter().cloned());
-    c.built.extend(dynamic);
+    c.session.built.extend(outputs.iter().cloned());
+    c.session.built.extend(dynamic);
     Ok(())
 }
 
@@ -451,12 +449,13 @@ fn validate_dynamic_outputs(
     dynamic: &[String],
 ) -> Result<()> {
     for output in dynamic {
-        if fixed.contains(output) || c.exact.contains_key(output) {
+        if fixed.contains(output) || c.project.exact.contains_key(output) {
             return Err(format!(
                 "dynamic output {output} conflicts with a declared output\nhelp: give each output one owning rule"
             ));
         }
-        if c.state
+        if c.session
+            .state
             .rules
             .iter()
             .any(|(other, saved)| other != key && saved.dynamic.contains(output))
@@ -492,7 +491,7 @@ pub(crate) fn status_line(c: &BuildCtx, status: &str, key: &str, color: &str) {
         ""
     };
     let reset = if color.is_empty() { "" } else { "\x1b[0m" };
-    if c.cargo {
+    if c.options.cargo {
         eprintln!("{color}{label}{reset}{}", display_key(key));
     } else {
         println!("{color}{label}{reset}{}", display_key(key));
@@ -504,8 +503,8 @@ pub(crate) fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode
     let mut child = Command::new("sh")
         .arg("-c")
         .arg(recipe)
-        .current_dir(&c.root)
-        .envs(&c.env_values)
+        .current_dir(&c.project.root)
+        .envs(&c.project.env_values)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -520,7 +519,7 @@ pub(crate) fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode
         .ok_or("failed to capture child stderr")?;
     let stdout_path = capture.stdout.clone();
     let stderr_path = capture.stderr.clone();
-    let stdout_stderr = stream_stdout_to_stderr(c.cargo);
+    let stdout_stderr = stream_stdout_to_stderr(c.options.cargo);
     let stdout_thread = std::thread::spawn(move || {
         spool_stream(
             stdout_reader,
@@ -546,11 +545,11 @@ pub(crate) fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode
         .map_err(|_| "stderr reader panicked")??;
     let success = status.success();
     if mode == OutputMode::Grouped && (!capture.is_empty(true)? || !capture.is_empty(false)?) {
-        render_grouped_output(key, &capture, c.cargo)?;
+        render_grouped_output(key, &capture, c.options.cargo)?;
     } else if !success && matches!(mode, OutputMode::Silent | OutputMode::Log) {
         print_failure_output(key, &capture)?;
     }
-    if mode == OutputMode::Log || c.log_keep > 0 || !success {
+    if mode == OutputMode::Log || c.options.log_keep > 0 || !success {
         write_log_files(c, key, &capture, success)?;
     }
     if !success {
@@ -572,7 +571,7 @@ struct Capture {
 
 impl Capture {
     fn new(c: &BuildCtx) -> Result<Self> {
-        let dir = c.root.join(".need/tmp").join(format!(
+        let dir = c.project.root.join(".need/tmp").join(format!(
             "{}-{}",
             std::process::id(),
             NEXT_CAPTURE_ID.fetch_add(1, Ordering::Relaxed)
@@ -617,10 +616,10 @@ impl Drop for Capture {
 pub(crate) fn record_cargo_dependency(c: &mut BuildCtx, dependency: &Dependency) {
     match dependency {
         Dependency::Env(name) => {
-            c.cargo_env.insert(name.clone());
+            c.session.cargo_env.insert(name.clone());
         }
         Dependency::File(path) | Dependency::Tree(path) | Dependency::Mtime(path) => {
-            c.cargo_deps.insert(path.clone());
+            c.session.cargo_deps.insert(path.clone());
         }
         Dependency::String(_) => {}
     }
@@ -635,17 +634,19 @@ pub(crate) fn emit_cargo_metadata(c: &BuildCtx, needfile: &Path) {
 pub(crate) fn cargo_metadata(c: &BuildCtx, needfile: &Path) -> Vec<String> {
     let mut lines = Vec::new();
     let needfile = needfile
-        .strip_prefix(&c.root)
+        .strip_prefix(&c.project.root)
         .unwrap_or(needfile)
         .to_string_lossy();
     lines.push(format!("cargo:rerun-if-changed={needfile}"));
     lines.extend(
-        c.cargo_deps
+        c.session
+            .cargo_deps
             .iter()
             .map(|dependency| format!("cargo:rerun-if-changed={dependency}")),
     );
     lines.extend(
-        c.cargo_env
+        c.session
+            .cargo_env
             .iter()
             .map(|name| format!("cargo:rerun-if-env-changed={name}")),
     );
@@ -682,7 +683,7 @@ pub(crate) fn is_leaf_rule(c: &BuildCtx, target: &str) -> Result<bool> {
     let Ok(TargetMatch::Rule { id, stem, .. }) = select_rule(c, target) else {
         return Ok(false);
     };
-    let rule = &c.rules[id.0];
+    let rule = &c.project.rules[id.0];
     for dependency in &rule.deps {
         let Dependency::File(path) = dependency else {
             continue;
@@ -768,7 +769,7 @@ pub(crate) fn exit_status(status: &ExitStatus) -> String {
 
 fn write_log_files(c: &BuildCtx, key: &str, capture: &Capture, success: bool) -> Result<()> {
     let group = &hash_text(key)[..16];
-    let dir = c.root.join(".need/logs").join(group);
+    let dir = c.project.root.join(".need/logs").join(group);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -787,7 +788,7 @@ fn write_log_files(c: &BuildCtx, key: &str, capture: &Capture, success: bool) ->
     )
     .map_err(|e| e.to_string())?;
     if success {
-        rotate_success_logs(&dir, c.log_keep.max(1))?;
+        rotate_success_logs(&dir, c.options.log_keep.max(1))?;
     }
     Ok(())
 }
@@ -815,17 +816,18 @@ pub(crate) fn rotate_success_logs(dir: &Path, keep: usize) -> Result<()> {
 }
 
 pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
-    if let Some(&i) = c.exact.get(t) {
+    if let Some(&i) = c.project.exact.get(t) {
         return Ok(TargetMatch::Rule {
             id: RuleId(i),
             stem: None,
-            outputs: c.rules[i].outputs.clone(),
+            outputs: c.project.rules[i].outputs.clone(),
         });
     }
-    for (key, saved) in &c.state.rules {
+    for (key, saved) in &c.session.state.rules {
         if saved.dynamic.iter().any(|output| output == t) {
             let outputs = key.split('\0').map(str::to_owned).collect::<Vec<_>>();
             if let Some((i, rule)) = c
+                .project
                 .rules
                 .iter()
                 .enumerate()
@@ -840,7 +842,13 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
         }
     }
     let mut found = Vec::new();
-    for (i, r) in c.rules.iter().enumerate().filter(|(_, r)| r.pattern) {
+    for (i, r) in c
+        .project
+        .rules
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.pattern)
+    {
         let mut matches = Vec::new();
         for p in &r.outputs {
             if let Some(pos) = p.find('%') {
@@ -866,7 +874,7 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
         return Err(format!("ambiguous pattern rules for {t}"));
     }
     if let Some((i, s)) = found.pop() {
-        let o = c.rules[i]
+        let o = c.project.rules[i]
             .outputs
             .iter()
             .map(|x| x.replace('%', &s))
@@ -902,18 +910,18 @@ pub(crate) fn expand_glob(c: &BuildCtx, p: &str) -> Result<Vec<String>> {
             ) + "\nhelp: check that the path exists and is readable"
         })?;
         if x.is_file() {
-            let path = x.strip_prefix(&c.root).unwrap_or(&x);
+            let path = x.strip_prefix(&c.project.root).unwrap_or(&x);
             set.insert(path.to_string_lossy().replace('\\', "/"));
         }
     }
-    for r in &c.rules {
+    for r in &c.project.rules {
         for o in &r.outputs {
             if !o.contains('%') && pattern.matches(o) {
                 set.insert(o.clone());
             }
         }
     }
-    for saved in c.state.rules.values() {
+    for saved in c.session.state.rules.values() {
         for output in &saved.dynamic {
             if pattern.matches(output) && abs(c, output).is_file() {
                 set.insert(output.clone());
@@ -1025,7 +1033,7 @@ pub(crate) fn dependency_signature(c: &BuildCtx, dependency: &Dependency) -> Res
         Dependency::Tree(path) => path,
         Dependency::Mtime(path) => path,
         Dependency::Env(name) => {
-            let value = c.env_values.get(name).cloned().unwrap_or_default();
+            let value = c.project.env_values.get(name).cloned().unwrap_or_default();
             return Ok(hash_text(&format!("{name}={value}")));
         }
         Dependency::String(value) => return Ok(hash_text(value)),
