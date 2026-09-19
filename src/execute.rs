@@ -14,9 +14,51 @@ use std::{
 use crate::{
     Result,
     hash::{hash_file, hash_symlink, hash_text, walk},
-    model::{BuildCtx, Dependency, Jobs, OutputMode, ProjectPath, RuleId, SavedManifest, SavedRule, TargetMatch},
+    model::{
+        BuildCtx, Dependency, Jobs, OutputMode, ProjectPath, RuleId, SavedManifest, SavedRule,
+        TargetMatch,
+    },
     parser::{expand, norm_rel},
 };
+
+#[derive(Debug)]
+pub(crate) enum BuildError {
+    Message(String),
+    DependencyCycle(Vec<ProjectPath>),
+}
+
+impl std::fmt::Display for BuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Message(message) => message.fmt(f),
+            Self::DependencyCycle(paths) => {
+                write!(
+                    f,
+                    "dependency cycle\n{}",
+                    paths
+                        .iter()
+                        .map(ProjectPath::as_str)
+                        .collect::<Vec<_>>()
+                        .join(" -> ")
+                )
+            }
+        }
+    }
+}
+
+impl From<String> for BuildError {
+    fn from(error: String) -> Self {
+        Self::Message(error)
+    }
+}
+
+impl From<&str> for BuildError {
+    fn from(error: &str) -> Self {
+        Self::Message(error.to_owned())
+    }
+}
+
+type BuildResult<T> = std::result::Result<T, BuildError>;
 
 pub(crate) fn abs(c: &BuildCtx, p: &str) -> PathBuf {
     if Path::new(p).is_absolute() {
@@ -34,7 +76,7 @@ fn group_key(outputs: &[ProjectPath]) -> String {
         .join("\0")
 }
 
-pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> Result<()> {
+pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> BuildResult<()> {
     let target = ProjectPath::from_normalized(norm_rel(target)?);
     let force = c.options.force && c.session.stack.is_empty();
     if c.session.built.contains(&target) && !force {
@@ -43,7 +85,7 @@ pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> Res
     if let Some(index) = c.session.stack.iter().position(|x| x == &target) {
         let mut cycle = c.session.stack[index..].to_vec();
         cycle.push(target.clone());
-        return Err(format!("dependency cycle\n{}", cycle.join(" -> ")));
+        return Err(BuildError::DependencyCycle(cycle));
     }
     c.session.stack.push(target.clone());
     let result = build_inner(c, &target, parent, force);
@@ -51,7 +93,7 @@ pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> Res
     result
 }
 
-pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> Result<()> {
+pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildResult<()> {
     if !c.options.jobs.is_parallel() || targets.len() <= 1 {
         for target in targets {
             build(c, target, None)?;
@@ -65,7 +107,7 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> Result
         let group = select_rule(c, target)
             .map(|selection| match selection {
                 TargetMatch::Source => target.clone().into_string(),
-        TargetMatch::Rule { outputs, .. } => group_key(&outputs),
+                TargetMatch::Rule { outputs, .. } => group_key(&outputs),
             })
             .unwrap_or_else(|_| target.to_string());
         if groups.insert(group) {
@@ -90,9 +132,9 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> Result
                 .map(|handle| {
                     handle
                         .join()
-                        .map_err(|_| "parallel build worker panicked".to_string())
+                        .map_err(|_| BuildError::from("parallel build worker panicked"))
                 })
-                .collect::<Result<Vec<_>>>()
+                .collect::<BuildResult<Vec<_>>>()
         })?;
         for (child, result) in results {
             result?;
@@ -114,7 +156,7 @@ pub(crate) fn build_inner(
     target: &str,
     _parent: Option<&str>,
     force: bool,
-) -> Result<()> {
+) -> BuildResult<()> {
     if c.session.built.contains(target) && !force {
         return Ok(());
     }
@@ -377,7 +419,7 @@ pub(crate) fn build_inner(
     run_recipe(c, &key, &rendered, mode)?;
     for o in &outputs {
         if !abs(c, o).is_file() {
-            return Err(format!("recipe did not produce {o}"));
+            return Err(format!("recipe did not produce {o}").into());
         }
         outsig.insert(o.clone(), hash_file(&abs(c, o))?);
     }
@@ -389,7 +431,7 @@ pub(crate) fn build_inner(
             if !p.is_file() {
                 return Err(format!(
                     "output manifest {path} lists missing output {output}\nhelp: write every listed output before the recipe exits"
-                ));
+                ).into());
             }
             outsig.insert(output.clone(), hash_file(&p)?);
         }
@@ -487,11 +529,12 @@ fn validate_dynamic_outputs(
     Ok(())
 }
 
-pub(crate) fn required_by(error: String, target: &str) -> String {
-    if error.starts_with("dependency cycle") {
-        error
-    } else {
-        format!("{error}\nrequired by {target}")
+pub(crate) fn required_by(error: BuildError, target: &str) -> BuildError {
+    match error {
+        BuildError::DependencyCycle(_) => error,
+        BuildError::Message(message) => {
+            BuildError::Message(format!("{message}\nrequired by {target}"))
+        }
     }
 }
 

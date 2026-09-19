@@ -118,7 +118,7 @@ fn run() -> Result<()> {
             .map(|target| norm_rel(&target).map(ProjectPath::from_normalized))
             .collect::<Result<Vec<_>>>()?
     };
-    build_targets(&mut ctx, &targets)?;
+    build_targets(&mut ctx, &targets).map_err(|error| error.to_string())?;
     if !ctx.options.dry {
         save_state(&ctx.project.root, &ctx.session.state)?;
     }
@@ -173,7 +173,12 @@ fn resolve_rules(
             collect_env_refs(value, raw_vars, &mut rule.env_refs);
         }
         collect_env_refs(&rule.recipe, raw_vars, &mut rule.env_refs);
-        for value in parsed.options.output.iter().chain(parsed.options.outputs.iter()) {
+        for value in parsed
+            .options
+            .output
+            .iter()
+            .chain(parsed.options.outputs.iter())
+        {
             collect_env_refs(value, raw_vars, &mut rule.env_refs);
         }
         for dependency in &parsed.deps {
@@ -977,7 +982,7 @@ final: generated.txt generated/*
         fs::write(root.join("input.txt"), "input\n").unwrap();
         let mut ctx = context(&root, "out.txt: input.txt\n  touch {{unknown}} {{out}}\n");
 
-        let error = build(&mut ctx, "out.txt", None).unwrap_err();
+        let error = build(&mut ctx, "out.txt", None).unwrap_err().to_string();
 
         assert_eq!(
             error,
@@ -1188,7 +1193,7 @@ final: generated.txt generated/*
     fn rejects_malformed_dependency_glob() {
         let root = temp_project("malformed-glob");
         let mut ctx = context(&root, "out.txt: *[\n  touch {{out}}\n");
-        let error = build(&mut ctx, "out.txt", None).unwrap_err();
+        let error = build(&mut ctx, "out.txt", None).unwrap_err().to_string();
         assert!(error.starts_with("invalid glob pattern '*[': Pattern syntax error"));
         assert!(error.ends_with("help: fix the glob syntax"));
         fs::remove_dir_all(root).unwrap();
@@ -1204,7 +1209,7 @@ final: generated.txt generated/*
         fs::create_dir(&blocked).unwrap();
         fs::set_permissions(&blocked, fs::Permissions::from_mode(0o000)).unwrap();
         let mut ctx = context(&root, "out.txt: blocked/*\n  touch {{out}}\n");
-        let error = build(&mut ctx, "out.txt", None).unwrap_err();
+        let error = build(&mut ctx, "out.txt", None).unwrap_err().to_string();
         assert!(error.starts_with("failed to traverse glob 'blocked/*' at "));
         assert!(error.contains("Permission denied"));
         assert!(error.ends_with("help: check that the path exists and is readable"));
@@ -1237,7 +1242,10 @@ final: generated.txt generated/*
             "a.txt: b.txt\n  touch {{out}}\nb.txt: a.txt\n  touch {{out}}\n",
         );
         let error = build(&mut ctx, "a.txt", None).unwrap_err();
-        assert_eq!(error, "dependency cycle\na.txt -> b.txt -> a.txt");
+        assert_eq!(
+            error.to_string(),
+            "dependency cycle\na.txt -> b.txt -> a.txt"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1368,7 +1376,9 @@ final.txt: generated.txt
         fs::write(root.join("fail"), "").unwrap();
         let mut second = context(&root, needfile);
         second.session.state = load_state(&root).unwrap();
-        let error = build(&mut second, "final.txt", None).unwrap_err();
+        let error = build(&mut second, "final.txt", None)
+            .unwrap_err()
+            .to_string();
 
         assert!(error.contains("recipe failed for generated.txt"));
         assert!(error.ends_with("required by final.txt"));
@@ -1442,7 +1452,9 @@ final.txt: a.txt b.txt
         let mut second = context(&root, needfile);
         second.options.jobs = Jobs::Limited(2.try_into().unwrap());
         second.session.state = load_state(&root).unwrap();
-        let error = build(&mut second, "final.txt", None).unwrap_err();
+        let error = build(&mut second, "final.txt", None)
+            .unwrap_err()
+            .to_string();
 
         assert!(error.contains("recipe failed for a.txt"));
         assert!(error.ends_with("required by final.txt"));
@@ -1700,10 +1712,16 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
         assert_eq!(OutputMode::parse("silent").unwrap(), OutputMode::Silent);
         assert!(OutputMode::parse("nope").is_err());
         let mut args = vec!["-j8".into(), "target".into()];
-        assert_eq!(take_jobs(&mut args).unwrap(), Jobs::Limited(8.try_into().unwrap()));
+        assert_eq!(
+            take_jobs(&mut args).unwrap(),
+            Jobs::Limited(8.try_into().unwrap())
+        );
         assert_eq!(args, vec!["target"]);
         let mut args = vec!["-j".into(), "8".into(), "target".into()];
-        assert_eq!(take_jobs(&mut args).unwrap(), Jobs::Limited(8.try_into().unwrap()));
+        assert_eq!(
+            take_jobs(&mut args).unwrap(),
+            Jobs::Limited(8.try_into().unwrap())
+        );
         assert_eq!(args, vec!["target"]);
         let mut args = vec!["-j".into(), "target".into()];
         assert_eq!(take_jobs(&mut args).unwrap(), Jobs::Unlimited);
