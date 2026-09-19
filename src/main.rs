@@ -115,7 +115,7 @@ fn run() -> Result<()> {
         vec![default_target]
     } else {
         args.into_iter()
-            .map(|target| norm_rel(&target).map(ProjectPath::from_normalized))
+            .map(|target| ProjectPath::new(&target))
             .collect::<Result<Vec<_>>>()?
     };
     build_targets(&mut ctx, &targets).map_err(|error| error.to_string())?;
@@ -160,9 +160,8 @@ fn resolve_rules(
             outputs: parsed
                 .outputs
                 .iter()
-                .cloned()
-                .map(ProjectPath::from)
-                .collect(),
+                .map(|output| ProjectPath::new(output))
+                .collect::<Result<Vec<_>>>()?,
             deps: expand_dependencies(&parsed.deps, vars, env_values)?,
             recipe: parsed.recipe.clone(),
             options: RuleOptions::default(),
@@ -170,7 +169,7 @@ fn resolve_rules(
             env_refs: BTreeSet::new(),
         };
         for value in &rule.outputs {
-            collect_env_refs(value, raw_vars, &mut rule.env_refs);
+            collect_env_refs(value.as_str(), raw_vars, &mut rule.env_refs);
         }
         collect_env_refs(&rule.recipe, raw_vars, &mut rule.env_refs);
         for value in parsed
@@ -187,8 +186,8 @@ fn resolve_rules(
         rule.outputs = rule
             .outputs
             .iter()
-            .map(|x| ProjectPath::from_normalized(expand(x.as_str(), vars, env_values)))
-            .collect();
+            .map(|x| ProjectPath::new(&expand(x.as_str(), vars, env_values)))
+            .collect::<Result<Vec<_>>>()?;
         if let Some(value) = parsed
             .options
             .output
@@ -209,7 +208,7 @@ fn resolve_rules(
             if value.is_empty() {
                 return Err("output manifest path is empty in rule modifier @outputs()".into());
             }
-            rule.options.outputs = Some(ProjectPath::from_normalized(norm_rel(&value)?));
+            rule.options.outputs = Some(ProjectPath::new(&value)?);
         }
         if rule
             .outputs
@@ -224,7 +223,7 @@ fn resolve_rules(
         {
             return Err("only one % is supported per pattern".into());
         }
-        rule.pattern = rule.outputs.iter().any(|x| x.contains('%'));
+        rule.pattern = rule.outputs.iter().any(|x| x.as_str().contains('%'));
         rules.push(rule);
     }
     Ok(rules)
@@ -274,7 +273,7 @@ mod tests {
         let raw_vars = ctx.project.vars.clone();
         for rule in &mut ctx.project.rules {
             for value in &rule.outputs {
-                collect_env_refs(value, &raw_vars, &mut rule.env_refs);
+                collect_env_refs(value.as_str(), &raw_vars, &mut rule.env_refs);
             }
             collect_env_refs(&rule.recipe, &raw_vars, &mut rule.env_refs);
         }
@@ -497,7 +496,9 @@ mod tests {
             },
             ..Default::default()
         };
-        ctx.project.exact.insert("out".into(), 0);
+        ctx.project
+            .exact
+            .insert(ProjectPath::new("out").unwrap(), 0);
         build(&mut ctx, "out", None).unwrap();
         assert!(
             cargo_metadata(&ctx, &path)
@@ -602,12 +603,12 @@ mod tests {
         let needfile = "out.txt: input.txt\n  printf '%s\\n' run >> runs.txt\n  cp {{in}} {{out}}\n  touch extra.txt\n  printf 'extra.txt\\n' > manifest-one\n  printf 'extra.txt\\n' > manifest-two\n";
 
         let mut first = context(&root, needfile);
-        first.project.rules[0].options.outputs = Some("manifest-one".into());
+        first.project.rules[0].options.outputs = Some(ProjectPath::new("manifest-one").unwrap());
         build(&mut first, "out.txt", None).unwrap();
         save_state(&root, &first.session.state).unwrap();
 
         let mut second = context(&root, needfile);
-        second.project.rules[0].options.outputs = Some("manifest-two".into());
+        second.project.rules[0].options.outputs = Some(ProjectPath::new("manifest-two").unwrap());
         second.session.state = load_state(&root).unwrap();
         build(&mut second, "out.txt", None).unwrap();
 
@@ -858,7 +859,7 @@ mod tests {
         assert!(!root.join("b.txt").exists());
         assert_eq!(
             second.session.state.rules.values().next().unwrap().dynamic,
-            vec![ProjectPath::from("a.txt")]
+            vec![ProjectPath::new("a.txt").unwrap()]
         );
         fs::remove_dir_all(root).unwrap();
     }
@@ -949,7 +950,7 @@ final: generated.txt generated/*
         let rendered = interpolate(
             "tool {{in[0]}} {{in[1:]}} -> {{out}}",
             &["a file.txt".into(), "b.txt".into(), "c.txt".into()],
-            &["out file".into()],
+            &[ProjectPath::new("out file").unwrap()],
             None,
             &HashMap::new(),
             &HashMap::new(),
@@ -966,7 +967,7 @@ final: generated.txt generated/*
         let rendered = interpolate(
             "{{literal}} {{env.LITERAL}} {{out}}",
             &["input.txt".into()],
-            &["output.txt".into()],
+            &[ProjectPath::new("output.txt").unwrap()],
             None,
             &vars,
             &env,
@@ -1016,6 +1017,7 @@ final: generated.txt generated/*
             "../../retroterm/fontbm"
         );
         assert_eq!(norm_rel("build/../fontbm").unwrap(), "fontbm");
+        assert_eq!(ProjectPath::new("x/../y").unwrap().as_str(), "y");
     }
 
     #[test]
@@ -1111,7 +1113,7 @@ final: generated.txt generated/*
             TargetMatch::Rule {
                 id: RuleId(0),
                 stem: Some("output".into()),
-                outputs: vec!["build/output.txt".into()],
+                outputs: vec![ProjectPath::new("build/output.txt").unwrap()],
             }
         );
         assert_eq!(
@@ -1119,7 +1121,7 @@ final: generated.txt generated/*
             TargetMatch::Rule {
                 id: RuleId(1),
                 stem: None,
-                outputs: vec!["plain.txt".into()],
+                outputs: vec![ProjectPath::new("plain.txt").unwrap()],
             }
         );
         assert_eq!(select_rule(&ctx, "input.txt").unwrap(), TargetMatch::Source);
@@ -1408,20 +1410,41 @@ b.txt: source-b.txt
 
         let mut first = context(&root, needfile);
         first.options.jobs = Jobs::Limited(2.try_into().unwrap());
-        build_targets(&mut first, &["a.txt".into(), "b.txt".into()]).unwrap();
+        build_targets(
+            &mut first,
+            &[
+                ProjectPath::new("a.txt").unwrap(),
+                ProjectPath::new("b.txt").unwrap(),
+            ],
+        )
+        .unwrap();
         save_state(&root, &first.session.state).unwrap();
         fs::remove_file(root.join("a.txt")).unwrap();
 
         let mut second = context(&root, needfile);
         second.options.jobs = Jobs::Limited(2.try_into().unwrap());
         second.session.state = load_state(&root).unwrap();
-        build_targets(&mut second, &["a.txt".into(), "b.txt".into()]).unwrap();
+        build_targets(
+            &mut second,
+            &[
+                ProjectPath::new("a.txt").unwrap(),
+                ProjectPath::new("b.txt").unwrap(),
+            ],
+        )
+        .unwrap();
         save_state(&root, &second.session.state).unwrap();
 
         let mut third = context(&root, needfile);
         third.options.jobs = Jobs::Limited(2.try_into().unwrap());
         third.session.state = load_state(&root).unwrap();
-        build_targets(&mut third, &["a.txt".into(), "b.txt".into()]).unwrap();
+        build_targets(
+            &mut third,
+            &[
+                ProjectPath::new("a.txt").unwrap(),
+                ProjectPath::new("b.txt").unwrap(),
+            ],
+        )
+        .unwrap();
 
         assert_eq!(fs::read_to_string(root.join("a.runs")).unwrap(), "runrun");
         assert_eq!(fs::read_to_string(root.join("b.runs")).unwrap(), "run");

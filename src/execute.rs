@@ -60,7 +60,8 @@ impl From<&str> for BuildError {
 
 type BuildResult<T> = std::result::Result<T, BuildError>;
 
-pub(crate) fn abs(c: &BuildCtx, p: &str) -> PathBuf {
+pub(crate) fn abs(c: &BuildCtx, p: impl AsRef<str>) -> PathBuf {
+    let p = p.as_ref();
     if Path::new(p).is_absolute() {
         p.into()
     } else {
@@ -77,7 +78,7 @@ fn group_key(outputs: &[ProjectPath]) -> String {
 }
 
 pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> BuildResult<()> {
-    let target = ProjectPath::from_normalized(norm_rel(target)?);
+    let target = ProjectPath::new(target)?;
     let force = c.options.force && c.session.stack.is_empty();
     if c.session.built.contains(&target) && !force {
         return Ok(());
@@ -88,7 +89,7 @@ pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> Bui
         return Err(BuildError::DependencyCycle(cycle));
     }
     c.session.stack.push(target.clone());
-    let result = build_inner(c, &target, parent, force);
+    let result = build_inner(c, target.as_str(), parent, force);
     c.session.stack.pop();
     result
 }
@@ -96,7 +97,7 @@ pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> Bui
 pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildResult<()> {
     if !c.options.jobs.is_parallel() || targets.len() <= 1 {
         for target in targets {
-            build(c, target, None)?;
+            build(c, target.as_str(), None)?;
         }
         return Ok(());
     }
@@ -104,9 +105,9 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildR
     let mut parallel_targets = Vec::new();
     let mut groups = HashSet::new();
     for target in targets {
-        let group = select_rule(c, target)
+        let group = select_rule(c, target.as_str())
             .map(|selection| match selection {
-                TargetMatch::Source => target.clone().into_string(),
+                TargetMatch::Source => target.to_string(),
                 TargetMatch::Rule { outputs, .. } => group_key(&outputs),
             })
             .unwrap_or_else(|_| target.to_string());
@@ -123,7 +124,7 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildR
                 let mut child = base.clone();
                 child.options.jobs = Jobs::default();
                 handles.push(scope.spawn(move || {
-                    let result = build(&mut child, &target, None);
+                    let result = build(&mut child, target.as_str(), None);
                     (child, result)
                 }));
             }
@@ -161,9 +162,7 @@ pub(crate) fn build_inner(
         return Ok(());
     }
     let TargetMatch::Rule { id, stem, outputs } = select_rule(c, target)? else {
-        c.session
-            .built
-            .insert(ProjectPath::from_normalized(target.to_owned()));
+        c.session.built.insert(ProjectPath::new(target)?);
         return Ok(());
     };
     let ri = id.0;
@@ -424,7 +423,7 @@ pub(crate) fn build_inner(
         outsig.insert(o.clone(), hash_file(&abs(c, o))?);
     }
     let dynamic = if let Some(path) = &manifest {
-        let dynamic = read_output_manifest(c, path)?;
+        let dynamic = read_output_manifest(c, path.as_str())?;
         validate_dynamic_outputs(c, &key, &outputs, &dynamic)?;
         for output in &dynamic {
             let p = abs(c, output);
@@ -497,10 +496,10 @@ fn read_output_manifest(c: &BuildCtx, path: &str) -> Result<Vec<ProjectPath>> {
             ));
         }
     }
-    Ok(outputs
+    outputs
         .into_iter()
-        .map(ProjectPath::from_normalized)
-        .collect())
+        .map(|output| ProjectPath::new(&output))
+        .collect::<Result<Vec<_>>>()
 }
 
 fn validate_dynamic_outputs(
@@ -510,7 +509,7 @@ fn validate_dynamic_outputs(
     dynamic: &[ProjectPath],
 ) -> Result<()> {
     for output in dynamic {
-        if fixed.contains(output) || c.project.exact.contains_key(output) {
+        if fixed.contains(output) || c.project.exact.contains_key(output.as_str()) {
             return Err(format!(
                 "dynamic output {output} conflicts with a declared output\nhelp: give each output one owning rule"
             ));
@@ -889,8 +888,8 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
         if saved.dynamic.iter().any(|output| output.as_str() == t) {
             let outputs = key
                 .split('\0')
-                .map(|path| ProjectPath::from_normalized(path.to_owned()))
-                .collect::<Vec<_>>();
+                .map(ProjectPath::new)
+                .collect::<Result<Vec<_>>>()?;
             if let Some((i, rule)) = c
                 .project
                 .rules
@@ -916,11 +915,14 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
     {
         let mut matches = Vec::new();
         for p in &r.outputs {
-            if let Some(pos) = p.find('%') {
-                let (a, b) = p.split_at(pos);
+            if let Some(pos) = p.as_str().find('%') {
+                let (a, b) = p.as_str().split_at(pos);
                 let b = &b[1..];
                 if t.starts_with(a) && t.ends_with(b) && t.len() >= a.len() + b.len() {
-                    matches.push((p.len() - 1, t[a.len()..t.len() - b.len()].to_string()));
+                    matches.push((
+                        p.as_str().len() - 1,
+                        t[a.len()..t.len() - b.len()].to_string(),
+                    ));
                 }
             }
         }
@@ -942,8 +944,8 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
         let o = c.project.rules[i]
             .outputs
             .iter()
-            .map(|x| ProjectPath::from_normalized(x.replace('%', &s)))
-            .collect();
+            .map(|x| ProjectPath::new(&x.as_str().replace('%', &s)))
+            .collect::<Result<Vec<_>>>()?;
         return Ok(TargetMatch::Rule {
             id: RuleId(i),
             stem: Some(s),
@@ -981,14 +983,14 @@ pub(crate) fn expand_glob(c: &BuildCtx, p: &str) -> Result<Vec<String>> {
     }
     for r in &c.project.rules {
         for o in &r.outputs {
-            if !o.contains('%') && pattern.matches(o) {
+            if !o.as_str().contains('%') && pattern.matches(o.as_str()) {
                 set.insert(o.to_string());
             }
         }
     }
     for saved in c.session.state.rules.values() {
         for output in &saved.dynamic {
-            if pattern.matches(output) && abs(c, output).is_file() {
+            if pattern.matches(output.as_str()) && abs(c, output).is_file() {
                 set.insert(output.to_string());
             }
         }
@@ -1039,7 +1041,11 @@ fn automatic_interpolation(
 ) -> Result<String> {
     match token {
         "in" => Ok(ins.iter().map(|x| esc(x)).collect::<Vec<_>>().join(" ")),
-        "out" => Ok(outs.iter().map(|x| esc(x)).collect::<Vec<_>>().join(" ")),
+        "out" => Ok(outs
+            .iter()
+            .map(|x| esc(x.as_str()))
+            .collect::<Vec<_>>()
+            .join(" ")),
         "stem" => stem
             .map(esc)
             .ok_or_else(|| "{{stem}} is only valid in pattern rules".into()),

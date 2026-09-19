@@ -11,16 +11,12 @@ use crate::Result;
 pub(crate) struct ProjectPath(String);
 
 impl ProjectPath {
-    pub(crate) fn from_normalized(value: String) -> Self {
-        Self(value)
+    pub(crate) fn new(value: &str) -> Result<Self> {
+        crate::parser::norm_rel(value).map(Self)
     }
 
     pub(crate) fn as_str(&self) -> &str {
         &self.0
-    }
-
-    pub(crate) fn into_string(self) -> String {
-        self.0
     }
 }
 
@@ -30,28 +26,14 @@ impl std::fmt::Display for ProjectPath {
     }
 }
 
-impl From<String> for ProjectPath {
-    fn from(value: String) -> Self {
-        Self::from_normalized(value)
-    }
-}
-
-impl From<&str> for ProjectPath {
-    fn from(value: &str) -> Self {
-        Self::from_normalized(value.to_owned())
-    }
-}
-
-impl std::ops::Deref for ProjectPath {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
+impl std::borrow::Borrow<str> for ProjectPath {
+    fn borrow(&self) -> &str {
         self.as_str()
     }
 }
 
-impl std::borrow::Borrow<str> for ProjectPath {
-    fn borrow(&self) -> &str {
+impl AsRef<str> for ProjectPath {
+    fn as_ref(&self) -> &str {
         self.as_str()
     }
 }
