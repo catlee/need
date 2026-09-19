@@ -6,10 +6,10 @@ use std::{
 
 use crate::{
     Result,
-    model::{Dependency, OutputMode, Rule},
+    model::{ParsedDependency, ParsedRule, OutputMode},
 };
 
-pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Vec<Rule>)> {
+pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Vec<ParsedRule>)> {
     let lines: Vec<String> = fs::read_to_string(path)
         .map_err(|e| e.to_string())?
         .lines()
@@ -119,19 +119,16 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
                 recipe.push(l.into())
             }
         }
-        let pattern = outputs.iter().any(|x| x.matches('%').count() > 0);
         if outputs.iter().any(|x| x.matches('%').count() > 1)
             || deps.iter().any(|x| x.template().matches('%').count() > 1)
         {
             return Err("only one % is supported per pattern".into());
         }
-        rules.push(Rule {
+        rules.push(ParsedRule {
             outputs: outputs.into_iter().map(|x| unquote(&x)).collect(),
             deps,
             recipe: recipe.join("\n"),
             modifiers,
-            pattern,
-            env_refs: BTreeSet::new(),
         });
     }
     Ok((vars, rules))
@@ -149,26 +146,26 @@ fn display_path(path: &Path) -> String {
     }
 }
 
-pub(crate) fn parse_dependency(raw: &str) -> Result<Dependency> {
+pub(crate) fn parse_dependency(raw: &str) -> Result<ParsedDependency> {
     let raw = unquote(raw);
     for (prefix, constructor) in [
-        ("file(", Dependency::File as fn(String) -> Dependency),
-        ("tree(", Dependency::Tree as fn(String) -> Dependency),
-        ("mtime(", Dependency::Mtime as fn(String) -> Dependency),
-        ("env(", Dependency::Env as fn(String) -> Dependency),
-        ("string(", Dependency::String as fn(String) -> Dependency),
+        ("file(", ParsedDependency::File as fn(String) -> ParsedDependency),
+        ("tree(", ParsedDependency::Tree as fn(String) -> ParsedDependency),
+        ("mtime(", ParsedDependency::Mtime as fn(String) -> ParsedDependency),
+        ("env(", ParsedDependency::Env as fn(String) -> ParsedDependency),
+        ("string(", ParsedDependency::String as fn(String) -> ParsedDependency),
     ] {
         if let Some(value) = raw.strip_prefix(prefix).and_then(|x| x.strip_suffix(')')) {
             return Ok(constructor(unquote(value)));
         }
     }
-    Ok(Dependency::File(raw))
+    Ok(ParsedDependency::File(raw))
 }
 
-fn parse_dependency_template(raw: &str) -> Result<Dependency> {
+fn parse_dependency_template(raw: &str) -> Result<ParsedDependency> {
     let raw = unquote(raw);
     if raw.contains("{{") {
-        Ok(Dependency::Deferred(raw))
+        Ok(ParsedDependency::Deferred(raw))
     } else {
         parse_dependency(&raw)
     }

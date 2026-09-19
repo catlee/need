@@ -16,6 +16,14 @@ pub(crate) struct Rule {
     pub(crate) env_refs: BTreeSet<String>,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct ParsedRule {
+    pub(crate) outputs: Vec<String>,
+    pub(crate) deps: Vec<ParsedDependency>,
+    pub(crate) recipe: String,
+    pub(crate) modifiers: Vec<String>,
+}
+
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct RuleId(pub(crate) usize);
 
@@ -31,6 +39,15 @@ pub(crate) enum TargetMatch {
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Dependency {
+    File(String),
+    Tree(String),
+    Mtime(String),
+    Env(String),
+    String(String),
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub(crate) enum ParsedDependency {
     Deferred(String),
     File(String),
     Tree(String),
@@ -39,7 +56,7 @@ pub(crate) enum Dependency {
     String(String),
 }
 
-impl Dependency {
+impl ParsedDependency {
     pub(crate) fn template(&self) -> &str {
         match self {
             Self::Deferred(value)

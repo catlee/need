@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env};
+use std::{collections::{BTreeSet, HashMap}, env};
 
 mod cli;
 mod execute;
@@ -46,8 +46,9 @@ fn run() -> Result<()> {
         explicit_file,
     )?;
     let root = file.parent().unwrap().to_path_buf();
-    let (vars, rules) = parse_needfile(&file)?;
+    let (vars, parsed_rules) = parse_needfile(&file)?;
     let dotenv = load_dotenv(&vars, &root)?;
+    let resolved_vars = resolve_variables(&vars, &dotenv.values)?;
     let output = if let Some(value) = cli_output.as_deref() {
         OutputMode::parse(value)?
     } else if let Some(value) = ctx_config(&vars, "need.output") {
@@ -58,8 +59,8 @@ fn run() -> Result<()> {
     let log_keep = cli_or_config_keep(&vars)?;
     let mut ctx = BuildCtx {
         root,
-        vars,
-        rules,
+        vars: resolved_vars.clone(),
+        rules: resolve_rules(&parsed_rules, &resolved_vars, &dotenv.values, &vars)?,
         force,
         dry,
         explain,
@@ -70,9 +71,6 @@ fn run() -> Result<()> {
         env_values: dotenv.values,
         ..Default::default()
     };
-    let raw_vars = ctx.vars.clone();
-    ctx.vars = resolve_variables(&raw_vars, &ctx.env_values)?;
-    expand_rules(&mut ctx.rules, &ctx.vars, &ctx.env_values, &raw_vars)?;
     for (i, rule) in ctx.rules.iter().enumerate() {
         if !rule.pattern {
             for output in &rule.outputs {
@@ -117,32 +115,48 @@ fn run() -> Result<()> {
 }
 
 fn expand_dependencies(
-    dependencies: &[Dependency],
+    dependencies: &[ParsedDependency],
     vars: &HashMap<String, String>,
     env_values: &HashMap<String, String>,
 ) -> Result<Vec<Dependency>> {
     dependencies
         .iter()
         .map(|dependency| match dependency {
-            Dependency::Deferred(expression) => {
-                parse_dependency(&expand(expression, vars, env_values))
+            ParsedDependency::Deferred(expression) => {
+                match parse_dependency(&expand(expression, vars, env_values))? {
+                    ParsedDependency::Deferred(_) => unreachable!(),
+                    ParsedDependency::File(x) => Ok(Dependency::File(x)),
+                    ParsedDependency::Tree(x) => Ok(Dependency::Tree(x)),
+                    ParsedDependency::Mtime(x) => Ok(Dependency::Mtime(x)),
+                    ParsedDependency::Env(x) => Ok(Dependency::Env(x)),
+                    ParsedDependency::String(x) => Ok(Dependency::String(x)),
+                }
             }
-            Dependency::File(x) => Ok(Dependency::File(expand(x, vars, env_values))),
-            Dependency::Tree(x) => Ok(Dependency::Tree(expand(x, vars, env_values))),
-            Dependency::Mtime(x) => Ok(Dependency::Mtime(expand(x, vars, env_values))),
-            Dependency::Env(x) => Ok(Dependency::Env(expand(x, vars, env_values))),
-            Dependency::String(x) => Ok(Dependency::String(expand(x, vars, env_values))),
+            ParsedDependency::File(x) => Ok(Dependency::File(expand(x, vars, env_values))),
+            ParsedDependency::Tree(x) => Ok(Dependency::Tree(expand(x, vars, env_values))),
+            ParsedDependency::Mtime(x) => Ok(Dependency::Mtime(expand(x, vars, env_values))),
+            ParsedDependency::Env(x) => Ok(Dependency::Env(expand(x, vars, env_values))),
+            ParsedDependency::String(x) => Ok(Dependency::String(expand(x, vars, env_values))),
         })
         .collect()
 }
 
-fn expand_rules(
-    rules: &mut [Rule],
+fn resolve_rules(
+    parsed_rules: &[ParsedRule],
     vars: &HashMap<String, String>,
     env_values: &HashMap<String, String>,
     raw_vars: &HashMap<String, String>,
-) -> Result<()> {
-    for rule in rules {
+) -> Result<Vec<Rule>> {
+    let mut rules = Vec::new();
+    for parsed in parsed_rules {
+        let mut rule = Rule {
+            outputs: parsed.outputs.clone(),
+            deps: expand_dependencies(&parsed.deps, vars, env_values)?,
+            recipe: parsed.recipe.clone(),
+            modifiers: parsed.modifiers.clone(),
+            pattern: false,
+            env_refs: BTreeSet::new(),
+        };
         for value in rule
             .outputs
             .iter()
@@ -151,7 +165,7 @@ fn expand_rules(
         {
             collect_env_refs(value, raw_vars, &mut rule.env_refs);
         }
-        for dependency in &rule.deps {
+        for dependency in &parsed.deps {
             collect_env_refs(dependency.template(), raw_vars, &mut rule.env_refs);
         }
         rule.outputs = rule
@@ -159,7 +173,6 @@ fn expand_rules(
             .iter()
             .map(|x| expand(x, vars, env_values))
             .collect();
-        rule.deps = expand_dependencies(&rule.deps, vars, env_values)?;
         rule.modifiers = rule
             .modifiers
             .iter()
@@ -172,7 +185,7 @@ fn expand_rules(
                 Dependency::File(path) | Dependency::Tree(path) | Dependency::Mtime(path) => {
                     Some(path)
                 }
-                Dependency::Deferred(_) | Dependency::Env(_) | Dependency::String(_) => None,
+                Dependency::Env(_) | Dependency::String(_) => None,
             }))
             .any(|value| value.matches('%').count() > 1)
         {
@@ -182,8 +195,9 @@ fn expand_rules(
             validate_modifier(modifier)?;
         }
         rule.pattern = rule.outputs.iter().any(|x| x.contains('%'));
+        rules.push(rule);
     }
-    Ok(())
+    Ok(rules)
 }
 
 #[cfg(test)]
@@ -210,7 +224,9 @@ mod tests {
     fn context(root: &Path, needfile: &str) -> BuildCtx {
         let path = root.join("needfile");
         fs::write(&path, needfile).unwrap();
-        let (vars, rules) = parse_needfile(&path).unwrap();
+        let (raw_vars, parsed_rules) = parse_needfile(&path).unwrap();
+        let vars = resolve_variables(&raw_vars, &HashMap::new()).unwrap();
+        let rules = resolve_rules(&parsed_rules, &vars, &HashMap::new(), &raw_vars).unwrap();
         let mut ctx = BuildCtx {
             root: root.to_path_buf(),
             vars,
@@ -231,9 +247,6 @@ mod tests {
                 .chain(&rule.modifiers)
             {
                 collect_env_refs(value, &raw_vars, &mut rule.env_refs);
-            }
-            for dependency in &rule.deps {
-                collect_env_refs(dependency.template(), &raw_vars, &mut rule.env_refs);
             }
         }
         ctx
@@ -386,8 +399,8 @@ mod tests {
         assert_eq!(
             rules[0].deps,
             vec![
-                Dependency::File("input.txt".into()),
-                Dependency::File("config.txt".into())
+                ParsedDependency::File("input.txt".into()),
+                ParsedDependency::File("config.txt".into())
             ]
         );
         assert_eq!(rules[0].modifiers, vec!["@output(grouped)"]);
@@ -418,6 +431,17 @@ mod tests {
     }
 
     #[test]
+    fn resolves_deferred_dependency_at_the_phase_boundary() {
+        let parsed = ParsedDependency::Deferred("file({{input}})".into());
+        let vars = HashMap::from([(String::from("input"), String::from("source.txt"))]);
+
+        assert_eq!(
+            expand_dependencies(&[parsed], &vars, &HashMap::new()).unwrap(),
+            vec![Dependency::File("source.txt".into())]
+        );
+    }
+
+    #[test]
     fn tracks_environment_references_through_dependency_variables() {
         let root = temp_project("dependency-env-provenance");
         let path = root.join("needfile");
@@ -426,13 +450,13 @@ mod tests {
             "dependency = {{environment}}\nenvironment = {{env.NEED_TEST_DEPENDENCY_ENV}}\nout: string({{dependency}})\n  touch {{out}}\n",
         )
         .unwrap();
-        let (raw_vars, mut rules) = parse_needfile(&path).unwrap();
+        let (raw_vars, parsed_rules) = parse_needfile(&path).unwrap();
         let env_values = HashMap::from([(
             String::from("NEED_TEST_DEPENDENCY_ENV"),
             String::from("debug"),
         )]);
         let vars = resolve_variables(&raw_vars, &env_values).unwrap();
-        expand_rules(&mut rules, &vars, &env_values, &raw_vars).unwrap();
+        let rules = resolve_rules(&parsed_rules, &vars, &env_values, &raw_vars).unwrap();
 
         assert!(rules[0].env_refs.contains("NEED_TEST_DEPENDENCY_ENV"));
 
@@ -575,8 +599,8 @@ mod tests {
         assert_eq!(
             rules[0].deps,
             vec![
-                Dependency::File("input.txt".into()),
-                Dependency::File("config.txt".into())
+                ParsedDependency::File("input.txt".into()),
+                ParsedDependency::File("config.txt".into())
             ]
         );
 
@@ -605,11 +629,11 @@ mod tests {
         assert_eq!(
             rules[0].deps,
             vec![
-                Dependency::File("input".into()),
-                Dependency::Tree("resources".into()),
-                Dependency::Mtime("tool".into()),
-                Dependency::Env("MODE".into()),
-                Dependency::String("v3".into()),
+                ParsedDependency::File("input".into()),
+                ParsedDependency::Tree("resources".into()),
+                ParsedDependency::Mtime("tool".into()),
+                ParsedDependency::Env("MODE".into()),
+                ParsedDependency::String("v3".into()),
             ]
         );
         fs::remove_dir_all(root).unwrap();
@@ -1003,9 +1027,9 @@ final: generated.txt generated/*
             "output = build/%.txt\n{{output}}: input.txt\n  cp {{in}} {{out}}\nplain.txt: input.txt\n  cp {{in}} {{out}}\n",
         )
         .unwrap();
-        let (raw_vars, mut rules) = parse_needfile(&path).unwrap();
+        let (raw_vars, parsed_rules) = parse_needfile(&path).unwrap();
         let vars = resolve_variables(&raw_vars, &HashMap::new()).unwrap();
-        expand_rules(&mut rules, &vars, &HashMap::new(), &raw_vars).unwrap();
+        let rules = resolve_rules(&parsed_rules, &vars, &HashMap::new(), &raw_vars).unwrap();
         let mut ctx = BuildCtx {
             root: root.clone(),
             vars,
@@ -1054,11 +1078,11 @@ final: generated.txt generated/*
             "output = build/%.%.txt\n{{output}}: input.txt\n  cp {{in}} {{out}}\n",
         )
         .unwrap();
-        let (raw_vars, mut rules) = parse_needfile(&path).unwrap();
+        let (raw_vars, parsed_rules) = parse_needfile(&path).unwrap();
         let vars = resolve_variables(&raw_vars, &HashMap::new()).unwrap();
 
         assert_eq!(
-            expand_rules(&mut rules, &vars, &HashMap::new(), &raw_vars).unwrap_err(),
+            resolve_rules(&parsed_rules, &vars, &HashMap::new(), &raw_vars).unwrap_err(),
             "only one % is supported per pattern"
         );
         fs::remove_dir_all(root).unwrap();
@@ -1073,11 +1097,11 @@ final: generated.txt generated/*
             "dependency = file(src/%.c%)\nout: {{dependency}}\n  cp {{in}} {{out}}\n",
         )
         .unwrap();
-        let (raw_vars, mut rules) = parse_needfile(&path).unwrap();
+        let (raw_vars, parsed_rules) = parse_needfile(&path).unwrap();
         let vars = resolve_variables(&raw_vars, &HashMap::new()).unwrap();
 
         assert_eq!(
-            expand_rules(&mut rules, &vars, &HashMap::new(), &raw_vars).unwrap_err(),
+            resolve_rules(&parsed_rules, &vars, &HashMap::new(), &raw_vars).unwrap_err(),
             "only one % is supported per pattern"
         );
         fs::remove_dir_all(root).unwrap();
