@@ -30,23 +30,23 @@ use crate::{
 pub(crate) enum BuildError {
     Message(String),
     DependencyCycle(Vec<ProjectPath>),
+    RequiredBy { error: Box<Self>, target: String },
 }
 
 impl std::fmt::Display for BuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Message(message) => message.fmt(f),
-            Self::DependencyCycle(paths) => {
-                write!(
-                    f,
-                    "dependency cycle\n{}",
-                    paths
-                        .iter()
-                        .map(ProjectPath::as_str)
-                        .collect::<Vec<_>>()
-                        .join(" -> ")
-                )
-            }
+            Self::DependencyCycle(paths) => write!(
+                f,
+                "dependency cycle\n{}",
+                paths
+                    .iter()
+                    .map(ProjectPath::as_str)
+                    .collect::<Vec<_>>()
+                    .join(" -> ")
+            ),
+            Self::RequiredBy { error, target } => write!(f, "{error}\nrequired by {target}"),
         }
     }
 }
@@ -310,9 +310,9 @@ pub(crate) fn build_inner(
                     .into_iter()
                     .map(|h| {
                         h.join()
-                            .map_err(|_| "parallel build worker panicked".to_string())
+                            .map_err(|_| BuildError::from("parallel build worker panicked"))
                     })
-                    .collect::<Result<Vec<_>>>()
+                    .collect::<BuildResult<Vec<_>>>()
             })?;
             for (d, child, result) in results {
                 result.map_err(|e| required_by(e, target))?;
@@ -745,10 +745,12 @@ fn validate_dynamic_outputs(
 }
 
 pub(crate) fn required_by(error: BuildError, target: &str) -> BuildError {
-    match error {
-        BuildError::DependencyCycle(_) => error,
-        BuildError::Message(message) => {
-            BuildError::Message(format!("{message}\nrequired by {target}"))
+    if matches!(error, BuildError::DependencyCycle(_)) {
+        error
+    } else {
+        BuildError::RequiredBy {
+            error: Box::new(error),
+            target: target.to_owned(),
         }
     }
 }
