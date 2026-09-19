@@ -48,6 +48,15 @@ font.fnt font.json: source.otf
 
 `need` treats these outputs as one build group. If any output is missing or changed, the recipe runs and must recreate all of them.
 
+### Dynamic outputs
+
+Use `@outputs(PATH)` when a recipe discovers additional output files. The recipe
+must write a UTF-8 manifest containing one project-relative output path per line;
+blank lines and `#` comments are ignored. `need` validates and records every
+listed file, makes it directly buildable on later runs, and removes files omitted
+from a later successful manifest. `{{out}}` continues to contain only the static
+outputs on the rule header.
+
 ### Continuation lines
 
 Long rule headers can continue on an indented line ending in `\`:

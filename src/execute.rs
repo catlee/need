@@ -14,7 +14,7 @@ use std::{
 use crate::{
     Result,
     hash::{hash_file, hash_symlink, hash_text, walk},
-    model::{BuildCtx, Dependency, OutputMode, Rule, SavedRule},
+    model::{BuildCtx, Dependency, OutputMode, Rule, SavedManifest, SavedRule},
     parser::{expand, norm_rel},
 };
 
@@ -253,10 +253,12 @@ pub(crate) fn build_inner(
     let sig = hash_text(&format!(
         "recipe={recipe}\nmods={mods}\ndeps={dep_sig:?}\nenv={env_sig:?}"
     ));
+    let manifest = output_manifest(&rule)?;
     let saved = c.state.rules.get(&key).cloned();
     let mut stale = force || saved.as_ref().is_none_or(|x| x.signature != sig);
     let mut outsig = BTreeMap::new();
-    for o in &outputs {
+    let known_dynamic = saved.as_ref().map_or(&[][..], |saved| &saved.dynamic);
+    for o in outputs.iter().chain(known_dynamic) {
         let p = abs(c, o);
         if !p.is_file() {
             stale = true
@@ -268,6 +270,17 @@ pub(crate) fn build_inner(
             outsig.insert(o.clone(), h);
         }
     }
+    if let Some(path) = &manifest {
+        let manifest_state = saved.as_ref().and_then(|saved| saved.manifest.as_ref());
+        let p = abs(c, path);
+        if !p.is_file()
+            || manifest_state.is_none_or(|saved| {
+                saved.path != *path || hash_file(&p).ok().as_deref() != Some(&saved.hash)
+            })
+        {
+            stale = true;
+        }
+    }
     if !stale {
         if c.explain {
             if c.cargo {
@@ -277,6 +290,7 @@ pub(crate) fn build_inner(
             }
         }
         c.built.extend(outputs.iter().cloned());
+        c.built.extend(known_dynamic.iter().cloned());
         return Ok(());
     }
     if c.explain {
@@ -309,6 +323,11 @@ pub(crate) fn build_inner(
             fs::create_dir_all(p).map_err(|e| e.to_string())?
         }
     }
+    if let Some(path) = &manifest
+        && let Some(parent) = abs(c, path).parent()
+    {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
     status_line(c, "need", &key, "\x1b[33m");
     let mode = rule_output(&rule).unwrap_or(c.output);
     run_recipe(c, &key, &rendered, mode)?;
@@ -318,16 +337,118 @@ pub(crate) fn build_inner(
         }
         outsig.insert(o.clone(), hash_file(&abs(c, o))?);
     }
+    let dynamic = if let Some(path) = &manifest {
+        let dynamic = read_output_manifest(c, path)?;
+        validate_dynamic_outputs(c, &key, &outputs, &dynamic)?;
+        for output in &dynamic {
+            let p = abs(c, output);
+            if !p.is_file() {
+                return Err(format!(
+                    "output manifest {path} lists missing output {output}\nhelp: write every listed output before the recipe exits"
+                ));
+            }
+            outsig.insert(output.clone(), hash_file(&p)?);
+        }
+        for output in known_dynamic
+            .iter()
+            .filter(|output| !dynamic.contains(*output))
+        {
+            let p = abs(c, output);
+            if p.exists() {
+                fs::remove_file(&p).map_err(|e| {
+                    format!("could not remove obsolete dynamic output {output}: {e}")
+                })?;
+            }
+        }
+        dynamic
+    } else {
+        Vec::new()
+    };
     status_line(c, "got", &key, "\x1b[32m");
     c.state.rules.insert(
         key,
         SavedRule {
             signature: sig,
             outputs: outsig,
-            dynamic: Vec::new(),
+            dynamic: dynamic.clone(),
+            manifest: manifest.as_ref().map(|path| SavedManifest {
+                path: path.clone(),
+                hash: hash_file(&abs(c, path)).expect("validated output manifest"),
+            }),
         },
     );
     c.built.extend(outputs.iter().cloned());
+    c.built.extend(dynamic);
+    Ok(())
+}
+
+fn output_manifest(rule: &Rule) -> Result<Option<String>> {
+    let mut manifests = rule.modifiers.iter().filter_map(|modifier| {
+        modifier
+            .strip_prefix("@outputs(")
+            .and_then(|path| path.strip_suffix(')'))
+    });
+    let manifest = manifests.next().map(norm_rel).transpose()?;
+    if manifests.next().is_some() {
+        return Err("a rule may declare only one @outputs(...) modifier".into());
+    }
+    Ok(manifest)
+}
+
+fn read_output_manifest(c: &BuildCtx, path: &str) -> Result<Vec<String>> {
+    let text = fs::read_to_string(abs(c, path)).map_err(|e| {
+        format!(
+            "could not read output manifest {path}: {e}\nhelp: have the recipe write the manifest"
+        )
+    })?;
+    let mut outputs = BTreeSet::new();
+    for raw in text.lines() {
+        let raw = raw.trim();
+        if raw.is_empty() || raw.starts_with('#') {
+            continue;
+        }
+        if Path::new(raw).is_absolute() {
+            return Err(format!(
+                "output manifest {path} contains absolute path {raw}\nhelp: list project-relative paths"
+            ));
+        }
+        let output = norm_rel(raw)?;
+        if output == ".." || output.starts_with("../") {
+            return Err(format!(
+                "output manifest {path} contains path outside the project: {raw}\nhelp: list project-relative paths"
+            ));
+        }
+        if !outputs.insert(output.clone()) {
+            return Err(format!(
+                "output manifest {path} lists {output} more than once\nhelp: list each output once"
+            ));
+        }
+    }
+    Ok(outputs.into_iter().collect())
+}
+
+fn validate_dynamic_outputs(
+    c: &BuildCtx,
+    key: &str,
+    fixed: &[String],
+    dynamic: &[String],
+) -> Result<()> {
+    for output in dynamic {
+        if fixed.contains(output) || c.exact.contains_key(output) {
+            return Err(format!(
+                "dynamic output {output} conflicts with a declared output\nhelp: give each output one owning rule"
+            ));
+        }
+        if c.state
+            .rules
+            .iter()
+            .any(|(other, saved)| other != key && saved.dynamic.contains(output))
+        {
+            return Err(format!(
+                "dynamic output {output} is already owned by another rule\nhelp: give each output one owning rule"
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -692,6 +813,19 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<(usize, Option<String
     if let Some(&i) = c.exact.get(t) {
         return Ok((i, None, c.rules[i].outputs.clone()));
     }
+    for (key, saved) in &c.state.rules {
+        if saved.dynamic.iter().any(|output| output == t) {
+            let outputs = key.split('\0').map(str::to_owned).collect::<Vec<_>>();
+            if let Some((i, rule)) = c
+                .rules
+                .iter()
+                .enumerate()
+                .find(|(_, rule)| !rule.pattern && rule.outputs == outputs)
+            {
+                return Ok((i, None, rule.outputs.clone()));
+            }
+        }
+    }
     let mut found = Vec::new();
     for (i, r) in c.rules.iter().enumerate().filter(|(_, r)| r.pattern) {
         let mut matches = Vec::new();
@@ -759,6 +893,13 @@ pub(crate) fn expand_glob(c: &BuildCtx, p: &str) -> Result<Vec<String>> {
         for o in &r.outputs {
             if !o.contains('%') && pattern.matches(o) {
                 set.insert(o.clone());
+            }
+        }
+    }
+    for saved in c.state.rules.values() {
+        for output in &saved.dynamic {
+            if pattern.matches(output) && abs(c, output).is_file() {
+                set.insert(output.clone());
             }
         }
     }

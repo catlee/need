@@ -175,17 +175,30 @@ fn parse_dependency_template(raw: &str) -> Result<Dependency> {
 }
 
 pub(crate) fn parse_modifier_value(modifier: &str) -> Result<&str> {
-    modifier
-        .strip_prefix("@output(")
-        .and_then(|x| x.strip_suffix(')'))
-        .ok_or_else(|| format!("unsupported rule modifier {modifier}"))
+    for name in ["@output(", "@outputs("] {
+        if let Some(value) = modifier
+            .strip_prefix(name)
+            .and_then(|x| x.strip_suffix(')'))
+        {
+            return Ok(value);
+        }
+    }
+    Err(format!("unsupported rule modifier {modifier}"))
 }
 
 pub(crate) fn validate_modifier(modifier: &str) -> Result<()> {
     let value = parse_modifier_value(modifier)?;
-    OutputMode::parse(value)
-        .map(|_| ())
-        .map_err(|_| format!("invalid output mode in rule modifier {modifier}"))
+    if modifier.starts_with("@output(") {
+        OutputMode::parse(value)
+            .map(|_| ())
+            .map_err(|_| format!("invalid output mode in rule modifier {modifier}"))
+    } else if value.is_empty() {
+        Err(format!(
+            "output manifest path is empty in rule modifier {modifier}"
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 #[derive(Default)]

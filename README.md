@@ -151,6 +151,18 @@ process variables win by default. Use `need.env.override = true` to let the
 file win, `need.env.required = true` to require a file, or
 `need.env.file = .env.local` to use another filename.
 
+Rules with generated secondary files can declare an output manifest:
+
+```make
+index.json: source
+  @outputs(.need/generated.outputs)
+  generate {{in}} {{out}} .need/generated.outputs
+```
+
+The manifest lists one project-relative file per line. `need` tracks those
+files as part of the output group and removes ones omitted by a later successful
+build.
+
 ## Useful options
 
 ```sh

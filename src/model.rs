@@ -48,7 +48,16 @@ pub(crate) struct State {
 pub(crate) struct SavedRule {
     pub(crate) signature: String,
     pub(crate) outputs: BTreeMap<String, String>,
+    #[serde(default)]
     pub(crate) dynamic: Vec<String>,
+    #[serde(default)]
+    pub(crate) manifest: Option<SavedManifest>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
+pub(crate) struct SavedManifest {
+    pub(crate) path: String,
+    pub(crate) hash: String,
 }
 
 #[derive(Clone, Default)]

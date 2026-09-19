@@ -47,12 +47,11 @@ core artifact graph, including:
 - Cargo metadata mode with transitive source and environment dependencies
 - dependency-cycle detection
 - cross-process advisory locking for build state and output groups
+- dynamic output manifests, including validation, ownership, freshness, and
+  cleanup of files removed from a manifest
 
 The following specified features are not implemented yet:
 
-- **Dynamic output manifests** (Section 12, `@outputs(...)`): manifest
-  validation, output ownership updates, orphan cleanup, and interruption
-  recovery.
 - **Depfiles** (Section 12, `@depfile(...)`, and Section 44): compiler-generated
   dependency discovery for C/C++ and similar tools.
 - **Glob re-evaluation** (Section 10.1): re-expanding globs after upstream rules

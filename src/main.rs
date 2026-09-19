@@ -735,8 +735,7 @@ mod tests {
             "out.txt: input.txt\n  @outputs(.need/outputs)\n  touch {{out}}\n",
         )
         .unwrap();
-        let error = parse_needfile(&path).unwrap_err();
-        assert_eq!(error, "unsupported rule modifier @outputs(.need/outputs)");
+        assert!(parse_needfile(&path).is_ok());
 
         fs::write(
             &path,
@@ -746,6 +745,39 @@ mod tests {
         let (_, rules) = parse_needfile(&path).unwrap();
         let error = validate_modifier(&rules[0].modifiers[0]).unwrap_err();
         assert_eq!(error, "invalid output mode in rule modifier @output(nope)");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn tracks_dynamic_outputs_and_removes_obsolete_ones() {
+        let root = temp_project("dynamic-outputs");
+        fs::write(root.join("mode"), "both").unwrap();
+        let needfile = r#"out.txt: mode
+  @outputs(.need/outputs)
+  cp {{in}} {{out}}
+  touch a.txt
+  if [ "$(cat mode)" = both ]; then touch b.txt; printf 'a.txt\nb.txt\n' > .need/outputs; else printf 'a.txt\n' > .need/outputs; fi
+"#;
+        let mut first = context(&root, needfile);
+        build(&mut first, "out.txt", None).unwrap();
+        assert!(root.join("a.txt").is_file());
+        assert!(root.join("b.txt").is_file());
+        save_state(&root, &first.state).unwrap();
+
+        let mut current = context(&root, needfile);
+        current.state = load_state(&root).unwrap();
+        build(&mut current, "a.txt", None).unwrap();
+
+        fs::write(root.join("mode"), "one").unwrap();
+        let mut second = context(&root, needfile);
+        second.state = load_state(&root).unwrap();
+        build(&mut second, "out.txt", None).unwrap();
+        assert!(root.join("a.txt").is_file());
+        assert!(!root.join("b.txt").exists());
+        assert_eq!(
+            second.state.rules.values().next().unwrap().dynamic,
+            vec!["a.txt"]
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

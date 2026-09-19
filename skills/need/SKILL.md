@@ -40,6 +40,10 @@ build/%.o: src/%.c
 
 font.fnt font_0.png: source.otf
   build-font {{in}} {{out[0]}} {{out[1]}}
+
+index.json: source
+  @outputs(.need/generated.outputs)
+  generate {{in}} {{out}} .need/generated.outputs
 ```
 
 Dependency expressions make freshness explicit:
@@ -67,3 +71,8 @@ argument order matters.
 Build state and logs live under `.need/`. Successful recipes must produce every
 declared output. Dependency cycles are errors. `need` uses content signatures,
 not timestamps alone, to decide whether a rule is current.
+
+For dynamic secondary outputs, `@outputs(PATH)` names a UTF-8 manifest written
+by the recipe. List one project-relative path per line; `need` validates, tracks,
+and cleans up files omitted from a later successful manifest. `{{out}}` still
+contains only the rule's static outputs.
