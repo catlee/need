@@ -455,6 +455,7 @@ mod tests {
 
         let state = load_state(&root).unwrap();
         let rule = &state.rules["out.txt"];
+        assert!(state.hashes.is_empty());
         assert_eq!(rule.outputs.keys().next().unwrap().as_str(), "output.txt");
         assert_eq!(rule.dynamic[0].as_str(), "output.txt");
         assert_eq!(rule.manifest.as_ref().unwrap().path.as_str(), "output.txt");
@@ -868,28 +869,30 @@ mod tests {
         fs::create_dir(root.join("resources")).unwrap();
         fs::write(root.join("resources/input"), "one").unwrap();
         fs::write(root.join("tool"), "tool").unwrap();
-        let ctx = BuildCtx {
+        let mut ctx = BuildCtx {
             project: ProjectData {
                 root: root.clone(),
                 ..Default::default()
             },
             ..Default::default()
         };
-        let file = dependency_signature(&ctx, &Dependency::File("resources/input".into())).unwrap();
-        let tree = dependency_signature(&ctx, &Dependency::Tree("resources".into())).unwrap();
-        let mtime = dependency_signature(&ctx, &Dependency::Mtime("tool".into())).unwrap();
+        let file =
+            dependency_signature(&mut ctx, &Dependency::File("resources/input".into())).unwrap();
+        assert_eq!(ctx.session.state.hashes.len(), 1);
+        let tree = dependency_signature(&mut ctx, &Dependency::Tree("resources".into())).unwrap();
+        let mtime = dependency_signature(&mut ctx, &Dependency::Mtime("tool".into())).unwrap();
         fs::write(root.join("resources/other"), "other").unwrap();
         assert_eq!(
             file,
-            dependency_signature(&ctx, &Dependency::File("resources/input".into())).unwrap()
+            dependency_signature(&mut ctx, &Dependency::File("resources/input".into())).unwrap()
         );
         assert_ne!(
             tree,
-            dependency_signature(&ctx, &Dependency::Tree("resources".into())).unwrap()
+            dependency_signature(&mut ctx, &Dependency::Tree("resources".into())).unwrap()
         );
         assert_eq!(
             mtime,
-            dependency_signature(&ctx, &Dependency::Mtime("tool".into())).unwrap()
+            dependency_signature(&mut ctx, &Dependency::Mtime("tool".into())).unwrap()
         );
         fs::remove_dir_all(root).unwrap();
     }
@@ -904,7 +907,7 @@ mod tests {
         fs::create_dir(&tree).unwrap();
         fs::write(tree.join("input"), "input").unwrap();
         symlink(".", tree.join("self")).unwrap();
-        let ctx = BuildCtx {
+        let mut ctx = BuildCtx {
             project: ProjectData {
                 root: root.clone(),
                 ..Default::default()
@@ -912,10 +915,11 @@ mod tests {
             ..Default::default()
         };
 
-        let first = dependency_signature(&ctx, &Dependency::Tree("resources".into())).unwrap();
-        let second = dependency_signature(&ctx, &Dependency::Tree("resources".into())).unwrap();
+        let first = dependency_signature(&mut ctx, &Dependency::Tree("resources".into())).unwrap();
+        let second = dependency_signature(&mut ctx, &Dependency::Tree("resources".into())).unwrap();
 
         assert_eq!(first, second);
+        assert_eq!(ctx.session.state.hashes.len(), 1);
         assert_eq!(
             walk(&tree).unwrap(),
             vec![tree.join("input"), tree.join("self")]
@@ -1158,6 +1162,38 @@ final: generated.txt generated/*
             hash_file(&path).unwrap(),
             blake3::hash(&data).to_hex().to_string()
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn metadata_hash_cache_hits_and_invalidates_without_timing() {
+        let root = temp_project("hash-cache");
+        let path = root.join("input");
+        fs::write(&path, "one").unwrap();
+        let mut ctx = BuildCtx {
+            project: ProjectData {
+                root: root.clone(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let first = dependency_signature(&mut ctx, &Dependency::File("input".into())).unwrap();
+        let second = dependency_signature(&mut ctx, &Dependency::File("input".into())).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(ctx.session.state.hashes.len(), 1);
+
+        fs::write(&path, "changed").unwrap();
+        let third = dependency_signature(&mut ctx, &Dependency::File("input".into())).unwrap();
+        assert_ne!(second, third);
+        assert_eq!(ctx.session.state.hashes.len(), 1);
+
+        let absolute = path.to_string_lossy().into_owned();
+        assert_eq!(
+            third,
+            dependency_signature(&mut ctx, &Dependency::File(absolute)).unwrap()
+        );
+        assert_eq!(ctx.session.state.hashes.len(), 1);
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1439,9 +1475,11 @@ final: generated.txt generated/*
         let needfile = "out.txt: input.txt\n  cp {{in}} {{out}}\n";
         let mut first = context(&root, needfile);
         build(&mut first, "out.txt", None).unwrap();
+        assert_eq!(first.session.state.hashes.len(), 2);
         save_state(&root, &first.session.state).unwrap();
         let mut second = context(&root, needfile);
         second.session.state = load_state(&root).unwrap();
+        assert_eq!(second.session.state.hashes.len(), 2);
         build(&mut second, "out.txt", None).unwrap();
         assert_eq!(second.session.state.rules.len(), 1);
         fs::remove_dir_all(root).unwrap();

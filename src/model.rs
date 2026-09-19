@@ -128,6 +128,15 @@ impl ParsedDependency {
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub(crate) struct State {
     pub(crate) rules: BTreeMap<String, SavedRule>,
+    #[serde(default)]
+    pub(crate) hashes: BTreeMap<String, HashRecord>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct HashRecord {
+    pub(crate) size: u64,
+    pub(crate) mtime_ns: u128,
+    pub(crate) blake3: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq)]

@@ -133,4 +133,21 @@ mod tests {
         }));
         fs::remove_dir_all(root).unwrap();
     }
+
+    #[test]
+    fn hash_cache_state_round_trips() {
+        let root = temp_root();
+        let mut state = State::default();
+        state.hashes.insert(
+            "/project/input".into(),
+            crate::model::HashRecord {
+                size: 4,
+                mtime_ns: 12,
+                blake3: "hash".into(),
+            },
+        );
+        save_state(&root, &state).unwrap();
+        assert_eq!(load_state(&root).unwrap().hashes, state.hashes);
+        fs::remove_dir_all(root).unwrap();
+    }
 }

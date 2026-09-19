@@ -325,6 +325,7 @@ pub(crate) fn build_inner(
                 if let Some(saved) = child.session.state.rules.get(&group) {
                     c.session.state.rules.insert(group, saved.clone());
                 }
+                c.session.state.hashes.extend(child.session.state.hashes);
                 c.session.cargo_deps.extend(child.session.cargo_deps);
                 c.session.cargo_env.extend(child.session.cargo_env);
                 c.session.built.extend(child.session.built);
@@ -424,7 +425,7 @@ pub(crate) fn build_inner(
         if !p.is_file() {
             reasons.push(format!("output missing: {o}"));
         } else {
-            let h = hash_file(&p)?;
+            let h = cached_file_hash(c, &p)?;
             if saved.is_some() && saved.as_ref().and_then(|x| x.outputs.get(o)) != Some(&h) {
                 reasons.push(format!("output changed: {o}"));
             }
@@ -439,7 +440,7 @@ pub(crate) fn build_inner(
         } else if saved.is_some()
             && manifest_state.is_none_or(|saved| {
                 saved.path.as_str() != path.as_str()
-                    || hash_file(&p).ok().as_deref() != Some(&saved.hash)
+                    || cached_file_hash(c, &p).ok().as_deref() != Some(&saved.hash)
             })
         {
             reasons.push(format!("output manifest changed: {path}"));
@@ -523,7 +524,7 @@ pub(crate) fn build_inner(
         if !abs(c, o).is_file() {
             return Err(format!("recipe did not produce {o}").into());
         }
-        outsig.insert(o.clone(), hash_file(&abs(c, o))?);
+        outsig.insert(o.clone(), cached_file_hash(c, &abs(c, o))?);
     }
     let dynamic = if let Some(path) = &manifest {
         let dynamic = read_output_manifest(c, path.as_str())?;
@@ -535,7 +536,7 @@ pub(crate) fn build_inner(
                     "output manifest {path} lists missing output {output}\nhelp: write every listed output before the recipe exits"
                 ).into());
             }
-            outsig.insert(output.clone(), hash_file(&p)?);
+            outsig.insert(output.clone(), cached_file_hash(c, &p)?);
         }
         for output in known_dynamic
             .iter()
@@ -558,16 +559,17 @@ pub(crate) fn build_inner(
         Vec::new()
     };
     status_line(c, "got", &key, "\x1b[32m");
+    let saved_manifest = manifest.as_ref().map(|path| SavedManifest {
+        path: path.clone(),
+        hash: cached_file_hash(c, &abs(c, path)).expect("validated output manifest"),
+    });
     c.session.state.rules.insert(
         key,
         SavedRule {
             signature: sig,
             outputs: outsig,
             dynamic: dynamic.clone(),
-            manifest: manifest.as_ref().map(|path| SavedManifest {
-                path: path.clone(),
-                hash: hash_file(&abs(c, path)).expect("validated output manifest"),
-            }),
+            manifest: saved_manifest,
             discovered,
         },
     );
@@ -1357,7 +1359,7 @@ fn automatic_interpolation(
         }
     }
 }
-pub(crate) fn dependency_signature(c: &BuildCtx, dependency: &Dependency) -> Result<String> {
+pub(crate) fn dependency_signature(c: &mut BuildCtx, dependency: &Dependency) -> Result<String> {
     let path = match dependency {
         Dependency::File(path) => path,
         Dependency::Tree(path) => path,
@@ -1377,8 +1379,15 @@ pub(crate) fn dependency_signature(c: &BuildCtx, dependency: &Dependency) -> Res
         return Ok(hash_text(&format!("{modified:?}:{}", metadata.len())));
     }
     let q = abs(c, path);
-    if !q.exists() {
-        return Ok("MISSING".into());
+    match fs::symlink_metadata(&q) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok("MISSING".into()),
+        Err(error) => {
+            return Err(format!(
+                "could not inspect dependency {}: {error}\nhelp: check that the path exists and is readable",
+                q.display()
+            ));
+        }
     }
     if matches!(dependency, Dependency::Tree(_)) {
         let mut a = Vec::new();
@@ -1390,7 +1399,7 @@ pub(crate) fn dependency_signature(c: &BuildCtx, dependency: &Dependency) -> Res
             {
                 hash_symlink(&e)?
             } else {
-                hash_file(&e)?
+                cached_file_hash(c, &e)?
             };
             a.push(format!(
                 "{}:{}",
@@ -1400,5 +1409,64 @@ pub(crate) fn dependency_signature(c: &BuildCtx, dependency: &Dependency) -> Res
         }
         return Ok(hash_text(&a.join("\n")));
     }
-    hash_file(&q)
+    cached_file_hash(c, &q)
+}
+
+fn cached_file_hash(c: &mut BuildCtx, path: &Path) -> Result<String> {
+    let link_metadata = fs::symlink_metadata(path).map_err(|error| {
+        format!(
+            "could not inspect file {}: {error}\nhelp: check that the path exists and is readable",
+            path.display()
+        )
+    })?;
+    if link_metadata.file_type().is_symlink() {
+        return hash_file(path);
+    }
+    let metadata = fs::metadata(path).map_err(|error| {
+        format!(
+            "could not read metadata for {}: {error}\nhelp: check that the path exists and is readable",
+            path.display()
+        )
+    })?;
+    if !metadata.is_file() {
+        return Err(format!(
+            "cannot hash {}: path is not a regular file\nhelp: use tree(...) for a directory",
+            path.display()
+        ));
+    }
+    let modified = metadata.modified().map_err(|error| {
+        format!(
+            "could not read modification time for {}: {error}\nhelp: use a filesystem that provides file timestamps",
+            path.display()
+        )
+    })?;
+    let mtime_ns = modified
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| {
+            format!(
+                "modification time for {} is before the Unix epoch: {error}\nhelp: restore a valid file timestamp",
+                path.display()
+            )
+        })?
+        .as_nanos();
+    let key = fs::canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .into_owned();
+    if let Some(record) = c.session.state.hashes.get(&key)
+        && record.size == metadata.len()
+        && record.mtime_ns == mtime_ns
+    {
+        return Ok(record.blake3.clone());
+    }
+    let blake3 = hash_file(path)?;
+    c.session.state.hashes.insert(
+        key,
+        crate::model::HashRecord {
+            size: metadata.len(),
+            mtime_ns,
+            blake3: blake3.clone(),
+        },
+    );
+    Ok(blake3)
 }

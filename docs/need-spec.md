@@ -55,13 +55,9 @@ core artifact graph, including:
 - signal-aware recipe termination, interrupted logs, atomic state replacement,
   and startup cleanup of abandoned temporary artifacts
 
-The following specified feature is not implemented yet:
-
-- **Hash scalability improvements** (Sections 17 and 21): metadata-assisted hash
-  caching.
-
-These omissions are intentional implementation work remaining against the
-specification; they are not alternate semantics.
+Metadata-assisted BLAKE3 caching is implemented for regular-file hashes. The
+cache is persisted in `.need/state.json` and uses file size plus nanosecond mtime
+to avoid rehashing unchanged files.
 ---
 
 ## 2. Design Goals
@@ -1149,7 +1145,13 @@ metadata changed
 
 This avoids rehashing unchanged files on every build.
 
-The implementation MAY provide a paranoid mode that always verifies file content hashes if desired.
+`need` persists reusable records in `.need/state.json`. Each record is keyed by
+a stable canonical absolute path when available, with an absolute fallback, and
+stores the file size, modification time in nanoseconds since the Unix epoch,
+and BLAKE3 result. A record is reused only when both metadata values match;
+otherwise the content is hashed again. Symlink hashes retain their existing
+target semantics and are not stored as regular-file records. Metadata and
+timestamp failures identify the file and suggest a fix.
 
 ---
 
@@ -1169,7 +1171,7 @@ hash(
 )
 ```
 
-The implementation SHOULD reuse cached per-file hashes where metadata shows that files are unchanged.
+The implementation reuses cached per-file hashes where metadata shows that files are unchanged. Files discovered through trees use the same cache as ordinary dependencies and outputs.
 
 Directory mtimes alone are insufficient for `tree(...)`.
 
@@ -1229,7 +1231,7 @@ A rule is stale when any of the following is true:
 
 A current rule may be skipped.
 
-Output signatures SHOULD use the same metadata-assisted hash cache as input files:
+Output signatures use the same metadata-assisted hash cache as input files:
 
 ```text
 size + mtime unchanged
@@ -1251,21 +1253,22 @@ Persistent state is stored under:
 .need/
 ```
 
-Suggested location:
+The implementation stores state in:
 
 ```text
-.need/state.db
+.need/state.json
 ```
 
 The implementation MAY use SQLite, another embedded database, or another transactional format.
 
-The database may store:
+Persistent state may store:
 
 - output groups
 - matched rules
 - dependency paths
 - glob memberships
 - content hashes
+- metadata-assisted regular-file hash records
 - metadata caches
 - recipe signatures
 - environment/string dependency values
