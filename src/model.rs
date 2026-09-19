@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    num::NonZeroUsize,
     path::PathBuf,
 };
 
@@ -119,7 +120,32 @@ pub(crate) struct BuildOptions {
     pub(crate) cargo: bool,
     pub(crate) output: OutputMode,
     pub(crate) log_keep: usize,
-    pub(crate) jobs: usize,
+    pub(crate) jobs: Jobs,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Jobs {
+    Limited(NonZeroUsize),
+    Unlimited,
+}
+
+impl Default for Jobs {
+    fn default() -> Self {
+        Self::Limited(NonZeroUsize::MIN)
+    }
+}
+
+impl Jobs {
+    pub(crate) fn limit(self, available: usize) -> usize {
+        match self {
+            Self::Limited(limit) => limit.get(),
+            Self::Unlimited => available,
+        }
+    }
+
+    pub(crate) fn is_parallel(self) -> bool {
+        !matches!(self, Self::Limited(limit) if limit.get() == 1)
+    }
 }
 
 #[derive(Clone, Default)]

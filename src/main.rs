@@ -1326,12 +1326,12 @@ all.txt: a.txt b.txt
   cat {{in}} > {{out}}
 "#;
         let mut first = context(&root, needfile);
-        first.options.jobs = 2;
+        first.options.jobs = Jobs::Limited(2.try_into().unwrap());
         build(&mut first, "all.txt", None).unwrap();
         save_state(&root, &first.session.state).unwrap();
 
         let mut second = context(&root, needfile);
-        second.options.jobs = 2;
+        second.options.jobs = Jobs::Limited(2.try_into().unwrap());
         second.session.state = load_state(&root).unwrap();
         build(&mut second, "all.txt", None).unwrap();
 
@@ -1388,19 +1388,19 @@ b.txt: source-b.txt
 "#;
 
         let mut first = context(&root, needfile);
-        first.options.jobs = 2;
+        first.options.jobs = Jobs::Limited(2.try_into().unwrap());
         build_targets(&mut first, &["a.txt".into(), "b.txt".into()]).unwrap();
         save_state(&root, &first.session.state).unwrap();
         fs::remove_file(root.join("a.txt")).unwrap();
 
         let mut second = context(&root, needfile);
-        second.options.jobs = 2;
+        second.options.jobs = Jobs::Limited(2.try_into().unwrap());
         second.session.state = load_state(&root).unwrap();
         build_targets(&mut second, &["a.txt".into(), "b.txt".into()]).unwrap();
         save_state(&root, &second.session.state).unwrap();
 
         let mut third = context(&root, needfile);
-        third.options.jobs = 2;
+        third.options.jobs = Jobs::Limited(2.try_into().unwrap());
         third.session.state = load_state(&root).unwrap();
         build_targets(&mut third, &["a.txt".into(), "b.txt".into()]).unwrap();
 
@@ -1424,14 +1424,14 @@ final.txt: a.txt b.txt
   cat {{in}} > {{out}}
 "#;
         let mut first = context(&root, needfile);
-        first.options.jobs = 2;
+        first.options.jobs = Jobs::Limited(2.try_into().unwrap());
         build(&mut first, "final.txt", None).unwrap();
         save_state(&root, &first.session.state).unwrap();
 
         fs::write(root.join("source-a.txt"), "new-a\n").unwrap();
         fs::write(root.join("fail"), "").unwrap();
         let mut second = context(&root, needfile);
-        second.options.jobs = 2;
+        second.options.jobs = Jobs::Limited(2.try_into().unwrap());
         second.session.state = load_state(&root).unwrap();
         let error = build(&mut second, "final.txt", None).unwrap_err();
 
@@ -1468,7 +1468,7 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
   cat {{in}} > {{out}}
 "#;
         let mut ctx = context(&root, needfile);
-        ctx.options.jobs = 2;
+        ctx.options.jobs = Jobs::Limited(2.try_into().unwrap());
         ctx.options.output = OutputMode::Silent;
         build(&mut ctx, "all.txt", None).unwrap();
         assert!(!root.join(".exceeded").exists());
@@ -1691,18 +1691,21 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
         assert_eq!(OutputMode::parse("silent").unwrap(), OutputMode::Silent);
         assert!(OutputMode::parse("nope").is_err());
         let mut args = vec!["-j8".into(), "target".into()];
-        assert_eq!(take_jobs(&mut args).unwrap(), 8);
+        assert_eq!(take_jobs(&mut args).unwrap(), Jobs::Limited(8.try_into().unwrap()));
         assert_eq!(args, vec!["target"]);
         let mut args = vec!["-j".into(), "8".into(), "target".into()];
-        assert_eq!(take_jobs(&mut args).unwrap(), 8);
+        assert_eq!(take_jobs(&mut args).unwrap(), Jobs::Limited(8.try_into().unwrap()));
         assert_eq!(args, vec!["target"]);
         let mut args = vec!["-j".into(), "target".into()];
-        assert_eq!(take_jobs(&mut args).unwrap(), usize::MAX);
+        assert_eq!(take_jobs(&mut args).unwrap(), Jobs::Unlimited);
         assert_eq!(args, vec!["target"]);
         let mut args = vec!["-j".into()];
-        assert_eq!(take_jobs(&mut args).unwrap(), usize::MAX);
+        assert_eq!(take_jobs(&mut args).unwrap(), Jobs::Unlimited);
         let mut args = vec!["-j0".into()];
         assert!(take_jobs(&mut args).is_err());
+        assert_eq!(Jobs::Limited(2.try_into().unwrap()).limit(5), 2);
+        assert_eq!(Jobs::Unlimited.limit(5), 5);
+        assert_eq!(Jobs::Unlimited.limit(0), 0);
     }
 
     #[test]

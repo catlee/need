@@ -14,7 +14,7 @@ use std::{
 use crate::{
     Result,
     hash::{hash_file, hash_symlink, hash_text, walk},
-    model::{BuildCtx, Dependency, OutputMode, RuleId, SavedManifest, SavedRule, TargetMatch},
+    model::{BuildCtx, Dependency, Jobs, OutputMode, RuleId, SavedManifest, SavedRule, TargetMatch},
     parser::{expand, norm_rel},
 };
 
@@ -44,7 +44,7 @@ pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> Res
 }
 
 pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[String]) -> Result<()> {
-    if c.options.jobs <= 1 || targets.len() <= 1 {
+    if !c.options.jobs.is_parallel() || targets.len() <= 1 {
         for target in targets {
             build(c, target, None)?;
         }
@@ -64,14 +64,14 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[String]) -> Result<()> 
             parallel_targets.push(target.clone());
         }
     }
-    for batch in parallel_targets.chunks(c.options.jobs) {
+    for batch in parallel_targets.chunks(c.options.jobs.limit(parallel_targets.len())) {
         let base = c.clone();
         let results = std::thread::scope(|scope| {
             let mut handles = Vec::new();
             for target in batch {
                 let target = target.clone();
                 let mut child = base.clone();
-                child.options.jobs = 1;
+                child.options.jobs = Jobs::default();
                 handles.push(scope.spawn(move || {
                     let result = build(&mut child, &target, None);
                     (child, result)
@@ -157,7 +157,7 @@ pub(crate) fn build_inner(
             }
         }
     }
-    let parallel = !has_glob && c.options.jobs > 1 && parallel_candidates.len() > 1;
+    let parallel = !has_glob && c.options.jobs.is_parallel() && parallel_candidates.len() > 1;
     let parallel_targets: HashSet<String> = parallel_candidates
         .iter()
         .filter_map(|d| match d {
@@ -181,13 +181,13 @@ pub(crate) fn build_inner(
                 parallel_deps.push(path.clone());
             }
         }
-        for batch in parallel_deps.chunks(c.options.jobs) {
+        for batch in parallel_deps.chunks(c.options.jobs.limit(parallel_deps.len())) {
             let results = std::thread::scope(|scope| {
                 let mut handles = Vec::new();
                 for d in batch {
                     let d = d.clone();
                     let mut child = base.clone();
-                    child.options.jobs = 1;
+                    child.options.jobs = Jobs::default();
                     handles.push(scope.spawn(move || {
                         let result = build(&mut child, &d, None);
                         (d, child, result)

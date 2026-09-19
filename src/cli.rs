@@ -1,6 +1,6 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, num::NonZeroUsize, path::PathBuf};
 
-use crate::Result;
+use crate::{Result, model::Jobs};
 
 pub(crate) fn take_value(args: &mut Vec<String>, name: &str) -> Result<Option<String>> {
     if let Some(i) = args.iter().position(|x| x == name) {
@@ -18,7 +18,7 @@ pub(crate) fn take_value(args: &mut Vec<String>, name: &str) -> Result<Option<St
     }
     Ok(None)
 }
-pub(crate) fn take_jobs(args: &mut Vec<String>) -> Result<usize> {
+pub(crate) fn take_jobs(args: &mut Vec<String>) -> Result<Jobs> {
     if let Some(value) = take_value(args, "--jobs")? {
         return parse_job_count(&value);
     }
@@ -31,22 +31,22 @@ pub(crate) fn take_jobs(args: &mut Vec<String>) -> Result<usize> {
             let value = args.remove(i);
             return parse_job_count(&value);
         }
-        return Ok(usize::MAX);
+        return Ok(Jobs::Unlimited);
     }
     if let Some(i) = args.iter().position(|x| x.starts_with("-j") && x.len() > 2) {
         let value = args.remove(i)[2..].to_string();
         return parse_job_count(&value);
     }
-    Ok(1)
+    Ok(Jobs::default())
 }
-pub(crate) fn parse_job_count(value: &str) -> Result<usize> {
+pub(crate) fn parse_job_count(value: &str) -> Result<Jobs> {
     let jobs = value
         .parse()
         .map_err(|_| format!("invalid job count: {value}"))?;
     if jobs == 0 {
         return Err("job count must be greater than zero".into());
     }
-    Ok(jobs)
+    Ok(Jobs::Limited(NonZeroUsize::new(jobs).unwrap()))
 }
 pub(crate) fn ctx_config(vars: &HashMap<String, String>, key: &str) -> Option<String> {
     vars.get(key).cloned()
