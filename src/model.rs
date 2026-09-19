@@ -44,7 +44,7 @@ pub(crate) struct State {
     pub(crate) rules: BTreeMap<String, SavedRule>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
 pub(crate) struct SavedRule {
     pub(crate) signature: String,
     pub(crate) outputs: BTreeMap<String, String>,

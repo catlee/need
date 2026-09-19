@@ -85,7 +85,11 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[String]) -> Result<()> 
         })?;
         for (child, result) in results {
             result?;
-            c.state.rules.extend(child.state.rules);
+            for (key, saved) in child.state.rules {
+                if base.state.rules.get(&key) != Some(&saved) {
+                    c.state.rules.insert(key, saved);
+                }
+            }
             c.built.extend(child.built);
             c.cargo_deps.extend(child.cargo_deps);
             c.cargo_env.extend(child.cargo_env);

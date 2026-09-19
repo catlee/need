@@ -1198,6 +1198,41 @@ final.txt: generated.txt
     }
 
     #[test]
+    fn preserves_parallel_rebuild_state_after_an_output_is_removed() {
+        let root = temp_project("parallel-rebuild-state");
+        fs::write(root.join("source-a.txt"), "a\n").unwrap();
+        fs::write(root.join("source-b.txt"), "b\n").unwrap();
+        let needfile = r#"a.txt: source-a.txt
+  printf run >> a.runs
+  cp {{in}} {{out}}
+b.txt: source-b.txt
+  printf run >> b.runs
+  cp {{in}} {{out}}
+"#;
+
+        let mut first = context(&root, needfile);
+        first.jobs = 2;
+        build_targets(&mut first, &["a.txt".into(), "b.txt".into()]).unwrap();
+        save_state(&root, &first.state).unwrap();
+        fs::remove_file(root.join("a.txt")).unwrap();
+
+        let mut second = context(&root, needfile);
+        second.jobs = 2;
+        second.state = load_state(&root).unwrap();
+        build_targets(&mut second, &["a.txt".into(), "b.txt".into()]).unwrap();
+        save_state(&root, &second.state).unwrap();
+
+        let mut third = context(&root, needfile);
+        third.jobs = 2;
+        third.state = load_state(&root).unwrap();
+        build_targets(&mut third, &["a.txt".into(), "b.txt".into()]).unwrap();
+
+        assert_eq!(fs::read_to_string(root.join("a.runs")).unwrap(), "runrun");
+        assert_eq!(fs::read_to_string(root.join("b.runs")).unwrap(), "run");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn propagates_parallel_dependency_failure_with_stale_output() {
         let root = temp_project("parallel-dependency-failure");
         fs::write(root.join("source-a.txt"), "old-a\n").unwrap();
