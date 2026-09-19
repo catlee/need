@@ -98,9 +98,11 @@ fn run() -> Result<()> {
     } else {
         args
     };
-    for target in targets {
-        build(&mut ctx, &norm_rel(&target)?, None)?;
-    }
+    let targets = targets
+        .into_iter()
+        .map(|target| norm_rel(&target))
+        .collect::<Result<Vec<_>>>()?;
+    build_targets(&mut ctx, &targets)?;
     if !ctx.dry {
         save_state(&ctx.root, &ctx.state)?;
     }

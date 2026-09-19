@@ -40,7 +40,8 @@ core artifact graph, including:
 - file, tree, mtime, environment, and string dependency expressions
 - opt-in dotenv loading with precedence, custom files, and freshness tracking
 - content-based freshness and persistent state under `.need/`
-- dry-run, explain, list, force, parallel jobs, and configurable output modes
+- dry-run, explain, list, force, parallel jobs for dependencies and multiple
+  command-line targets, and configurable output modes
 - `--version` and `--help` command-line queries
 - Cargo metadata mode with transitive source and environment dependencies
 - dependency-cycle detection
@@ -1518,7 +1519,8 @@ The design must nevertheless preserve these invariants:
 - future concurrent requests for the same output group must be able to coalesce into one execution
 - dynamic-output ownership updates and orphan cleanup must be recoverable and committed consistently with successful rule state
 
-Future implementations MAY support intra-process parallelism such as:
+The implementation supports intra-process parallelism for independent dependency
+nodes and command-line targets, such as:
 
 ```sh
 need -j 8 build/app

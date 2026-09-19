@@ -164,6 +164,7 @@ For parallel builds:
 ```sh
 need -j8 build/app
 need -j build/app          # unlimited parallelism
+need -j2 build/app build/lib # build independent requested targets in parallel
 ```
 
 ## Cargo

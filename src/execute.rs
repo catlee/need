@@ -43,6 +43,57 @@ pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> Res
     result
 }
 
+pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[String]) -> Result<()> {
+    if c.jobs <= 1 || targets.len() <= 1 {
+        for target in targets {
+            build(c, target, None)?;
+        }
+        return Ok(());
+    }
+
+    let mut parallel_targets = Vec::new();
+    let mut groups = HashSet::new();
+    for target in targets {
+        let group = select_rule(c, target)
+            .map(|(_, _, outputs)| outputs.join("\0"))
+            .unwrap_or_else(|_| target.clone());
+        if groups.insert(group) {
+            parallel_targets.push(target.clone());
+        }
+    }
+    for batch in parallel_targets.chunks(c.jobs) {
+        let base = c.clone();
+        let results = std::thread::scope(|scope| {
+            let mut handles = Vec::new();
+            for target in batch {
+                let target = target.clone();
+                let mut child = base.clone();
+                child.jobs = 1;
+                handles.push(scope.spawn(move || {
+                    let result = build(&mut child, &target, None);
+                    (child, result)
+                }));
+            }
+            handles
+                .into_iter()
+                .map(|handle| {
+                    handle
+                        .join()
+                        .map_err(|_| "parallel build worker panicked".to_string())
+                })
+                .collect::<Result<Vec<_>>>()
+        })?;
+        for (child, result) in results {
+            result?;
+            c.state.rules.extend(child.state.rules);
+            c.built.extend(child.built);
+            c.cargo_deps.extend(child.cargo_deps);
+            c.cargo_env.extend(child.cargo_env);
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn build_inner(
     c: &mut BuildCtx,
     target: &str,

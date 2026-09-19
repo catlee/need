@@ -58,3 +58,58 @@ all: a b
 
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn command_line_targets_are_built_in_parallel() {
+    let suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("need-command-line-targets-{suffix}"));
+    fs::create_dir_all(&root).unwrap();
+    fs::write(
+        root.join("needfile"),
+        r#"a:
+  while ! mkdir .counter-lock 2>/dev/null; do sleep 0.001; done
+  active=$(cat .active 2>/dev/null || echo 0)
+  active=$((active + 1))
+  printf '%s' "$active" > .active
+  if [ "$active" -gt 1 ]; then touch .overlapped; fi
+  rmdir .counter-lock
+  sleep 0.05
+  while ! mkdir .counter-lock 2>/dev/null; do sleep 0.001; done
+  printf '%s' "$((active - 1))" > .active
+  rmdir .counter-lock
+  touch {{out}}
+b:
+  while ! mkdir .counter-lock 2>/dev/null; do sleep 0.001; done
+  active=$(cat .active 2>/dev/null || echo 0)
+  active=$((active + 1))
+  printf '%s' "$active" > .active
+  if [ "$active" -gt 1 ]; then touch .overlapped; fi
+  rmdir .counter-lock
+  sleep 0.05
+  while ! mkdir .counter-lock 2>/dev/null; do sleep 0.001; done
+  printf '%s' "$((active - 1))" > .active
+  rmdir .counter-lock
+  touch {{out}}
+"#,
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_need"))
+        .args(["-j2", "a", "b"])
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "need failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(root.join(".overlapped").is_file());
+    assert!(root.join("a").is_file());
+    assert!(root.join("b").is_file());
+
+    fs::remove_dir_all(root).unwrap();
+}

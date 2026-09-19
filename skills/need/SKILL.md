@@ -22,7 +22,7 @@ Execution
 - `need` Build the first concrete target in the `needfile`
 - `need TARGET` Ensure an artifact is current
 - `need TARGET...` Ensure multiple artifacts are current
-- `need -j8 TARGET` Build independent graph nodes in parallel
+- `need -j8 TARGET...` Build independent requested targets and graph nodes in parallel
 - `need --force TARGET` Rebuild the requested target or output group
 - `need --cargo TARGET` Build the target and emit Cargo rerun metadata
 
