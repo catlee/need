@@ -102,6 +102,8 @@ fn run() -> Result<()> {
         return Ok(());
     }
     let _lock = BuildLock::acquire(&ctx.project.root)?;
+    cleanup_recovery_files(&ctx.project.root)?;
+    install_signal_handlers()?;
     ctx.session.state = load_state(&ctx.project.root)?;
     let targets = if args.is_empty() {
         let default_target = ctx

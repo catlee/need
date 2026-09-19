@@ -76,6 +76,11 @@ Build state and logs live under `.need/`. Successful recipes must produce every
 declared output. Dependency cycles are errors. `need` uses content signatures,
 not timestamps alone, to decide whether a rule is current.
 
+On Unix, SIGINT and SIGTERM stop the active recipe process group, retain an
+interrupted log under `.need/logs/`, and leave the output group stale for the
+next invocation. State replacement is atomic; abandoned temporary state and
+capture files are cleaned on the next invocation.
+
 For dynamic secondary outputs, `@outputs(PATH)` names a UTF-8 manifest written
 by the recipe. List one project-relative path per line; `need` validates, tracks,
 and cleans up files omitted from a later successful manifest. `{{out}}` still

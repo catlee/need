@@ -220,5 +220,7 @@ fn main() {
 `--cargo` builds the target, then emits Cargo rerun metadata for the relevant source files and environment dependencies.
 
 `need` uses content signatures rather than timestamps alone. Build state and logs live under `.need/`.
+On Unix, SIGINT and SIGTERM stop the active recipe process group, retain an
+interrupted log, and leave the output group stale for the next invocation.
 In `--cargo` mode, reachable environment references also emit Cargo
 `rerun-if-env-changed` metadata.

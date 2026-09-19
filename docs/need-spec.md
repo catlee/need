@@ -52,11 +52,11 @@ core artifact graph, including:
 - glob re-evaluation after upstream rules create or remove matching files
 - compiler depfiles through `@depfile(...)`, including persisted discovered
   dependencies and Make-style escaping/continuations
+- signal-aware recipe termination, interrupted logs, atomic state replacement,
+  and startup cleanup of abandoned temporary artifacts
 
-The following specified features are not implemented yet:
+The following specified feature is not implemented yet:
 
-- **Interruption and recovery handling** (Section 30): signal-aware cleanup and
-  recovery metadata for interrupted builds.
 - **Hash scalability improvements** (Sections 17 and 21): metadata-assisted hash
   caching.
 
@@ -1520,6 +1520,13 @@ If a recipe is interrupted by SIGINT, SIGTERM, or equivalent process termination
 - the output group remains stale
 - partial outputs may remain on disk
 - future builds must re-evaluate the rule normally
+
+On Unix, `need` catches SIGINT and SIGTERM while recipes run, terminates the
+recipe process group, retains an `.interrupted` log, and exits unsuccessfully.
+The signal remains pending for all active workers in the invocation. State is
+written through a unique temporary file whose contents are synchronized before
+atomic replacement; abandoned state and capture temporary files are removed
+after the next invocation acquires the project lock.
 
 Transactional state updates must prevent interrupted builds from corrupting the build database.
 

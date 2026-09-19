@@ -366,6 +366,11 @@ If a child process is interrupted:
 
 An interrupted execution may be recorded separately from a normal failure.
 
+When `need` handles SIGINT or SIGTERM on Unix, it terminates the active recipe
+process group and writes the captured streams as `.interrupted.stdout` and
+`.interrupted.stderr` files. These logs are distinct from ordinary failure
+logs and are retained regardless of the successful-log retention setting.
+
 ## 15. Concurrency
 
 The logging design MUST allow concurrent execution later without changing semantics.

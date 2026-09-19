@@ -6,10 +6,15 @@ use std::{
     process::{Command, ExitStatus},
     sync::{
         Mutex,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
+    thread,
+    time::Duration,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 
 use crate::{
     Result,
@@ -59,6 +64,35 @@ impl From<&str> for BuildError {
 }
 
 type BuildResult<T> = std::result::Result<T, BuildError>;
+
+#[cfg(unix)]
+static INTERRUPTED: std::sync::OnceLock<std::sync::Arc<AtomicBool>> = std::sync::OnceLock::new();
+
+pub(crate) fn install_signal_handlers() -> Result<()> {
+    #[cfg(unix)]
+    {
+        if INTERRUPTED.get().is_none() {
+            let interrupted = Arc::new(AtomicBool::new(false));
+            signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&interrupted))
+                .map_err(|e| e.to_string())?;
+            signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&interrupted))
+                .map_err(|e| e.to_string())?;
+            let _ = INTERRUPTED.set(interrupted);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+use std::sync::Arc;
+
+fn interrupted() -> bool {
+    #[cfg(unix)]
+    if let Some(flag) = INTERRUPTED.get() {
+        return flag.load(Ordering::Relaxed);
+    }
+    false
+}
 
 pub(crate) fn abs(c: &BuildCtx, p: impl AsRef<str>) -> PathBuf {
     let p = p.as_ref();
@@ -741,7 +775,14 @@ pub(crate) fn status_line(c: &BuildCtx, status: &str, key: &str, color: &str) {
 
 pub(crate) fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode) -> Result<()> {
     let capture = Capture::new(c)?;
-    let mut child = Command::new("sh")
+    if interrupted() {
+        write_log_files(c, key, &capture, LogStatus::Interrupted)?;
+        return Err(format!("recipe interrupted for {key}"));
+    }
+    let mut command = Command::new("sh");
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = command
         .arg("-c")
         .arg(recipe)
         .current_dir(&c.project.root)
@@ -777,13 +818,32 @@ pub(crate) fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode
             true,
         )
     });
-    let status = child.wait().map_err(|e| e.to_string())?;
+    let mut was_interrupted = false;
+    let status = loop {
+        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+            break status;
+        }
+        if interrupted() {
+            was_interrupted = true;
+            #[cfg(unix)]
+            {
+                let pid = nix::unistd::Pid::from_raw(child.id() as i32);
+                let _ = nix::sys::signal::killpg(pid, nix::sys::signal::Signal::SIGTERM);
+            }
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
     stdout_thread
         .join()
         .map_err(|_| "stdout reader panicked")??;
     stderr_thread
         .join()
         .map_err(|_| "stderr reader panicked")??;
+    was_interrupted |= interrupted();
+    if was_interrupted {
+        write_log_files(c, key, &capture, LogStatus::Interrupted)?;
+        return Err(format!("recipe interrupted for {key}"));
+    }
     let success = status.success();
     if mode == OutputMode::Grouped && (!capture.is_empty(true)? || !capture.is_empty(false)?) {
         render_grouped_output(key, &capture, c.options.cargo)?;
@@ -791,7 +851,16 @@ pub(crate) fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode
         print_failure_output(key, &capture)?;
     }
     if mode == OutputMode::Log || c.options.log_keep > 0 || !success {
-        write_log_files(c, key, &capture, success)?;
+        write_log_files(
+            c,
+            key,
+            &capture,
+            if success {
+                LogStatus::Success
+            } else {
+                LogStatus::Failure
+            },
+        )?;
     }
     if !success {
         return Err(format!(
@@ -1008,7 +1077,13 @@ pub(crate) fn exit_status(status: &ExitStatus) -> String {
         .unwrap_or_else(|| "terminated by signal".into())
 }
 
-fn write_log_files(c: &BuildCtx, key: &str, capture: &Capture, success: bool) -> Result<()> {
+enum LogStatus {
+    Success,
+    Failure,
+    Interrupted,
+}
+
+fn write_log_files(c: &BuildCtx, key: &str, capture: &Capture, status: LogStatus) -> Result<()> {
     let group = &hash_text(key)[..16];
     let dir = c.project.root.join(".need/logs").join(group);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -1016,7 +1091,11 @@ fn write_log_files(c: &BuildCtx, key: &str, capture: &Capture, success: bool) ->
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?
         .as_millis();
-    let status = if success { "success" } else { "failure" };
+    let (status, success) = match status {
+        LogStatus::Success => ("success", true),
+        LogStatus::Failure => ("failure", false),
+        LogStatus::Interrupted => ("interrupted", false),
+    };
     let base = dir.join(format!("{stamp}.{status}"));
     fs::copy(
         &capture.stdout,

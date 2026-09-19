@@ -1,7 +1,9 @@
 use fs2::FileExt;
 use std::{
     fs,
+    io::Write,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use crate::{Result, model::State};
@@ -45,10 +47,90 @@ pub(crate) fn load_state(r: &Path) -> Result<State> {
     serde_json::from_str(&fs::read_to_string(p).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())
 }
+
+pub(crate) fn cleanup_recovery_files(r: &Path) -> Result<()> {
+    let directory = r.join(".need");
+    let Ok(entries) = fs::read_dir(&directory) else {
+        return Ok(());
+    };
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("state.json.") && name.ends_with(".tmp") {
+            fs::remove_file(path).map_err(|e| e.to_string())?;
+        }
+    }
+    let capture_dir = directory.join("tmp");
+    if capture_dir.is_dir() {
+        for entry in fs::read_dir(capture_dir).map_err(|e| e.to_string())? {
+            fs::remove_dir_all(entry.map_err(|e| e.to_string())?.path())
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+static NEXT_STATE_ID: AtomicU64 = AtomicU64::new(0);
+
 pub(crate) fn save_state(r: &Path, s: &State) -> Result<()> {
     let p = state_path(r);
     fs::create_dir_all(p.parent().unwrap()).map_err(|e| e.to_string())?;
-    let t = p.with_extension("tmp");
-    fs::write(&t, serde_json::to_string_pretty(s).unwrap()).map_err(|e| e.to_string())?;
+    let t = p.with_file_name(format!(
+        "state.json.{}-{}.tmp",
+        std::process::id(),
+        NEXT_STATE_ID.fetch_add(1, Ordering::Relaxed)
+    ));
+    let mut file = fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&t)
+        .map_err(|e| e.to_string())?;
+    file.write_all(serde_json::to_string_pretty(s).unwrap().as_bytes())
+        .map_err(|e| e.to_string())?;
+    file.sync_all().map_err(|e| e.to_string())?;
+    drop(file);
     fs::rename(t, p).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_root() -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("need-state-{suffix}"));
+        fs::create_dir_all(root.join(".need/tmp/abandoned")).unwrap();
+        root
+    }
+
+    #[test]
+    fn state_save_replaces_atomically_and_cleans_abandoned_files() {
+        let root = temp_root();
+        let state = State::default();
+        save_state(&root, &state).unwrap();
+        fs::write(root.join(".need/state.json.abandoned.tmp"), b"{").unwrap();
+        fs::write(root.join(".need/tmp/abandoned/stdout"), b"partial").unwrap();
+
+        cleanup_recovery_files(&root).unwrap();
+        assert!(!root.join(".need/state.json.abandoned.tmp").exists());
+        assert!(!root.join(".need/tmp/abandoned").exists());
+        assert_eq!(
+            serde_json::to_string(&load_state(&root).unwrap()).unwrap(),
+            serde_json::to_string(&state).unwrap()
+        );
+        assert!(fs::read_dir(root.join(".need")).unwrap().all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .ends_with(".tmp")
+        }));
+        fs::remove_dir_all(root).unwrap();
+    }
 }
