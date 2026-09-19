@@ -277,9 +277,14 @@ pub(crate) fn build_inner(
             )
         })
         .collect::<Vec<_>>();
+    let mods = rule
+        .options
+        .outputs
+        .as_ref()
+        .map(|path| format!("@outputs({path})"))
+        .unwrap_or_default();
     let sig = hash_text(&format!(
-        "recipe={recipe}\noutputs={:?}\ndeps={dep_sig:?}\nenv={env_sig:?}",
-        rule.options.outputs
+        "recipe={recipe}\nmods={mods}\ndeps={dep_sig:?}\nenv={env_sig:?}"
     ));
     let manifest = rule.options.outputs.clone();
     let saved = c.session.state.rules.get(&key).cloned();

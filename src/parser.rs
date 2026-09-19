@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     Result,
-    model::{ParsedDependency, ParsedRule, ParsedRuleOptions},
+    model::{Dependency, ParsedDependency, ParsedRule, ParsedRuleOptions},
 };
 
 pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Vec<ParsedRule>)> {
@@ -174,6 +174,22 @@ pub(crate) fn parse_dependency(raw: &str) -> Result<ParsedDependency> {
         }
     }
     Ok(ParsedDependency::File(raw))
+}
+
+pub(crate) fn parse_expanded_dependency(raw: &str) -> Result<Dependency> {
+    let raw = unquote(raw);
+    for (prefix, constructor) in [
+        ("file(", Dependency::File as fn(String) -> Dependency),
+        ("tree(", Dependency::Tree as fn(String) -> Dependency),
+        ("mtime(", Dependency::Mtime as fn(String) -> Dependency),
+        ("env(", Dependency::Env as fn(String) -> Dependency),
+        ("string(", Dependency::String as fn(String) -> Dependency),
+    ] {
+        if let Some(value) = raw.strip_prefix(prefix).and_then(|x| x.strip_suffix(')')) {
+            return Ok(constructor(unquote(value)));
+        }
+    }
+    Ok(Dependency::File(raw))
 }
 
 fn parse_dependency_template(raw: &str) -> Result<ParsedDependency> {

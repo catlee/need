@@ -131,16 +131,9 @@ fn expand_dependencies(
     dependencies
         .iter()
         .map(|dependency| match dependency {
-            ParsedDependency::Deferred(expression) => {
-                match parse_dependency(&expand(expression, vars, env_values))? {
-                    ParsedDependency::Deferred(_) => unreachable!(),
-                    ParsedDependency::File(x) => Ok(Dependency::File(x)),
-                    ParsedDependency::Tree(x) => Ok(Dependency::Tree(x)),
-                    ParsedDependency::Mtime(x) => Ok(Dependency::Mtime(x)),
-                    ParsedDependency::Env(x) => Ok(Dependency::Env(x)),
-                    ParsedDependency::String(x) => Ok(Dependency::String(x)),
-                }
-            }
+            ParsedDependency::Deferred(expression) => Ok(parse_expanded_dependency(&expand(
+                expression, vars, env_values,
+            ))?),
             ParsedDependency::File(x) => Ok(Dependency::File(expand(x, vars, env_values))),
             ParsedDependency::Tree(x) => Ok(Dependency::Tree(expand(x, vars, env_values))),
             ParsedDependency::Mtime(x) => Ok(Dependency::Mtime(expand(x, vars, env_values))),
@@ -562,6 +555,25 @@ mod tests {
             &root,
             "out.txt: input.txt\n  @output(silent)\n  printf '%s\\n' run >> runs.txt\n  cp {{in}} {{out}}\n",
         );
+        second.session.state = load_state(&root).unwrap();
+        build(&mut second, "out.txt", None).unwrap();
+
+        assert_eq!(fs::read_to_string(root.join("runs.txt")).unwrap(), "run\n");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rules_without_modifiers_keep_the_legacy_signature() {
+        let root = temp_project("legacy-signature");
+        fs::write(root.join("input.txt"), "input\n").unwrap();
+        let needfile =
+            "out.txt: input.txt\n  printf '%s\\n' run >> runs.txt\n  cp {{in}} {{out}}\n";
+
+        let mut first = context(&root, needfile);
+        build(&mut first, "out.txt", None).unwrap();
+        save_state(&root, &first.session.state).unwrap();
+
+        let mut second = context(&root, needfile);
         second.session.state = load_state(&root).unwrap();
         build(&mut second, "out.txt", None).unwrap();
 
