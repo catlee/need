@@ -2,7 +2,7 @@
 
 This is the reference for writing a `needfile`. A `needfile` describes how files are produced. It does not define commands such as `test`, `clean`, or `deploy`; use a task runner such as `just` for those.
 
-`need` searches from the current directory upwards for a file named `needfile`. Paths in the file are relative to the directory containing that file.
+`need` searches from the current directory upwards for a file named `needfile`. Paths in the file are relative to the directory containing that file. Use `need --file PATH` to select a specific needfile; a relative option path is resolved from the invocation directory.
 
 ## A first rule
 
@@ -288,6 +288,8 @@ need TARGET...               # build several targets
 need -j8 TARGET              # build independent work in parallel
 need -j TARGET               # build with unlimited parallelism
 need --dry-run TARGET        # show recipes without running them
+need -n TARGET               # short alias for --dry-run
+need --file PATH TARGET      # use a specific needfile
 need --explain TARGET        # show whether targets are current or stale
 need --force TARGET          # rebuild the target
 need --list                  # list declared outputs
@@ -303,4 +305,3 @@ The larger design in [the specification](need-spec.md) includes features that ar
 * dynamic output manifests;
 * compiler depfiles;
 * re-evaluating globs after upstream rules create or remove files;
-* some planned CLI options, including `--file` and `-n`.

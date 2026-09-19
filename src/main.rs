@@ -28,19 +28,23 @@ fn run() -> Result<()> {
         return Ok(());
     }
     let force = take_flag(&mut args, "--force");
-    let dry = take_flag(&mut args, "--dry-run");
+    let dry = take_flag(&mut args, "--dry-run") || take_flag(&mut args, "-n");
     let explain = take_flag(&mut args, "--explain");
     let list = take_flag(&mut args, "--list");
     let cargo = take_flag(&mut args, "--cargo");
     let cli_output = take_value(&mut args, "--output")?;
+    let explicit_file = take_value(&mut args, "--file")?;
     let jobs = take_jobs(&mut args)?;
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "usage: need [--version] [--force] [--dry-run] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]"
+            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]"
         );
         return Ok(());
     }
-    let file = find_needfile(env::current_dir().map_err(|e| e.to_string())?)?;
+    let file = select_needfile(
+        env::current_dir().map_err(|e| e.to_string())?,
+        explicit_file,
+    )?;
     let root = file.parent().unwrap().to_path_buf();
     let (vars, rules) = parse_needfile(&file)?;
     let dotenv = load_dotenv(&vars, &root)?;
@@ -1505,5 +1509,32 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
         assert_eq!(take_jobs(&mut args).unwrap(), usize::MAX);
         let mut args = vec!["-j0".into()];
         assert!(take_jobs(&mut args).is_err());
+    }
+
+    #[test]
+    fn parses_cli_aliases_and_explicit_needfile_paths() {
+        let mut args = vec![
+            "-n".into(),
+            "--file".into(),
+            "build/needfile".into(),
+            "app".into(),
+        ];
+        assert!(take_flag(&mut args, "-n"));
+        let file = take_value(&mut args, "--file").unwrap();
+        assert_eq!(file.as_deref(), Some("build/needfile"));
+        assert_eq!(args, vec!["app"]);
+
+        let selected = select_needfile(PathBuf::from("/project"), file).unwrap();
+        assert_eq!(selected, PathBuf::from("/project/build/needfile"));
+    }
+
+    #[test]
+    fn absent_explicit_needfile_preserves_upward_discovery() {
+        let root = temp_project("cli-discovery");
+        fs::create_dir(root.join("nested")).unwrap();
+        fs::write(root.join("needfile"), "out.txt:\n  touch {{out}}\n").unwrap();
+        let selected = select_needfile(root.join("nested"), None).unwrap();
+        assert_eq!(selected, root.join("needfile"));
+        fs::remove_dir_all(root).unwrap();
     }
 }

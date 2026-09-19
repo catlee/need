@@ -43,6 +43,7 @@ core artifact graph, including:
 - dry-run, explain, list, force, parallel jobs for dependencies and multiple
   command-line targets, and configurable output modes
 - `--version` and `--help` command-line queries
+- `-n` as an alias for `--dry-run` and `--file PATH` for explicit needfile selection
 - Cargo metadata mode with transitive source and environment dependencies
 - dependency-cycle detection
 - cross-process advisory locking for build state and output groups
@@ -56,7 +57,6 @@ The following specified features are not implemented yet:
   dependency discovery for C/C++ and similar tools.
 - **Glob re-evaluation** (Section 10.1): re-expanding globs after upstream rules
   create or remove matching files.
-- **Complete CLI surface** (Section 46): `--file` and `-n`.
 - **Detailed explain reasons** (Section 34): reporting the specific changed
   dependency, recipe, or output that made a rule stale.
 - **Interruption and recovery handling** (Section 30): signal-aware cleanup and
@@ -178,6 +178,12 @@ needfile
 The filename is intentionally lowercase.
 
 `need` SHOULD search upward from the current working directory until it finds a `needfile`, similar to tools such as `git` and `just`.
+
+The `--file PATH` option selects a specific needfile. Relative `PATH` values
+are resolved from the invocation working directory, not from a discovered
+needfile or its parent. Once selected, all paths in the needfile and recipe
+working-directory behavior remain relative to the directory containing that
+needfile.
 
 ---
 
@@ -1979,7 +1985,7 @@ This separation keeps artifact relationships in `need` and emulator/container/in
 
 ---
 
-## 46. Proposed CLI
+## 46. CLI
 
 Core:
 
@@ -1995,10 +2001,10 @@ need build/app
 need build/logo.png build/banner.png
 ```
 
-Proposed options:
+Options:
 
 ```text
--f, --file PATH       use a specific needfile
+    --file PATH        use a specific needfile
 -j [N], --jobs N       maximum parallel jobs; bare -j means unlimited
 -n, --dry-run         show what would run
     --explain         explain freshness decisions

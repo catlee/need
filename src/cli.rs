@@ -5,11 +5,11 @@ use crate::Result;
 pub(crate) fn take_value(args: &mut Vec<String>, name: &str) -> Result<Option<String>> {
     if let Some(i) = args.iter().position(|x| x == name) {
         args.remove(i);
-        return args
-            .get(i)
-            .cloned()
-            .map(Some)
-            .ok_or_else(|| format!("{name} requires a value"));
+        return if i < args.len() {
+            Ok(Some(args.remove(i)))
+        } else {
+            Err(format!("{name} requires a value"))
+        };
     }
     let prefix = format!("{name}=");
     if let Some(i) = args.iter().position(|x| x.starts_with(&prefix)) {
@@ -77,5 +77,22 @@ pub(crate) fn find_needfile(mut d: PathBuf) -> Result<PathBuf> {
         if !d.pop() {
             return Err("no needfile found".into());
         }
+    }
+}
+
+pub(crate) fn select_needfile(
+    invocation_dir: PathBuf,
+    explicit: Option<String>,
+) -> Result<PathBuf> {
+    match explicit {
+        Some(path) => {
+            let path = PathBuf::from(path);
+            Ok(if path.is_absolute() {
+                path
+            } else {
+                invocation_dir.join(path)
+            })
+        }
+        None => find_needfile(invocation_dir),
     }
 }

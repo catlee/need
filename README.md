@@ -99,6 +99,11 @@ need build/app
 
 `need` searches upward for `needfile`, so it can be run from a project subdirectory. If the target is already current, the recipe is skipped.
 
+Use `need --file PATH` to select a specific needfile. Relative paths are
+resolved from the directory where `need` is invoked; paths inside that
+needfile remain relative to its directory. Use `-n` as the short alias for
+`--dry-run`.
+
 See the [complete `needfile` format reference](docs/needfile.md) for rules,
 variables, dependency types, interpolation, and output modes.
 
@@ -153,6 +158,8 @@ need --version
 need                         # build the first concrete target
 need build/app               # build a target
 need --dry-run build/app     # show what would run
+need -n build/app            # short alias for --dry-run
+need --file path/to/needfile build/app  # select an explicit needfile
 need --explain build/app     # explain current and stale targets
 need --force build/app       # rebuild the target, not its current dependencies
 need --list                  # list declared targets
