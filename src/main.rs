@@ -782,6 +782,60 @@ mod tests {
     }
 
     #[test]
+    fn reevaluates_glob_after_an_earlier_dynamic_output_rule() {
+        let root = temp_project("glob-reevaluation-clean");
+        fs::write(root.join("source"), "source\n").unwrap();
+        let needfile = r#"generated.txt: source
+  @outputs(.need/outputs)
+  mkdir -p generated
+  printf generated > generated/item
+  printf 'generated/item\n' > .need/outputs
+  cp {{in}} {{out}}
+final: generated.txt generated/*
+  printf '%s\n' {{in}} > {{out}}
+"#;
+        let mut ctx = context(&root, needfile);
+
+        build(&mut ctx, "final", None).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join("final")).unwrap(),
+            "generated.txt\ngenerated/item\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn reevaluated_glob_drops_removed_dynamic_outputs() {
+        let root = temp_project("glob-reevaluation-removed");
+        fs::write(root.join("mode"), "both\n").unwrap();
+        let needfile = r#"generated.txt: mode
+  @outputs(.need/outputs)
+  mkdir -p generated
+  printf generated > generated/item
+  if [ "$(cat mode)" = both ]; then printf extra > generated/extra; printf 'generated/item\ngenerated/extra\n' > .need/outputs; else printf 'generated/item\n' > .need/outputs; fi
+  cp {{in}} {{out}}
+final: generated.txt generated/*
+  printf '%s\n' {{in}} > {{out}}
+"#;
+        let mut first = context(&root, needfile);
+        build(&mut first, "final", None).unwrap();
+        save_state(&root, &first.state).unwrap();
+
+        fs::write(root.join("mode"), "one\n").unwrap();
+        let mut second = context(&root, needfile);
+        second.state = load_state(&root).unwrap();
+        build(&mut second, "final", None).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join("final")).unwrap(),
+            "generated.txt\ngenerated/item\n"
+        );
+        assert!(!root.join("generated/extra").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn expands_variables_before_validating_output_modifier() {
         let root = temp_project("modifier-variable");
         let path = root.join("needfile");

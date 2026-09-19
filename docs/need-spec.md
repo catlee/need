@@ -49,13 +49,12 @@ core artifact graph, including:
 - cross-process advisory locking for build state and output groups
 - dynamic output manifests, including validation, ownership, freshness, and
   cleanup of files removed from a manifest
+- glob re-evaluation after upstream rules create or remove matching files
 
 The following specified features are not implemented yet:
 
 - **Depfiles** (Section 12, `@depfile(...)`, and Section 44): compiler-generated
   dependency discovery for C/C++ and similar tools.
-- **Glob re-evaluation** (Section 10.1): re-expanding globs after upstream rules
-  create or remove matching files.
 - **Detailed explain reasons** (Section 34): reporting the specific changed
   dependency, recipe, or output that made a rule stale.
 - **Interruption and recovery handling** (Section 30): signal-aware cleanup and
@@ -1309,6 +1308,11 @@ Expansion and dependency resolution follow a deterministic order:
 14. Validate outputs
 15. Record output signatures and commit successful state
 ```
+
+For a rule with a dependency glob, dependency resolution and building preserve
+declared order. Each glob is expanded when reached, after earlier dependencies
+have completed, so its inputs and freshness signature use the final membership
+for that build.
 
 Variable expansion MUST be deterministic and must not recursively re-parse
 arbitrary generated syntax. In particular, a variable or environment value

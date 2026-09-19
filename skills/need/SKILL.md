@@ -75,4 +75,6 @@ not timestamps alone, to decide whether a rule is current.
 For dynamic secondary outputs, `@outputs(PATH)` names a UTF-8 manifest written
 by the recipe. List one project-relative path per line; `need` validates, tracks,
 and cleans up files omitted from a later successful manifest. `{{out}}` still
-contains only the rule's static outputs.
+contains only the rule's static outputs. Dependency globs are expanded in
+declared order after earlier dependencies finish, so newly created or removed
+dynamic outputs are reflected in later glob inputs.

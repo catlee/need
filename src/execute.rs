@@ -115,35 +115,46 @@ pub(crate) fn build_inner(
     let rule = c.rules[ri].clone();
     c.cargo_env.extend(rule.env_refs.iter().cloned());
     let key = outputs.join("\0");
-    let mut deps = Vec::new();
+    let mut resolved_deps = Vec::new();
+    let mut has_glob = false;
     for dependency in &rule.deps {
         let d = resolve_dependency(dependency, rule.pattern, stem.as_deref())?;
-        let mut resolved = vec![d];
-        if let Dependency::File(path) = &resolved[0]
-            && is_glob(path)
-        {
-            resolved = expand_glob(c, path)?
-                .into_iter()
-                .map(Dependency::File)
-                .collect();
+        if let Dependency::File(path) = &d {
+            has_glob |= is_glob(path);
         }
-        for d in resolved {
-            deps.push(d);
-        }
+        resolved_deps.push(d);
     }
+    let mut deps = if has_glob {
+        resolved_deps
+    } else {
+        let mut deps = Vec::new();
+        for dependency in resolved_deps {
+            if let Dependency::File(path) = &dependency
+                && is_glob(path)
+            {
+                deps.extend(expand_glob(c, path)?.into_iter().map(Dependency::File));
+            } else {
+                deps.push(dependency);
+            }
+        }
+        deps
+    };
     let mut seen_deps = HashSet::new();
     deps.retain(|d| seen_deps.insert(d.clone()));
+    seen_deps.clear();
     let mut inputs = Vec::new();
     let mut dep_sig = Vec::new();
     let mut parallel_candidates = Vec::new();
-    for dependency in &deps {
-        if let Dependency::File(path) = dependency
-            && is_leaf_rule(c, path)?
-        {
-            parallel_candidates.push(dependency.clone());
+    if !has_glob {
+        for dependency in &deps {
+            if let Dependency::File(path) = dependency
+                && is_leaf_rule(c, path)?
+            {
+                parallel_candidates.push(dependency.clone());
+            }
         }
     }
-    let parallel = c.jobs > 1 && parallel_candidates.len() > 1;
+    let parallel = !has_glob && c.jobs > 1 && parallel_candidates.len() > 1;
     let parallel_targets: HashSet<String> = parallel_candidates
         .iter()
         .filter_map(|d| match d {
@@ -199,38 +210,55 @@ pub(crate) fn build_inner(
         }
     }
     for dependency in deps {
-        let (path, should_build, should_input) = match &dependency {
-            Dependency::Deferred(_) => {
-                unreachable!("dependency expressions must be expanded first")
-            }
-            Dependency::File(path) => (Some(path.as_str()), true, true),
-            Dependency::Tree(path) | Dependency::Mtime(path) => (Some(path.as_str()), false, false),
-            Dependency::Env(_) | Dependency::String(_) => (None, false, false),
+        let resolved = if let Dependency::File(path) = &dependency
+            && is_glob(path)
+        {
+            expand_glob(c, path)?
+                .into_iter()
+                .map(Dependency::File)
+                .collect()
+        } else {
+            vec![dependency]
         };
-        if let Some(path) = path {
-            if should_build {
-                let generated = select_rule(c, path)
-                    .map(|(ri, _, _)| ri != usize::MAX)
-                    .unwrap_or(false);
-                if !parallel || !parallel_targets.contains(path) {
-                    build(c, path, None).map_err(|e| required_by(e, target))?;
+        for dependency in resolved {
+            if !seen_deps.insert(dependency.clone()) {
+                continue;
+            }
+            let (path, should_build, should_input) = match &dependency {
+                Dependency::Deferred(_) => {
+                    unreachable!("dependency expressions must be expanded first")
                 }
-                if !generated {
+                Dependency::File(path) => (Some(path.as_str()), true, true),
+                Dependency::Tree(path) | Dependency::Mtime(path) => {
+                    (Some(path.as_str()), false, false)
+                }
+                Dependency::Env(_) | Dependency::String(_) => (None, false, false),
+            };
+            if let Some(path) = path {
+                if should_build {
+                    let generated = select_rule(c, path)
+                        .map(|(ri, _, _)| ri != usize::MAX)
+                        .unwrap_or(false);
+                    if !parallel || !parallel_targets.contains(path) {
+                        build(c, path, None).map_err(|e| required_by(e, target))?;
+                    }
+                    if !generated {
+                        record_cargo_dependency(c, &dependency);
+                    }
+                    if should_input {
+                        inputs.push(path.to_string());
+                    }
+                } else {
                     record_cargo_dependency(c, &dependency);
-                }
-                if should_input {
-                    inputs.push(path.to_string());
                 }
             } else {
                 record_cargo_dependency(c, &dependency);
             }
-        } else {
-            record_cargo_dependency(c, &dependency);
+            dep_sig.push(format!(
+                "{dependency:?}={}",
+                dependency_signature(c, &dependency)?
+            ));
         }
-        dep_sig.push(format!(
-            "{dependency:?}={}",
-            dependency_signature(c, &dependency)?
-        ));
     }
     let recipe = expand(&rule.recipe, &c.vars, &c.env_values);
     let mods = rule
