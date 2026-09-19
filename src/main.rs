@@ -153,7 +153,7 @@ fn resolve_rules(
             outputs: parsed.outputs.clone(),
             deps: expand_dependencies(&parsed.deps, vars, env_values)?,
             recipe: parsed.recipe.clone(),
-            modifiers: parsed.modifiers.clone(),
+            options: RuleOptions::default(),
             pattern: false,
             env_refs: BTreeSet::new(),
         };
@@ -161,7 +161,8 @@ fn resolve_rules(
             .outputs
             .iter()
             .chain(std::iter::once(&rule.recipe))
-            .chain(&rule.modifiers)
+            .chain(parsed.options.output.iter())
+            .chain(parsed.options.outputs.iter())
         {
             collect_env_refs(value, raw_vars, &mut rule.env_refs);
         }
@@ -173,11 +174,17 @@ fn resolve_rules(
             .iter()
             .map(|x| expand(x, vars, env_values))
             .collect();
-        rule.modifiers = rule
-            .modifiers
-            .iter()
-            .map(|x| expand(x, vars, env_values))
-            .collect();
+        if let Some(value) = parsed.options.output.as_deref().map(|x| expand(x, vars, env_values)) {
+            rule.options.output = Some(OutputMode::parse(&value).map_err(|_| {
+                format!("invalid output mode in rule modifier @output({value})")
+            })?);
+        }
+        if let Some(value) = parsed.options.outputs.as_deref().map(|x| expand(x, vars, env_values)) {
+            if value.is_empty() {
+                return Err("output manifest path is empty in rule modifier @outputs()".into());
+            }
+            rule.options.outputs = Some(norm_rel(&value)?);
+        }
         if rule
             .outputs
             .iter()
@@ -190,9 +197,6 @@ fn resolve_rules(
             .any(|value| value.matches('%').count() > 1)
         {
             return Err("only one % is supported per pattern".into());
-        }
-        for modifier in &rule.modifiers {
-            validate_modifier(modifier)?;
         }
         rule.pattern = rule.outputs.iter().any(|x| x.contains('%'));
         rules.push(rule);
@@ -244,7 +248,6 @@ mod tests {
                 .outputs
                 .iter()
                 .chain(std::iter::once(&rule.recipe))
-                .chain(&rule.modifiers)
             {
                 collect_env_refs(value, &raw_vars, &mut rule.env_refs);
             }
@@ -403,7 +406,7 @@ mod tests {
                 ParsedDependency::File("config.txt".into())
             ]
         );
-        assert_eq!(rules[0].modifiers, vec!["@output(grouped)"]);
+        assert_eq!(rules[0].options.output.as_deref(), Some("grouped"));
         assert!(rules[0].recipe.contains("{{in[0]}}"));
         fs::remove_dir_all(root).unwrap();
     }
@@ -545,19 +548,19 @@ mod tests {
     }
 
     #[test]
-    fn semantic_modifiers_remain_in_the_rule_signature() {
+    fn changing_output_manifest_modifier_rebuilds() {
         let root = temp_project("semantic-modifier-signature");
         fs::write(root.join("input.txt"), "input\n").unwrap();
         let needfile =
-            "out.txt: input.txt\n  printf '%s\\n' run >> runs.txt\n  cp {{in}} {{out}}\n";
+            "out.txt: input.txt\n  printf '%s\\n' run >> runs.txt\n  cp {{in}} {{out}}\n  touch extra.txt\n  printf 'extra.txt\\n' > manifest-one\n  printf 'extra.txt\\n' > manifest-two\n";
 
         let mut first = context(&root, needfile);
-        first.rules[0].modifiers.push("@semantic(one)".into());
+        first.rules[0].options.outputs = Some("manifest-one".into());
         build(&mut first, "out.txt", None).unwrap();
         save_state(&root, &first.state).unwrap();
 
         let mut second = context(&root, needfile);
-        second.rules[0].modifiers.push("@semantic(two)".into());
+        second.rules[0].options.outputs = Some("manifest-two".into());
         second.state = load_state(&root).unwrap();
         build(&mut second, "out.txt", None).unwrap();
 
@@ -766,8 +769,9 @@ mod tests {
             "out.txt: input.txt\n  @output(nope)\n  touch {{out}}\n",
         )
         .unwrap();
-        let (_, rules) = parse_needfile(&path).unwrap();
-        let error = validate_modifier(&rules[0].modifiers[0]).unwrap_err();
+        let (raw_vars, rules) = parse_needfile(&path).unwrap();
+        let vars = resolve_variables(&raw_vars, &HashMap::new()).unwrap();
+        let error = resolve_rules(&rules, &vars, &HashMap::new(), &raw_vars).unwrap_err();
         assert_eq!(error, "invalid output mode in rule modifier @output(nope)");
         fs::remove_dir_all(root).unwrap();
     }
@@ -870,16 +874,17 @@ final: generated.txt generated/*
         .unwrap();
         let (raw_vars, rules) = parse_needfile(&path).unwrap();
         let vars = resolve_variables(&raw_vars, &HashMap::new()).unwrap();
-        let modifier = expand(&rules[0].modifiers[0], &vars, &HashMap::new());
-        assert_eq!(modifier, "@output(grouped)");
-        validate_modifier(&modifier).unwrap();
-        let invalid = expand(
-            &rules[0].modifiers[0],
+        let resolved = resolve_rules(&rules, &vars, &HashMap::new(), &raw_vars).unwrap();
+        assert_eq!(resolved[0].options.output, Some(OutputMode::Grouped));
+        let invalid = resolve_rules(
+            &rules,
             &HashMap::from([(String::from("mode"), String::from("nope"))]),
             &HashMap::new(),
-        );
+            &raw_vars,
+        )
+        .unwrap_err();
         assert_eq!(
-            validate_modifier(&invalid).unwrap_err(),
+            invalid,
             "invalid output mode in rule modifier @output(nope)"
         );
         fs::remove_dir_all(root).unwrap();

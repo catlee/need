@@ -11,7 +11,7 @@ pub(crate) struct Rule {
     pub(crate) outputs: Vec<String>,
     pub(crate) deps: Vec<Dependency>,
     pub(crate) recipe: String,
-    pub(crate) modifiers: Vec<String>,
+    pub(crate) options: RuleOptions,
     pub(crate) pattern: bool,
     pub(crate) env_refs: BTreeSet<String>,
 }
@@ -21,7 +21,19 @@ pub(crate) struct ParsedRule {
     pub(crate) outputs: Vec<String>,
     pub(crate) deps: Vec<ParsedDependency>,
     pub(crate) recipe: String,
-    pub(crate) modifiers: Vec<String>,
+    pub(crate) options: ParsedRuleOptions,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ParsedRuleOptions {
+    pub(crate) output: Option<String>,
+    pub(crate) outputs: Option<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct RuleOptions {
+    pub(crate) output: Option<OutputMode>,
+    pub(crate) outputs: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]

@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     Result,
-    model::{ParsedDependency, ParsedRule, OutputMode},
+    model::{ParsedDependency, ParsedRule, ParsedRuleOptions},
 };
 
 pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Vec<ParsedRule>)> {
@@ -105,7 +105,7 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
             .min()
             .unwrap_or(0);
         let mut recipe: Vec<String> = Vec::new();
-        let mut modifiers = Vec::new();
+        let mut options = ParsedRuleOptions::default();
         for l in body {
             let l = if l.len() >= base_indent {
                 &l[base_indent..]
@@ -113,8 +113,7 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
                 ""
             };
             if l.starts_with('@') {
-                parse_modifier_value(l)?;
-                modifiers.push(l.into())
+                parse_rule_option(l, &mut options)?;
             } else if !l.is_empty() && !l.starts_with('#') {
                 recipe.push(l.into())
             }
@@ -128,7 +127,7 @@ pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Ve
             outputs: outputs.into_iter().map(|x| unquote(&x)).collect(),
             deps,
             recipe: recipe.join("\n"),
-            modifiers,
+            options,
         });
     }
     Ok((vars, rules))
@@ -183,19 +182,25 @@ pub(crate) fn parse_modifier_value(modifier: &str) -> Result<&str> {
     Err(format!("unsupported rule modifier {modifier}"))
 }
 
-pub(crate) fn validate_modifier(modifier: &str) -> Result<()> {
+fn parse_rule_option(modifier: &str, options: &mut ParsedRuleOptions) -> Result<()> {
     let value = parse_modifier_value(modifier)?;
-    if modifier.starts_with("@output(") {
-        OutputMode::parse(value)
-            .map(|_| ())
-            .map_err(|_| format!("invalid output mode in rule modifier {modifier}"))
+    if let Some(value) = modifier
+        .strip_prefix("@output(")
+        .and_then(|x| x.strip_suffix(')'))
+    {
+        if options.output.is_none() {
+            options.output = Some(value.into());
+        }
     } else if value.is_empty() {
-        Err(format!(
+        return Err(format!(
             "output manifest path is empty in rule modifier {modifier}"
-        ))
+        ));
+    } else if options.outputs.is_some() {
+        return Err("a rule may declare only one @outputs(...) modifier".into());
     } else {
-        Ok(())
+        options.outputs = Some(value.into());
     }
+    Ok(())
 }
 
 #[derive(Default)]

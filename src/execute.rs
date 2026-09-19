@@ -15,7 +15,7 @@ use crate::{
     Result,
     hash::{hash_file, hash_symlink, hash_text, walk},
     model::{
-        BuildCtx, Dependency, OutputMode, Rule, RuleId, SavedManifest, SavedRule, TargetMatch,
+        BuildCtx, Dependency, OutputMode, RuleId, SavedManifest, SavedRule, TargetMatch,
     },
     parser::{expand, norm_rel},
 };
@@ -269,13 +269,6 @@ pub(crate) fn build_inner(
         }
     }
     let recipe = expand(&rule.recipe, &c.vars, &c.env_values);
-    let mods = rule
-        .modifiers
-        .iter()
-        .filter(|modifier| !modifier.starts_with("@output("))
-        .map(|modifier| expand(modifier, &c.vars, &c.env_values))
-        .collect::<Vec<_>>()
-        .join("\n");
     let env_sig = rule
         .env_refs
         .iter()
@@ -287,9 +280,10 @@ pub(crate) fn build_inner(
         })
         .collect::<Vec<_>>();
     let sig = hash_text(&format!(
-        "recipe={recipe}\nmods={mods}\ndeps={dep_sig:?}\nenv={env_sig:?}"
+        "recipe={recipe}\noutputs={:?}\ndeps={dep_sig:?}\nenv={env_sig:?}",
+        rule.options.outputs
     ));
-    let manifest = output_manifest(&rule)?;
+    let manifest = rule.options.outputs.clone();
     let saved = c.state.rules.get(&key).cloned();
     let mut stale = force || saved.as_ref().is_none_or(|x| x.signature != sig);
     let mut outsig = BTreeMap::new();
@@ -365,7 +359,7 @@ pub(crate) fn build_inner(
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     status_line(c, "need", &key, "\x1b[33m");
-    let mode = rule_output(&rule).unwrap_or(c.output);
+    let mode = rule.options.output.unwrap_or(c.output);
     run_recipe(c, &key, &rendered, mode)?;
     for o in &outputs {
         if !abs(c, o).is_file() {
@@ -416,19 +410,6 @@ pub(crate) fn build_inner(
     c.built.extend(outputs.iter().cloned());
     c.built.extend(dynamic);
     Ok(())
-}
-
-fn output_manifest(rule: &Rule) -> Result<Option<String>> {
-    let mut manifests = rule.modifiers.iter().filter_map(|modifier| {
-        modifier
-            .strip_prefix("@outputs(")
-            .and_then(|path| path.strip_suffix(')'))
-    });
-    let manifest = manifests.next().map(norm_rel).transpose()?;
-    if manifests.next().is_some() {
-        return Err("a rule may declare only one @outputs(...) modifier".into());
-    }
-    Ok(manifest)
 }
 
 fn read_output_manifest(c: &BuildCtx, path: &str) -> Result<Vec<String>> {
@@ -494,13 +475,6 @@ pub(crate) fn required_by(error: String, target: &str) -> String {
     } else {
         format!("{error}\nrequired by {target}")
     }
-}
-
-pub(crate) fn rule_output(rule: &Rule) -> Option<OutputMode> {
-    rule.modifiers.iter().find_map(|modifier| {
-        let value = modifier.strip_prefix("@output(")?.strip_suffix(')')?;
-        OutputMode::parse(value).ok()
-    })
 }
 
 static OUTPUT_LOCK: Mutex<()> = Mutex::new(());
