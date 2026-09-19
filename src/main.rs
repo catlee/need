@@ -418,6 +418,37 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_legacy_state_paths_when_loading() {
+        let root = temp_project("legacy-state-paths");
+        fs::create_dir_all(root.join(".need")).unwrap();
+        fs::write(
+            root.join(".need/state.json"),
+            r#"{
+                "rules": {
+                    "out.txt": {
+                        "signature": "signature",
+                        "outputs": {"generated/../output.txt": "hash"},
+                        "dynamic": ["generated/../output.txt"],
+                        "manifest": {
+                            "path": "generated/../output.txt",
+                            "hash": "manifest-hash"
+                        }
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let state = load_state(&root).unwrap();
+        let rule = &state.rules["out.txt"];
+        assert_eq!(rule.outputs.keys().next().unwrap().as_str(), "output.txt");
+        assert_eq!(rule.dynamic[0].as_str(), "output.txt");
+        assert_eq!(rule.manifest.as_ref().unwrap().path.as_str(), "output.txt");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn parses_variables_continuations_and_modifiers() {
         let root = temp_project("parse");
         let path = root.join("needfile");
