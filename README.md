@@ -63,7 +63,7 @@ The point is not to replace every build tool. It is to make the small, common ar
 From this checkout:
 
 ```sh
-cargo install --path . --root "$HOME/.local"
+just install
 ```
 
 That installs `need` in `~/.local/bin`. Make sure that directory is in your `PATH`.
