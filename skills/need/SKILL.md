@@ -51,6 +51,10 @@ Dependency expressions make freshness explicit:
 ```make
 output.bin: input.dat env(BUILD_MODE)
   tool {{in}} -o {{out}}
+
+build/%.o: src/%.c
+  @depfile(build/{{stem}}.d)
+  cc -MMD -MF build/{{stem}}.d -c {{in}} -o {{out}}
 ```
 
 Use `file(path)`, `tree(path)`, `mtime(path)`, `env(NAME)`, and
@@ -78,3 +82,12 @@ and cleans up files omitted from a later successful manifest. `{{out}}` still
 contains only the rule's static outputs. Dependency globs are expanded in
 declared order after earlier dependencies finish, so newly created or removed
 dynamic outputs are reflected in later glob inputs.
+
+For compiler-generated dependencies, `@depfile(PATH)` reads a Make-style
+depfile after a successful recipe. `PATH` supports variables and `{{stem}}` in
+pattern rules. Discovered file paths persist in `.need/state.json`, affect
+freshness on later builds, and remain out of `{{in}}`; generated discovered
+artifacts still use the normal graph. The supported syntax includes a target
+and colon, whitespace-separated paths, escaped spaces/backslashes, and
+backslash-newline continuations. The modifier must be nonempty and appear only
+once per rule.

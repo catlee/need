@@ -202,7 +202,7 @@ fn parse_dependency_template(raw: &str) -> Result<ParsedDependency> {
 }
 
 pub(crate) fn parse_modifier_value(modifier: &str) -> Result<&str> {
-    for name in ["@output(", "@outputs("] {
+    for name in ["@output(", "@outputs(", "@depfile("] {
         if let Some(value) = modifier
             .strip_prefix(name)
             .and_then(|x| x.strip_suffix(')'))
@@ -223,9 +223,17 @@ fn parse_rule_option(modifier: &str, options: &mut ParsedRuleOptions) -> Result<
             options.output = Some(value.into());
         }
     } else if value.is_empty() {
-        return Err(format!(
-            "output manifest path is empty in rule modifier {modifier}"
-        ));
+        let name = if modifier.starts_with("@depfile(") {
+            "depfile"
+        } else {
+            "output manifest"
+        };
+        return Err(format!("{name} path is empty in rule modifier {modifier}"));
+    } else if modifier.starts_with("@depfile(") {
+        if options.depfile.is_some() {
+            return Err("a rule may declare only one @depfile(...) modifier".into());
+        }
+        options.depfile = Some(value.into());
     } else if options.outputs.is_some() {
         return Err("a rule may declare only one @outputs(...) modifier".into());
     } else {

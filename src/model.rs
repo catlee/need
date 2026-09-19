@@ -70,12 +70,14 @@ pub(crate) struct ParsedRule {
 pub(crate) struct ParsedRuleOptions {
     pub(crate) output: Option<String>,
     pub(crate) outputs: Option<String>,
+    pub(crate) depfile: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct RuleOptions {
     pub(crate) output: Option<OutputMode>,
     pub(crate) outputs: Option<ProjectPath>,
+    pub(crate) depfile: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -136,6 +138,8 @@ pub(crate) struct SavedRule {
     pub(crate) dynamic: Vec<ProjectPath>,
     #[serde(default)]
     pub(crate) manifest: Option<SavedManifest>,
+    #[serde(default)]
+    pub(crate) discovered: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq)]

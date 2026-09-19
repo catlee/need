@@ -50,11 +50,11 @@ core artifact graph, including:
 - dynamic output manifests, including validation, ownership, freshness, and
   cleanup of files removed from a manifest
 - glob re-evaluation after upstream rules create or remove matching files
+- compiler depfiles through `@depfile(...)`, including persisted discovered
+  dependencies and Make-style escaping/continuations
 
 The following specified features are not implemented yet:
 
-- **Depfiles** (Section 12, `@depfile(...)`, and Section 44): compiler-generated
-  dependency discovery for C/C++ and similar tools.
 - **Interruption and recovery handling** (Section 30): signal-aware cleanup and
   recovery metadata for interrupted builds.
 - **Hash scalability improvements** (Sections 17 and 21): metadata-assisted hash
@@ -821,7 +821,23 @@ build/%.o: src/%.c
 
 After successful execution, `need` reads the depfile and records the discovered inputs as additional dependencies of the rule.
 
-The exact depfile format support may initially be limited to commonly generated Make-style depfiles.
+The path is expanded like other rule modifier values. In a pattern rule,
+`{{stem}}` is substituted after the target stem is selected. The recipe's
+`{{in}}` remains the declared input list; discovered dependencies are
+freshness-only inputs. On later invocations, persisted discovered file paths are
+also resolved through the normal artifact graph, so a discovered generated
+artifact is built before its consumer without being added to `{{in}}`.
+
+The supported depfile subset is the commonly generated Make-style form:
+one target followed by `:`, whitespace-separated dependency paths, escaped
+spaces and backslashes, and backslash-newline continuations. Relative paths
+are interpreted from the needfile directory; absolute paths and paths outside
+the project remain valid wherever ordinary file dependency semantics allow
+them.
+
+A successful recipe with `@depfile(...)` MUST produce a readable, well-formed
+depfile. Missing or malformed depfiles are errors naming the depfile path and
+including a `help:` hint. A rule may declare only one nonempty `@depfile(...)`.
 
 ### Modifier Semantics
 
@@ -1605,6 +1621,7 @@ output missing: build/app
 output changed: build/app
 output manifest missing: .need/generated.outputs
 output manifest changed: .need/generated.outputs
+depfile missing: build/foo.d
 ```
 
 The current persisted state stores one combined recipe/dependency signature, so
@@ -1899,19 +1916,9 @@ Parent directories are created automatically.
 
 ## 44. Compiler Dependency Files
 
-C/C++ requires header dependency discovery.
-
-A future version SHOULD support compiler-generated depfiles.
-
-Possible syntax:
-
-```make
-build/%.o: src/%.c
-  depfile build/{{stem}}.d
-  {{cc}} {{cflags}} -MMD -MF build/{{stem}}.d -c {{in}} -o {{out}}
-```
-
-The exact syntax is deferred.
+Compiler-generated depfiles are implemented by Section 12's
+`@depfile(...)` modifier. This section is retained as the C/C++ use-case
+reference; the supported syntax and lifecycle are defined normatively above.
 
 ---
 

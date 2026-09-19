@@ -177,6 +177,7 @@ fn resolve_rules(
             .output
             .iter()
             .chain(parsed.options.outputs.iter())
+            .chain(parsed.options.depfile.iter())
         {
             collect_env_refs(value, raw_vars, &mut rule.env_refs);
         }
@@ -209,6 +210,17 @@ fn resolve_rules(
                 return Err("output manifest path is empty in rule modifier @outputs()".into());
             }
             rule.options.outputs = Some(ProjectPath::new(&value)?);
+        }
+        if let Some(value) = parsed
+            .options
+            .depfile
+            .as_deref()
+            .map(|x| expand(x, vars, env_values))
+        {
+            if value.is_empty() {
+                return Err("depfile path is empty in rule modifier @depfile()".into());
+            }
+            rule.options.depfile = Some(value);
         }
         if rule
             .outputs
@@ -647,6 +659,116 @@ mod tests {
             fs::read_to_string(root.join("runs.txt")).unwrap(),
             "run\nrun\n"
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn static_depfile_discovers_header_without_adding_it_to_recipe_inputs() {
+        let root = temp_project("static-depfile");
+        fs::write(root.join("source.c"), "source\n").unwrap();
+        fs::write(root.join("header.h"), "header\n").unwrap();
+        let needfile = "out.o: source.c\n  @depfile(out.d)\n  printf '%s\\n' '{{in}}' >> inputs.txt\n  printf out > {{out}}\n  printf 'out.o: source.c header.h\\n' > out.d\n";
+
+        let mut first = context(&root, needfile);
+        build(&mut first, "out.o", None).unwrap();
+        save_state(&root, &first.session.state).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("inputs.txt")).unwrap(),
+            "source.c\n"
+        );
+
+        fs::write(root.join("header.h"), "changed\n").unwrap();
+        let mut second = context(&root, needfile);
+        second.session.state = load_state(&root).unwrap();
+        build(&mut second, "out.o", None).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("inputs.txt")).unwrap(),
+            "source.c\nsource.c\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn missing_depfile_fails_after_recipe_with_actionable_error() {
+        let root = temp_project("missing-depfile");
+        let needfile = "out.txt:\n  @depfile(missing.d)\n  printf out > {{out}}\n";
+        let mut ctx = context(&root, needfile);
+        let error = build(&mut ctx, "out.txt", None).unwrap_err().to_string();
+        assert!(error.contains("depfile missing.d"));
+        assert!(error.contains("help:"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn malformed_depfile_fails_after_recipe_with_actionable_error() {
+        let root = temp_project("malformed-depfile");
+        let needfile = "out.txt:\n  @depfile(malformed.d)\n  printf out > {{out}}\n  printf 'not a depfile\\n' > malformed.d\n";
+        let mut ctx = context(&root, needfile);
+        let error = build(&mut ctx, "out.txt", None).unwrap_err().to_string();
+        assert!(error.contains("depfile malformed.d is malformed"));
+        assert!(error.contains("help:"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn parses_make_depfile_escaping_and_continuations() {
+        assert_eq!(
+            parse_depfile_text(
+                "out.o: include/My\\ Header.h \\\n  dir\\\\name.h\n",
+                "build/out.d"
+            )
+            .unwrap(),
+            vec!["include/My Header.h", "dir\\name.h"]
+        );
+    }
+
+    #[test]
+    fn static_depfile_modifier_is_semantic() {
+        let root = temp_project("depfile-signature");
+        fs::write(root.join("input.txt"), "input\n").unwrap();
+        let first_needfile = "out.txt: input.txt\n  @depfile(first.d)\n  printf out > {{out}}\n  printf 'out.txt: input.txt\\n' > first.d\n";
+        let mut first = context(&root, first_needfile);
+        build(&mut first, "out.txt", None).unwrap();
+        save_state(&root, &first.session.state).unwrap();
+        let second_needfile = "out.txt: input.txt\n  @depfile(second.d)\n  printf out > {{out}}\n  printf 'out.txt: input.txt\\n' > second.d\n";
+        let mut second = context(&root, second_needfile);
+        second.session.state = load_state(&root).unwrap();
+        build(&mut second, "out.txt", None).unwrap();
+        assert!(root.join("second.d").is_file());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn pattern_depfile_uses_stem_path() {
+        let root = temp_project("pattern-depfile");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(root.join("src/foo.c"), "source\n").unwrap();
+        fs::write(root.join("header.h"), "header\n").unwrap();
+        let needfile = "build/%.o: src/%.c\n  @depfile(build/{{stem}}.d)\n  printf out > {{out}}\n  printf 'build/{{stem}}.o: src/{{stem}}.c header.h\\n' > build/{{stem}}.d\n";
+        let mut first = context(&root, needfile);
+        build(&mut first, "build/foo.o", None).unwrap();
+        assert!(root.join("build/foo.d").is_file());
+        save_state(&root, &first.session.state).unwrap();
+        fs::write(root.join("header.h"), "changed\n").unwrap();
+        let mut second = context(&root, needfile);
+        second.session.state = load_state(&root).unwrap();
+        build(&mut second, "build/foo.o", None).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_invalid_depfiles_and_duplicate_modifiers() {
+        let error = parse_depfile_text("out.o foo.h\n", "build/out.d").unwrap_err();
+        assert!(error.contains("build/out.d") && error.contains("help:"));
+        let root = temp_project("duplicate-depfile");
+        let path = root.join("needfile");
+        fs::write(
+            &path,
+            "out: input\n  @depfile(one.d)\n  @depfile(two.d)\n  touch {{out}}\n",
+        )
+        .unwrap();
+        let error = parse_needfile(&path).unwrap_err();
+        assert_eq!(error, "a rule may declare only one @depfile(...) modifier");
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -193,6 +193,34 @@ pub(crate) fn build_inner(
         }
         deps
     };
+    let saved = c.session.state.rules.get(&key).cloned();
+    let discovered = saved
+        .as_ref()
+        .map(|saved| {
+            saved
+                .discovered
+                .iter()
+                .cloned()
+                .map(Dependency::File)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let declared_paths = deps
+        .iter()
+        .filter_map(|dependency| match dependency {
+            Dependency::File(path) => Some(path.clone()),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+    let discovered_paths = discovered
+        .iter()
+        .filter_map(|dependency| match dependency {
+            Dependency::File(path) => Some(path.clone()),
+            _ => None,
+        })
+        .filter(|path| !declared_paths.contains(path))
+        .collect::<HashSet<_>>();
+    deps.extend(discovered);
     let mut seen_deps = HashSet::new();
     deps.retain(|d| seen_deps.insert(d.clone()));
     seen_deps.clear();
@@ -302,7 +330,7 @@ pub(crate) fn build_inner(
                     if !generated {
                         record_cargo_dependency(c, &dependency);
                     }
-                    if should_input {
+                    if should_input && !discovered_paths.contains(path) {
                         inputs.push(path.to_string());
                     }
                 } else {
@@ -334,11 +362,18 @@ pub(crate) fn build_inner(
         .as_ref()
         .map(|path| format!("@outputs({path})"))
         .unwrap_or_default();
+    let mods = format!(
+        "{mods}{}",
+        rule.options
+            .depfile
+            .as_ref()
+            .map(|path| format!("@depfile({path})"))
+            .unwrap_or_default()
+    );
     let sig = hash_text(&format!(
         "recipe={recipe}\nmods={mods}\ndeps={dep_sig:?}\nenv={env_sig:?}"
     ));
     let manifest = rule.options.outputs.clone();
-    let saved = c.session.state.rules.get(&key).cloned();
     let mut reasons = Vec::new();
     if force {
         reasons.push("forced rebuild".to_owned());
@@ -375,6 +410,24 @@ pub(crate) fn build_inner(
         {
             reasons.push(format!("output manifest changed: {path}"));
         }
+    }
+    let depfile = rule
+        .options
+        .depfile
+        .as_ref()
+        .map(|path| resolve_depfile_path(path, rule.pattern, stem.as_deref()))
+        .transpose()?;
+    if let Some(path) = &depfile
+        && saved.is_some()
+        && !abs(c, path).is_file()
+    {
+        reasons.push(format!("depfile missing: {path}"));
+    }
+    if let Some(path) = &depfile
+        && saved.is_some()
+        && abs(c, path).is_file()
+    {
+        parse_depfile(c, path)?;
     }
     let stale = !reasons.is_empty();
     if !stale {
@@ -465,6 +518,11 @@ pub(crate) fn build_inner(
     } else {
         Vec::new()
     };
+    let discovered = if let Some(path) = &depfile {
+        parse_depfile(c, path)?.into_iter().collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     status_line(c, "got", &key, "\x1b[32m");
     c.session.state.rules.insert(
         key,
@@ -476,6 +534,7 @@ pub(crate) fn build_inner(
                 path: path.clone(),
                 hash: hash_file(&abs(c, path)).expect("validated output manifest"),
             }),
+            discovered,
         },
     );
     c.session.built.extend(outputs.iter().cloned());
@@ -516,6 +575,111 @@ fn read_output_manifest(c: &BuildCtx, path: &str) -> Result<Vec<ProjectPath>> {
         .into_iter()
         .map(|output| ProjectPath::new(&output))
         .collect::<Result<Vec<_>>>()
+}
+
+pub(crate) fn parse_depfile(c: &BuildCtx, path: &str) -> Result<Vec<String>> {
+    let bytes = fs::read(abs(c, path)).map_err(|e| {
+        format!(
+            "could not read depfile {path}: {e}\nhelp: have the recipe write a Make-style depfile at this path"
+        )
+    })?;
+    let text = String::from_utf8(bytes).map_err(|e| {
+        format!(
+            "depfile {path} is not valid UTF-8: {e}\nhelp: configure the compiler to write a text Make-style depfile"
+        )
+    })?;
+    parse_depfile_text(&text, path)
+}
+
+pub(crate) fn parse_depfile_text(text: &str, display: &str) -> Result<Vec<String>> {
+    let mut logical = String::new();
+    let mut deps = Vec::new();
+    let mut parsed_line = false;
+    for line in text.lines() {
+        logical.push_str(line);
+        if trailing_backslashes(line) % 2 == 1 {
+            logical.pop();
+            logical.push(' ');
+        } else {
+            let Some((target, dependencies)) = logical.split_once(':') else {
+                return Err(format!(
+                    "depfile {display} is malformed: missing target colon\nhelp: write a Make-style 'target: dependency ...' depfile"
+                ));
+            };
+            parsed_line = true;
+            if target.trim().is_empty() {
+                return Err(format!(
+                    "depfile {display} is malformed: empty target\nhelp: write a Make-style 'target: dependency ...' depfile"
+                ));
+            }
+            let mut current = String::new();
+            let mut escaped = false;
+            for ch in dependencies.chars() {
+                if escaped {
+                    if ch == '\\' || ch.is_whitespace() {
+                        current.push(ch);
+                    } else {
+                        current.push('\\');
+                        current.push(ch);
+                    }
+                    escaped = false;
+                } else if ch == '\\' {
+                    escaped = true;
+                } else if ch.is_whitespace() {
+                    if !current.is_empty() {
+                        logical_dep(&mut deps, &current)?;
+                        current.clear();
+                    }
+                } else {
+                    current.push(ch);
+                }
+            }
+            if escaped {
+                current.push('\\');
+            }
+            if !current.is_empty() {
+                logical_dep(&mut deps, &current)?;
+            }
+            logical.clear();
+        }
+    }
+    if !logical.is_empty() {
+        return Err(format!(
+            "depfile {display} is malformed: unterminated continuation\nhelp: end the depfile with a complete target and dependency line"
+        ));
+    }
+    if !parsed_line {
+        return Err(format!(
+            "depfile {display} is malformed: no target rule\nhelp: write a Make-style 'target: dependency ...' depfile"
+        ));
+    }
+    Ok(deps)
+}
+
+fn resolve_depfile_path(path: &str, pattern: bool, stem: Option<&str>) -> Result<String> {
+    let path = if path.contains("{{stem}}") {
+        path.replace(
+            "{{stem}}",
+            stem.ok_or_else(|| "{{stem}} is only valid in pattern rules".to_string())?,
+        )
+    } else {
+        path.to_owned()
+    };
+    resolve_pattern_path(&path, pattern, stem)
+}
+
+fn trailing_backslashes(line: &str) -> usize {
+    line.chars().rev().take_while(|ch| *ch == '\\').count()
+}
+
+fn logical_dep(deps: &mut Vec<String>, dependency: &str) -> Result<()> {
+    let marker = '\u{e000}';
+    let dependency =
+        norm_rel(&dependency.replace('\\', &marker.to_string()))?.replace(marker, "\\");
+    if !deps.contains(&dependency) {
+        deps.push(dependency);
+    }
+    Ok(())
 }
 
 fn validate_dynamic_outputs(

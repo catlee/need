@@ -28,6 +28,7 @@ The goal is a modern, narrow artifact build tool with:
 * content hashing instead of relying only on mtimes
 * pattern rules and globs
 * first-class multi-output and dynamic-output generators
+* compiler-generated dependency discovery through `@depfile(...)`
 * explicit dependency types for files, trees, environment values, strings, and so on
 * strong interoperability with `just`, Cargo, compilers, and existing tooling
 * no phony targets, workflow commands, deployment concepts, or general-purpose scripting language
@@ -162,6 +163,18 @@ index.json: source
 The manifest lists one project-relative file per line. `need` tracks those
 files as part of the output group and removes ones omitted by a later successful
 build.
+
+Compiler recipes can persist header dependencies with a Make-style depfile:
+
+```make
+build/%.o: src/%.c
+  @depfile(build/{{stem}}.d)
+  cc -MMD -MF build/{{stem}}.d -c {{in}} -o {{out}}
+```
+
+Discovered dependencies affect later freshness checks but are not added to
+`{{in}}`. A generated discovered artifact still participates in the normal
+build graph.
 
 ## Useful options
 
