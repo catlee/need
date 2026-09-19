@@ -90,7 +90,14 @@ fn run() -> Result<()> {
     }
     if list {
         for r in &ctx.project.rules {
-            println!("{}", r.outputs.join(" "));
+            println!(
+                "{}",
+                r.outputs
+                    .iter()
+                    .map(ProjectPath::as_str)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
         }
         return Ok(());
     }
@@ -107,12 +114,10 @@ fn run() -> Result<()> {
             .ok_or("no concrete target in needfile")?;
         vec![default_target]
     } else {
-        args
+        args.into_iter()
+            .map(|target| norm_rel(&target).map(ProjectPath::from_normalized))
+            .collect::<Result<Vec<_>>>()?
     };
-    let targets = targets
-        .into_iter()
-        .map(|target| norm_rel(&target))
-        .collect::<Result<Vec<_>>>()?;
     build_targets(&mut ctx, &targets)?;
     if !ctx.options.dry {
         save_state(&ctx.project.root, &ctx.session.state)?;
@@ -152,20 +157,23 @@ fn resolve_rules(
     let mut rules = Vec::new();
     for parsed in parsed_rules {
         let mut rule = Rule {
-            outputs: parsed.outputs.clone(),
+            outputs: parsed
+                .outputs
+                .iter()
+                .cloned()
+                .map(ProjectPath::from)
+                .collect(),
             deps: expand_dependencies(&parsed.deps, vars, env_values)?,
             recipe: parsed.recipe.clone(),
             options: RuleOptions::default(),
             pattern: false,
             env_refs: BTreeSet::new(),
         };
-        for value in rule
-            .outputs
-            .iter()
-            .chain(std::iter::once(&rule.recipe))
-            .chain(parsed.options.output.iter())
-            .chain(parsed.options.outputs.iter())
-        {
+        for value in &rule.outputs {
+            collect_env_refs(value, raw_vars, &mut rule.env_refs);
+        }
+        collect_env_refs(&rule.recipe, raw_vars, &mut rule.env_refs);
+        for value in parsed.options.output.iter().chain(parsed.options.outputs.iter()) {
             collect_env_refs(value, raw_vars, &mut rule.env_refs);
         }
         for dependency in &parsed.deps {
@@ -174,7 +182,7 @@ fn resolve_rules(
         rule.outputs = rule
             .outputs
             .iter()
-            .map(|x| expand(x, vars, env_values))
+            .map(|x| ProjectPath::from_normalized(expand(x.as_str(), vars, env_values)))
             .collect();
         if let Some(value) = parsed
             .options
@@ -196,18 +204,18 @@ fn resolve_rules(
             if value.is_empty() {
                 return Err("output manifest path is empty in rule modifier @outputs()".into());
             }
-            rule.options.outputs = Some(norm_rel(&value)?);
+            rule.options.outputs = Some(ProjectPath::from_normalized(norm_rel(&value)?));
         }
         if rule
             .outputs
             .iter()
-            .chain(rule.deps.iter().filter_map(|dependency| match dependency {
+            .any(|value| value.as_str().matches('%').count() > 1)
+            || rule.deps.iter().any(|dependency| match dependency {
                 Dependency::File(path) | Dependency::Tree(path) | Dependency::Mtime(path) => {
-                    Some(path)
+                    path.matches('%').count() > 1
                 }
-                Dependency::Env(_) | Dependency::String(_) => None,
-            }))
-            .any(|value| value.matches('%').count() > 1)
+                Dependency::Env(_) | Dependency::String(_) => false,
+            })
         {
             return Err("only one % is supported per pattern".into());
         }
@@ -260,9 +268,10 @@ mod tests {
         }
         let raw_vars = ctx.project.vars.clone();
         for rule in &mut ctx.project.rules {
-            for value in rule.outputs.iter().chain(std::iter::once(&rule.recipe)) {
+            for value in &rule.outputs {
                 collect_env_refs(value, &raw_vars, &mut rule.env_refs);
             }
+            collect_env_refs(&rule.recipe, &raw_vars, &mut rule.env_refs);
         }
         ctx
     }
@@ -844,7 +853,7 @@ mod tests {
         assert!(!root.join("b.txt").exists());
         assert_eq!(
             second.session.state.rules.values().next().unwrap().dynamic,
-            vec!["a.txt"]
+            vec![ProjectPath::from("a.txt")]
         );
         fs::remove_dir_all(root).unwrap();
     }

@@ -14,7 +14,7 @@ use std::{
 use crate::{
     Result,
     hash::{hash_file, hash_symlink, hash_text, walk},
-    model::{BuildCtx, Dependency, Jobs, OutputMode, RuleId, SavedManifest, SavedRule, TargetMatch},
+    model::{BuildCtx, Dependency, Jobs, OutputMode, ProjectPath, RuleId, SavedManifest, SavedRule, TargetMatch},
     parser::{expand, norm_rel},
 };
 
@@ -26,8 +26,16 @@ pub(crate) fn abs(c: &BuildCtx, p: &str) -> PathBuf {
     }
 }
 
+fn group_key(outputs: &[ProjectPath]) -> String {
+    outputs
+        .iter()
+        .map(ProjectPath::as_str)
+        .collect::<Vec<_>>()
+        .join("\0")
+}
+
 pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> Result<()> {
-    let target = norm_rel(target)?;
+    let target = ProjectPath::from_normalized(norm_rel(target)?);
     let force = c.options.force && c.session.stack.is_empty();
     if c.session.built.contains(&target) && !force {
         return Ok(());
@@ -43,7 +51,7 @@ pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> Res
     result
 }
 
-pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[String]) -> Result<()> {
+pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> Result<()> {
     if !c.options.jobs.is_parallel() || targets.len() <= 1 {
         for target in targets {
             build(c, target, None)?;
@@ -56,10 +64,10 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[String]) -> Result<()> 
     for target in targets {
         let group = select_rule(c, target)
             .map(|selection| match selection {
-                TargetMatch::Source => target.clone(),
-                TargetMatch::Rule { outputs, .. } => outputs.join("\0"),
+                TargetMatch::Source => target.clone().into_string(),
+        TargetMatch::Rule { outputs, .. } => group_key(&outputs),
             })
-            .unwrap_or_else(|_| target.clone());
+            .unwrap_or_else(|_| target.to_string());
         if groups.insert(group) {
             parallel_targets.push(target.clone());
         }
@@ -111,13 +119,15 @@ pub(crate) fn build_inner(
         return Ok(());
     }
     let TargetMatch::Rule { id, stem, outputs } = select_rule(c, target)? else {
-        c.session.built.insert(target.to_owned());
+        c.session
+            .built
+            .insert(ProjectPath::from_normalized(target.to_owned()));
         return Ok(());
     };
     let ri = id.0;
     let rule = c.project.rules[ri].clone();
     c.session.cargo_env.extend(rule.env_refs.iter().cloned());
-    let key = outputs.join("\0");
+    let key = group_key(&outputs);
     let mut resolved_deps = Vec::new();
     let mut has_glob = false;
     for dependency in &rule.deps {
@@ -174,7 +184,7 @@ pub(crate) fn build_inner(
             let group = select_rule(c, path)
                 .map(|selection| match selection {
                     TargetMatch::Source => path.clone(),
-                    TargetMatch::Rule { outputs, .. } => outputs.join("\0"),
+                    TargetMatch::Rule { outputs, .. } => group_key(&outputs),
                 })
                 .unwrap_or_else(|_| path.clone());
             if parallel_groups.insert(group) {
@@ -206,7 +216,7 @@ pub(crate) fn build_inner(
                 let group = select_rule(c, &d)
                     .map(|selection| match selection {
                         TargetMatch::Source => d.clone(),
-                        TargetMatch::Rule { outputs, .. } => outputs.join("\0"),
+                        TargetMatch::Rule { outputs, .. } => group_key(&outputs),
                     })
                     .unwrap_or_else(|_| d.clone());
                 if let Some(saved) = child.session.state.rules.get(&group) {
@@ -308,7 +318,8 @@ pub(crate) fn build_inner(
         let p = abs(c, path);
         if !p.is_file()
             || manifest_state.is_none_or(|saved| {
-                saved.path != *path || hash_file(&p).ok().as_deref() != Some(&saved.hash)
+                saved.path.as_str() != path.as_str()
+                    || hash_file(&p).ok().as_deref() != Some(&saved.hash)
             })
         {
             stale = true;
@@ -415,7 +426,7 @@ pub(crate) fn build_inner(
     Ok(())
 }
 
-fn read_output_manifest(c: &BuildCtx, path: &str) -> Result<Vec<String>> {
+fn read_output_manifest(c: &BuildCtx, path: &str) -> Result<Vec<ProjectPath>> {
     let text = fs::read_to_string(abs(c, path)).map_err(|e| {
         format!(
             "could not read output manifest {path}: {e}\nhelp: have the recipe write the manifest"
@@ -444,14 +455,17 @@ fn read_output_manifest(c: &BuildCtx, path: &str) -> Result<Vec<String>> {
             ));
         }
     }
-    Ok(outputs.into_iter().collect())
+    Ok(outputs
+        .into_iter()
+        .map(ProjectPath::from_normalized)
+        .collect())
 }
 
 fn validate_dynamic_outputs(
     c: &BuildCtx,
     key: &str,
-    fixed: &[String],
-    dynamic: &[String],
+    fixed: &[ProjectPath],
+    dynamic: &[ProjectPath],
 ) -> Result<()> {
     for output in dynamic {
         if fixed.contains(output) || c.project.exact.contains_key(output) {
@@ -829,8 +843,11 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
         });
     }
     for (key, saved) in &c.session.state.rules {
-        if saved.dynamic.iter().any(|output| output == t) {
-            let outputs = key.split('\0').map(str::to_owned).collect::<Vec<_>>();
+        if saved.dynamic.iter().any(|output| output.as_str() == t) {
+            let outputs = key
+                .split('\0')
+                .map(|path| ProjectPath::from_normalized(path.to_owned()))
+                .collect::<Vec<_>>();
             if let Some((i, rule)) = c
                 .project
                 .rules
@@ -882,7 +899,7 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
         let o = c.project.rules[i]
             .outputs
             .iter()
-            .map(|x| x.replace('%', &s))
+            .map(|x| ProjectPath::from_normalized(x.replace('%', &s)))
             .collect();
         return Ok(TargetMatch::Rule {
             id: RuleId(i),
@@ -922,14 +939,14 @@ pub(crate) fn expand_glob(c: &BuildCtx, p: &str) -> Result<Vec<String>> {
     for r in &c.project.rules {
         for o in &r.outputs {
             if !o.contains('%') && pattern.matches(o) {
-                set.insert(o.clone());
+                set.insert(o.to_string());
             }
         }
     }
     for saved in c.session.state.rules.values() {
         for output in &saved.dynamic {
             if pattern.matches(output) && abs(c, output).is_file() {
-                set.insert(output.clone());
+                set.insert(output.to_string());
             }
         }
     }
@@ -938,7 +955,7 @@ pub(crate) fn expand_glob(c: &BuildCtx, p: &str) -> Result<Vec<String>> {
 pub(crate) fn interpolate(
     recipe: &str,
     ins: &[String],
-    outs: &[String],
+    outs: &[ProjectPath],
     stem: Option<&str>,
     vars: &HashMap<String, String>,
     env_values: &HashMap<String, String>,
@@ -973,7 +990,7 @@ pub(crate) fn interpolate(
 fn automatic_interpolation(
     token: &str,
     ins: &[String],
-    outs: &[String],
+    outs: &[ProjectPath],
     stem: Option<&str>,
     esc: &impl Fn(&str) -> String,
 ) -> Result<String> {
@@ -993,9 +1010,9 @@ fn automatic_interpolation(
                 ));
             };
             let spec = &spec[..spec.len() - 1];
-            let list = match name {
-                "in" => ins,
-                "out" => outs,
+            let list: Vec<&str> = match name {
+                "in" => ins.iter().map(String::as_str).collect(),
+                "out" => outs.iter().map(ProjectPath::as_str).collect(),
                 _ => {
                     return Err(format!(
                         "unknown interpolation token: {{{{{token}}}}}\nhelp: use {{{{in}}}}, {{{{out}}}}, {{{{stem}}}}, or an indexed/slice form"

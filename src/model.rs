@@ -7,9 +7,58 @@ use std::{
 
 use crate::Result;
 
+#[derive(Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub(crate) struct ProjectPath(String);
+
+impl ProjectPath {
+    pub(crate) fn from_normalized(value: String) -> Self {
+        Self(value)
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub(crate) fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl std::fmt::Display for ProjectPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<String> for ProjectPath {
+    fn from(value: String) -> Self {
+        Self::from_normalized(value)
+    }
+}
+
+impl From<&str> for ProjectPath {
+    fn from(value: &str) -> Self {
+        Self::from_normalized(value.to_owned())
+    }
+}
+
+impl std::ops::Deref for ProjectPath {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl std::borrow::Borrow<str> for ProjectPath {
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct Rule {
-    pub(crate) outputs: Vec<String>,
+    pub(crate) outputs: Vec<ProjectPath>,
     pub(crate) deps: Vec<Dependency>,
     pub(crate) recipe: String,
     pub(crate) options: RuleOptions,
@@ -34,7 +83,7 @@ pub(crate) struct ParsedRuleOptions {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct RuleOptions {
     pub(crate) output: Option<OutputMode>,
-    pub(crate) outputs: Option<String>,
+    pub(crate) outputs: Option<ProjectPath>,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -46,7 +95,7 @@ pub(crate) enum TargetMatch {
     Rule {
         id: RuleId,
         stem: Option<String>,
-        outputs: Vec<String>,
+        outputs: Vec<ProjectPath>,
     },
 }
 
@@ -90,16 +139,16 @@ pub(crate) struct State {
 #[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
 pub(crate) struct SavedRule {
     pub(crate) signature: String,
-    pub(crate) outputs: BTreeMap<String, String>,
+    pub(crate) outputs: BTreeMap<ProjectPath, String>,
     #[serde(default)]
-    pub(crate) dynamic: Vec<String>,
+    pub(crate) dynamic: Vec<ProjectPath>,
     #[serde(default)]
     pub(crate) manifest: Option<SavedManifest>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
 pub(crate) struct SavedManifest {
-    pub(crate) path: String,
+    pub(crate) path: ProjectPath,
     pub(crate) hash: String,
 }
 
@@ -108,7 +157,7 @@ pub(crate) struct ProjectData {
     pub(crate) root: PathBuf,
     pub(crate) vars: HashMap<String, String>,
     pub(crate) rules: Vec<Rule>,
-    pub(crate) exact: HashMap<String, usize>,
+    pub(crate) exact: HashMap<ProjectPath, usize>,
     pub(crate) env_values: HashMap<String, String>,
 }
 
@@ -151,10 +200,10 @@ impl Jobs {
 #[derive(Clone, Default)]
 pub(crate) struct BuildSession {
     pub(crate) state: State,
-    pub(crate) built: HashSet<String>,
+    pub(crate) built: HashSet<ProjectPath>,
     pub(crate) cargo_deps: BTreeSet<String>,
     pub(crate) cargo_env: BTreeSet<String>,
-    pub(crate) stack: Vec<String>,
+    pub(crate) stack: Vec<ProjectPath>,
 }
 
 #[derive(Clone, Default)]
