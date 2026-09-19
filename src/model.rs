@@ -16,6 +16,19 @@ pub(crate) struct Rule {
     pub(crate) env_refs: BTreeSet<String>,
 }
 
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub(crate) struct RuleId(pub(crate) usize);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum TargetMatch {
+    Source,
+    Rule {
+        id: RuleId,
+        stem: Option<String>,
+        outputs: Vec<String>,
+    },
+}
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Dependency {
     Deferred(String),

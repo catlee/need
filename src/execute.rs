@@ -14,7 +14,9 @@ use std::{
 use crate::{
     Result,
     hash::{hash_file, hash_symlink, hash_text, walk},
-    model::{BuildCtx, Dependency, OutputMode, Rule, SavedManifest, SavedRule},
+    model::{
+        BuildCtx, Dependency, OutputMode, Rule, RuleId, SavedManifest, SavedRule, TargetMatch,
+    },
     parser::{expand, norm_rel},
 };
 
@@ -55,7 +57,10 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[String]) -> Result<()> 
     let mut groups = HashSet::new();
     for target in targets {
         let group = select_rule(c, target)
-            .map(|(_, _, outputs)| outputs.join("\0"))
+            .map(|selection| match selection {
+                TargetMatch::Source => target.clone(),
+                TargetMatch::Rule { outputs, .. } => outputs.join("\0"),
+            })
             .unwrap_or_else(|_| target.clone());
         if groups.insert(group) {
             parallel_targets.push(target.clone());
@@ -107,11 +112,11 @@ pub(crate) fn build_inner(
     if c.built.contains(target) && !force {
         return Ok(());
     }
-    let (ri, stem, outputs) = select_rule(c, target)?;
-    if ri == usize::MAX {
-        c.built.extend(outputs.iter().cloned());
+    let TargetMatch::Rule { id, stem, outputs } = select_rule(c, target)? else {
+        c.built.insert(target.to_owned());
         return Ok(());
-    }
+    };
+    let ri = id.0;
     let rule = c.rules[ri].clone();
     c.cargo_env.extend(rule.env_refs.iter().cloned());
     let key = outputs.join("\0");
@@ -169,7 +174,10 @@ pub(crate) fn build_inner(
         for d in &parallel_candidates {
             let Dependency::File(path) = d else { continue };
             let group = select_rule(c, path)
-                .map(|(_, _, outputs)| outputs.join("\0"))
+                .map(|selection| match selection {
+                    TargetMatch::Source => path.clone(),
+                    TargetMatch::Rule { outputs, .. } => outputs.join("\0"),
+                })
                 .unwrap_or_else(|_| path.clone());
             if parallel_groups.insert(group) {
                 parallel_deps.push(path.clone());
@@ -198,7 +206,10 @@ pub(crate) fn build_inner(
             for (d, child, result) in results {
                 result.map_err(|e| required_by(e, target))?;
                 let group = select_rule(c, &d)
-                    .map(|(_, _, outputs)| outputs.join("\0"))
+                    .map(|selection| match selection {
+                        TargetMatch::Source => d.clone(),
+                        TargetMatch::Rule { outputs, .. } => outputs.join("\0"),
+                    })
                     .unwrap_or_else(|_| d.clone());
                 if let Some(saved) = child.state.rules.get(&group) {
                     c.state.rules.insert(group, saved.clone());
@@ -237,7 +248,7 @@ pub(crate) fn build_inner(
             if let Some(path) = path {
                 if should_build {
                     let generated = select_rule(c, path)
-                        .map(|(ri, _, _)| ri != usize::MAX)
+                        .map(|selection| matches!(selection, TargetMatch::Rule { .. }))
                         .unwrap_or(false);
                     if !parallel || !parallel_targets.contains(path) {
                         build(c, path, None).map_err(|e| required_by(e, target))?;
@@ -698,13 +709,10 @@ fn spool_stream<R: Read>(mut reader: R, path: &Path, forward: bool, stderr: bool
 }
 
 pub(crate) fn is_leaf_rule(c: &BuildCtx, target: &str) -> Result<bool> {
-    let Ok((ri, stem, _)) = select_rule(c, target) else {
+    let Ok(TargetMatch::Rule { id, stem, .. }) = select_rule(c, target) else {
         return Ok(false);
     };
-    if ri == usize::MAX {
-        return Ok(false);
-    }
-    let rule = &c.rules[ri];
+    let rule = &c.rules[id.0];
     for dependency in &rule.deps {
         let Dependency::File(path) = dependency else {
             continue;
@@ -720,7 +728,7 @@ pub(crate) fn is_leaf_rule(c: &BuildCtx, target: &str) -> Result<bool> {
         if !paths.into_iter().all(|path| {
             select_rule(c, &path)
                 .ok()
-                .map(|(i, _, _)| i == usize::MAX)
+                .map(|selection| matches!(selection, TargetMatch::Source))
                 .unwrap_or(false)
         }) {
             return Ok(false);
@@ -837,9 +845,13 @@ pub(crate) fn rotate_success_logs(dir: &Path, keep: usize) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<(usize, Option<String>, Vec<String>)> {
+pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
     if let Some(&i) = c.exact.get(t) {
-        return Ok((i, None, c.rules[i].outputs.clone()));
+        return Ok(TargetMatch::Rule {
+            id: RuleId(i),
+            stem: None,
+            outputs: c.rules[i].outputs.clone(),
+        });
     }
     for (key, saved) in &c.state.rules {
         if saved.dynamic.iter().any(|output| output == t) {
@@ -850,7 +862,11 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<(usize, Option<String
                 .enumerate()
                 .find(|(_, rule)| !rule.pattern && rule.outputs == outputs)
             {
-                return Ok((i, None, rule.outputs.clone()));
+                return Ok(TargetMatch::Rule {
+                    id: RuleId(i),
+                    stem: None,
+                    outputs: rule.outputs.clone(),
+                });
             }
         }
     }
@@ -886,10 +902,14 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<(usize, Option<String
             .iter()
             .map(|x| x.replace('%', &s))
             .collect();
-        return Ok((i, Some(s), o));
+        return Ok(TargetMatch::Rule {
+            id: RuleId(i),
+            stem: Some(s),
+            outputs: o,
+        });
     }
     if abs(c, t).is_file() {
-        return Ok((usize::MAX, None, vec![t.into()]));
+        return Ok(TargetMatch::Source);
     }
     Err(format!("no rule to produce {t}"))
 }

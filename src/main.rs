@@ -1020,8 +1020,23 @@ final: generated.txt generated/*
             }
         }
 
-        assert_eq!(select_rule(&ctx, "build/output.txt").unwrap().0, 0);
-        assert_eq!(select_rule(&ctx, "plain.txt").unwrap().0, 1);
+        assert_eq!(
+            select_rule(&ctx, "build/output.txt").unwrap(),
+            TargetMatch::Rule {
+                id: RuleId(0),
+                stem: Some("output".into()),
+                outputs: vec!["build/output.txt".into()],
+            }
+        );
+        assert_eq!(
+            select_rule(&ctx, "plain.txt").unwrap(),
+            TargetMatch::Rule {
+                id: RuleId(1),
+                stem: None,
+                outputs: vec!["plain.txt".into()],
+            }
+        );
+        assert_eq!(select_rule(&ctx, "input.txt").unwrap(), TargetMatch::Source);
         build(&mut ctx, "build/output.txt", None).unwrap();
         assert_eq!(
             fs::read_to_string(root.join("build/output.txt")).unwrap(),
