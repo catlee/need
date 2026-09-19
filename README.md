@@ -8,6 +8,8 @@ For when you just need simple build dependencies.
 
 It handles artifact dependencies. Use `just` for commands such as testing, running a simulator, or cleaning a project.
 
+![screenshot](https://raw.githubusercontent.com/catlee/need/master/docs/screenshot.png)
+
 ## Why do you need `need`?
 
 There’s still a useful gap between **Make** and **task runners like `just`**.
