@@ -70,7 +70,13 @@ The point is not to replace every build tool. It is to make the small, common ar
 
 ## Install
 
-From this checkout:
+`need` can be installed via cargo:
+
+```sh
+cargo install need-tool
+```
+
+Or, from this checkout:
 
 ```sh
 just install
