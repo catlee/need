@@ -1,6 +1,8 @@
 use std::{
     collections::{BTreeSet, HashMap},
     env, fs,
+    io::{self, Write},
+    path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -15,6 +17,7 @@ mod state;
 
 use cli::*;
 use execute::*;
+use hash::hash_text;
 use model::*;
 use parser::*;
 use state::*;
@@ -67,6 +70,25 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
         let _lock = BuildLock::acquire(root)?;
         return clean_state(root);
     }
+    if !literal_targets && let Some(index) = get_logs_command_index(&args) {
+        args.remove(index);
+        let explicit_file = take_value(&mut args, "--file")?;
+        if args.len() != 1 {
+            return Err(format!(
+                "logs expects exactly one target, got {}\nhelp: use `need logs [--file PATH] TARGET`",
+                if args.is_empty() {
+                    "no target".to_owned()
+                } else {
+                    args.join(" ")
+                }
+            ));
+        }
+        let invocation_dir = env::current_dir().map_err(|e| e.to_string())?;
+        let file = select_needfile(invocation_dir, explicit_file)?;
+        let root = file.parent().unwrap().to_path_buf();
+        let _lock = BuildLock::acquire(&root)?;
+        return show_logs(&file, &root, &args[0]);
+    }
     let force = !literal_targets && take_flag(&mut args, "--force");
     let dry = !literal_targets && (take_flag(&mut args, "--dry-run") || take_flag(&mut args, "-n"));
     let explain = !literal_targets && take_flag(&mut args, "--explain");
@@ -89,7 +111,7 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
     };
     if !literal_targets && args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need clean [--file PATH]\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] <RULE> [--] <INPUT>..."
+            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need clean [--file PATH]\n       need logs [--file PATH] TARGET\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] <RULE> [--] <INPUT>..."
         );
         return Ok(());
     }
@@ -225,6 +247,151 @@ fn get_clean_command_index(args: &[String]) -> Option<usize> {
             _ => return None,
         }
     }
+}
+
+fn get_logs_command_index(args: &[String]) -> Option<usize> {
+    let mut index = 0;
+    loop {
+        let argument = args.get(index)?;
+        if argument == "logs" {
+            return Some(index);
+        }
+        match argument.as_str() {
+            "--file" => index += 2,
+            argument if argument.starts_with("--file=") => index += 1,
+            _ => return None,
+        }
+    }
+}
+
+fn show_logs(file: &Path, root: &Path, target: &str) -> Result<()> {
+    let (raw_vars, parsed_rules) = parse_needfile(file)?;
+    let dotenv = load_dotenv(&raw_vars, root)?;
+    let vars = resolve_variables(&raw_vars, &dotenv.values)?;
+    let rules = resolve_rules(&parsed_rules, &vars, &dotenv.values, &raw_vars)?;
+    let mut ctx = BuildCtx {
+        project: ProjectData {
+            root: root.to_path_buf(),
+            vars,
+            rules,
+            env_values: dotenv.values,
+            ..Default::default()
+        },
+        session: BuildSession {
+            state: load_state(root)?,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    for (i, rule) in ctx.project.rules.iter().enumerate() {
+        if !rule.pattern {
+            for output in &rule.outputs {
+                ctx.project.exact.insert(output.clone(), i);
+            }
+        }
+    }
+    let target = ProjectPath::new(target).map_err(|error| {
+        format!("invalid log target {target}: {error}\nhelp: pass a project-relative artifact path")
+    })?;
+    let selection = select_rule(&ctx, target.as_str()).map_err(|error| {
+        format!(
+            "could not resolve log target {target}: {error}\nhelp: pass a declared artifact target"
+        )
+    })?;
+    let TargetMatch::Rule { outputs, .. } = selection else {
+        return Err(format!(
+            "no build rule for log target {target}\nhelp: logs are available only for declared artifact targets"
+        ));
+    };
+    let group = group_key(&outputs);
+    let group_id = &hash_text(&group)[..16];
+    let dir = root.join(".need/logs").join(group_id);
+    let (name, stdout, stderr, status) = latest_log(&dir)?;
+    println!("target: {target}");
+    println!(
+        "outputs: {}",
+        outputs
+            .iter()
+            .map(ProjectPath::as_str)
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    println!("log: {}", dir.join(&name).display());
+    println!("status: {status}");
+    print_log_section("stdout", &stdout)?;
+    print_log_section("stderr", &stderr)?;
+    Ok(())
+}
+
+fn latest_log(dir: &Path) -> Result<(String, PathBuf, PathBuf, String)> {
+    let logs = fs::read_dir(dir).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            format!(
+                "no retained logs for output group {}\nhelp: build the target first or increase `need.log.keep` in the needfile",
+                dir.display()
+            )
+        } else {
+            format!(
+                "could not inspect log directory {}: {error}\nhelp: check that the project state is readable",
+                dir.display()
+            )
+        }
+    })?;
+    let mut candidates = Vec::new();
+    for entry in logs {
+        let entry = entry.map_err(|error| {
+            format!(
+                "could not inspect log directory {}: {error}\nhelp: check that the project state is readable",
+                dir.display()
+            )
+        })?;
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Some(base) = name.strip_suffix(".stdout") else {
+            continue;
+        };
+        let Some((stamp, status)) = base.split_once('.') else {
+            continue;
+        };
+        if stamp.parse::<u128>().is_ok() && matches!(status, "success" | "failure" | "interrupted")
+        {
+            candidates.push((name.to_owned(), status.to_owned()));
+        }
+    }
+    let (name, status) = candidates.into_iter().max_by(|a, b| a.0.cmp(&b.0)).ok_or_else(|| {
+        format!(
+            "no readable execution logs in {}\nhelp: build the target with output capture enabled",
+            dir.display()
+        )
+    })?;
+    let stdout = dir.join(&name);
+    let stderr = dir.join(name.replace(".stdout", ".stderr"));
+    if !stderr.is_file() {
+        return Err(format!(
+            "log execution is missing stderr file {}\nhelp: remove the incomplete log and rebuild the target",
+            stderr.display()
+        ));
+    }
+    Ok((name, stdout, stderr, status))
+}
+
+fn print_log_section(label: &str, path: &Path) -> Result<()> {
+    println!("--- {label} ---");
+    let bytes = fs::read(path).map_err(|error| {
+        format!(
+            "could not read log file {}: {error}\nhelp: check that the project state is readable",
+            path.display()
+        )
+    })?;
+    io::stdout()
+        .write_all(&bytes)
+        .map_err(|error| error.to_string())?;
+    if !bytes.is_empty() && !bytes.ends_with(b"\n") {
+        println!();
+    }
+    Ok(())
 }
 
 fn clean_state(root: &std::path::Path) -> Result<()> {
@@ -2116,6 +2283,58 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
 
         let selected = select_needfile(PathBuf::from("/project"), file).unwrap();
         assert_eq!(selected, PathBuf::from("/project/build/needfile"));
+    }
+
+    #[test]
+    fn finds_logs_command_after_file_option() {
+        let args = vec!["--file".into(), "custom.needfile".into(), "logs".into()];
+        assert_eq!(get_logs_command_index(&args), Some(2));
+    }
+
+    #[test]
+    fn selects_newest_valid_log() {
+        let root = temp_project("inspect-logs");
+        let dir = root.join(".need/logs/group");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("100.success.stdout"), b"old").unwrap();
+        fs::write(dir.join("100.success.stderr"), b"").unwrap();
+        fs::write(dir.join("200.failure.stdout"), b"new").unwrap();
+        fs::write(dir.join("200.failure.stderr"), b"error").unwrap();
+
+        let (name, stdout, stderr, status) = latest_log(&dir).unwrap();
+        assert_eq!(name, "200.failure.stdout");
+        assert_eq!(fs::read(stdout).unwrap(), b"new");
+        assert_eq!(fs::read(stderr).unwrap(), b"error");
+        assert_eq!(status, "failure");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn run_args_logs_resolves_declared_target_and_selects_retained_log() {
+        let root = temp_project("logs-command");
+        let needfile = root.join("needfile");
+        fs::write(&needfile, "out.txt: input.txt\n  touch {{out}}\n").unwrap();
+        fs::write(root.join("input.txt"), "input").unwrap();
+
+        let group = &hash_text("out.txt")[..16];
+        let log_dir = root.join(".need/logs").join(group);
+        fs::create_dir_all(&log_dir).unwrap();
+        fs::write(log_dir.join("100.success.stdout"), b"older").unwrap();
+        fs::write(log_dir.join("100.success.stderr"), b"").unwrap();
+        fs::write(log_dir.join("200.failure.stdout"), b"newer").unwrap();
+        fs::write(log_dir.join("200.failure.stderr"), b"failure").unwrap();
+
+        // Calling the public CLI path proves it uses the parsed rule and the
+        // existing output-group hash; the helper test above asserts newest selection.
+        run_args(vec![
+            "logs".into(),
+            "--file".into(),
+            needfile.to_string_lossy().into_owned(),
+            "out.txt".into(),
+        ])
+        .unwrap();
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

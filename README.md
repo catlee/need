@@ -200,6 +200,7 @@ need -n build/app            # short alias for --dry-run
 need --file path/to/needfile build/app  # select an explicit needfile
 need clean                              # remove the project's .need state and logs
 need clean --file path/to/needfile      # clean state beside an explicit needfile
+need logs build/app                     # show the latest retained execution log
 need --explain build/app     # explain current and stale targets
 need --force build/app       # rebuild the target, not its current dependencies
 need --list                  # list declared targets
@@ -255,3 +256,7 @@ On Unix, SIGINT and SIGTERM stop the active recipe process group, retain an
 interrupted log, and leave the output group stale for the next invocation.
 In `--cargo` mode, reachable environment references also emit Cargo
 `rerun-if-env-changed` metadata.
+
+`need logs TARGET` inspects the latest retained execution for a declared artifact
+target. It prints the execution status and captured stdout and stderr without
+building the target; use `--file PATH` to select a specific needfile.

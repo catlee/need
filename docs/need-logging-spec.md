@@ -476,28 +476,25 @@ This metadata may live in the build database.
 
 ## 21. Log Inspection
 
-A future CLI SHOULD make retained logs easy to inspect.
-
-Possible syntax:
+A CLI MUST make the latest retained log easy to inspect:
 
 ```sh
 need logs build/foo.o
 ```
 
-or:
+The command accepts one declared artifact target and an optional `--file PATH`.
+It resolves exact, pattern-rule, and remembered dynamic outputs using the normal
+target rules, then selects the lexicographically newest valid execution in the
+target's hashed `.need/logs/` directory. Since execution names begin with the
+millisecond timestamp, this is the newest retained execution. It prints the
+target, output group, execution path, status (`success`, `failure`, or
+`interrupted`), and the captured `stdout` and `stderr` sections. It is
+read-only: it does not build the target or update state.
 
-```sh
-need --show-log build/foo.o
-```
-
-Useful operations may include:
-
-- show latest log
-- show previous successful logs
-- show failure logs
-- list execution history
-
-Exact CLI syntax is deferred.
+If no retained execution exists, or the target is not a declared artifact, the
+command fails with a path-bearing diagnostic and a concise `help:` hint. Older
+successful executions remain available only according to `need.log.keep`; the
+inspection command does not add history or retention controls.
 
 ## 22. Log Cleanup
 
