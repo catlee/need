@@ -61,6 +61,10 @@ The current implementation includes the core artifact graph, including:
 - signal-aware recipe termination, interrupted logs, atomic state replacement,
   and startup cleanup of abandoned temporary artifacts
 
+The following dependency form is specified but not yet implemented:
+
+- `stat(path)` for explicit, non-recursive filesystem metadata dependencies
+
 Metadata-assisted BLAKE3 caching is implemented for regular-file hashes. The
 cache is persisted in `.need/state.json` and uses file size plus nanosecond mtime
 to avoid rehashing unchanged files.
@@ -81,7 +85,8 @@ Primary goals:
 7. Dependency globs.
 8. Simple variables and interpolation aligned with `just`.
 9. Content-based incremental rebuilding.
-10. Explicit dependency kinds for files, trees, mtimes, environment values, and strings.
+10. Explicit dependency kinds for files, trees, mtimes, filesystem metadata,
+    environment values, and strings.
 11. Good composition with existing tools.
 12. Clear diagnostics explaining rebuild decisions.
 13. Safe parallel execution.
@@ -1100,7 +1105,7 @@ means:
 
 Additional dependency expressions allow users to choose the exact invalidation semantics they need.
 
-### 15.1 File Content
+### 16.1 File Content
 
 Bare path:
 
@@ -1122,7 +1127,7 @@ Both mean that the file's content determines freshness.
 foo: file({{sdk}}/bin/monkeyc)
 ```
 
-### 15.2 Timestamp / Metadata
+### 16.2 Modification-time Dependency
 
 ```make
 foo: mtime({{sdk}})
@@ -1134,7 +1139,46 @@ It is valid for files or directories.
 
 This is intentionally cheap and coarse.
 
-### 15.3 Directory Tree Content
+### 16.3 Filesystem Metadata
+
+The planned form is:
+
+```make
+foo: stat(script.sh)
+```
+
+`stat(path)` observes exactly one filesystem entry, without recursively
+walking a directory and without following a symlink. Its signature includes:
+
+- whether the entry is present
+- the entry type: regular file, directory, symlink, or other filesystem type
+- Unix permission and mode bits, including special mode bits where available
+- the textual symlink target when the entry is a symlink
+
+The signature deliberately excludes file contents, directory membership,
+access/modification/status-change timestamps, file size, ownership, inode or
+device identity, and link count. These values are either covered by another
+dependency kind or are unstable across machines and ordinary filesystem
+operations.
+
+`stat(path)` uses `lstat`-style semantics: a symlink is represented by its own
+type, mode, and target rather than by the metadata of its referent. A missing
+path has a stable missing signature, so creating or removing the entry makes
+the rule stale. A directory's mode can therefore be tracked without making
+its children inputs; use `tree(path)` for recursive membership and content.
+
+The dependency is freshness-only and does not add a path to `{{in}}`. It is
+separate from `file(path)`, which hashes content, and `mtime(path)`, which
+retains its existing coarse timestamp-and-size semantics. The initial
+implementation scope is Unix metadata. On platforms without Unix mode bits,
+an implementation may reject `stat(...)` with a clear unsupported dependency
+diagnostic rather than silently weakening the signature.
+
+This form is intentionally not accepted by the current prototype. Until it is
+implemented, use the existing dependency kinds or an explicit wrapper
+artifact when a recipe depends on filesystem metadata.
+
+### 16.4 Directory Tree Content
 
 ```make
 foo: tree(config/)
@@ -1154,7 +1198,7 @@ changes to symlink targets observable.
 
 This may be expensive for large trees and should be used intentionally.
 
-### 15.4 Environment Value
+### 16.5 Environment Value
 
 ```make
 foo: env(GARMIN_SDK)
@@ -1162,7 +1206,7 @@ foo: env(GARMIN_SDK)
 
 The value of `GARMIN_SDK` participates directly in freshness.
 
-### 15.5 String Value
+### 16.6 String Value
 
 ```make
 foo: string("format-v3")
@@ -1179,7 +1223,7 @@ output.bin: input.dat string({{format}})
   generator {{in}} {{out}}
 ```
 
-### 15.6 Dependency Expressions and `{{in}}`
+### 16.7 Dependency Expressions and `{{in}}`
 
 Only file dependencies that are meaningful recipe inputs are included in `{{in}}`.
 
