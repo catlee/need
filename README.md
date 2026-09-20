@@ -84,6 +84,20 @@ just install
 
 That installs `need` in `~/.local/bin`. Make sure that directory is in your `PATH`.
 
+## Release
+
+Releases use [`cargo-release`](https://github.com/crate-ci/cargo-release):
+
+```sh
+cargo install cargo-release
+just release-dry-run
+just release
+```
+
+The dry run previews the version bump, changelog update, commit, tag, and
+publish. Release notes are maintained in [`CHANGELOG.md`](CHANGELOG.md) under
+the `Unreleased` heading.
+
 ## Agent skill
 
 This repository includes an agent skill for working with `need` and `needfile`.
