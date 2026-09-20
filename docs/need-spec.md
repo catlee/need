@@ -43,6 +43,7 @@ core artifact graph, including:
 - dry-run, explain, list, force, parallel jobs for dependencies and multiple
   command-line targets, and configurable output modes
 - `--version` and `--help` command-line queries
+- `need map` for `%`-pattern filename transformation with newline or NUL output
 - `-n` as an alias for `--dry-run` and `--file PATH` for explicit needfile selection
 - Cargo metadata mode with transitive source and environment dependencies
 - dependency-cycle detection
@@ -2035,6 +2036,36 @@ Options:
     --version
 -h, --help
 ```
+
+The `map` subcommand constructs target names without reading the filesystem or
+building artifacts:
+
+```text
+need map [-0] <RULE> <INPUT>...
+```
+
+`RULE` uses Needfile syntax with exactly one target pattern and one input
+pattern, for example `thumbs/%: %`. Each pattern must contain exactly one `%`.
+Each input must match the complete right-hand pattern; the captured text,
+including path separators, is substituted into the left-hand target pattern.
+Recipes, modifiers, variables, multiple targets, and multiple prerequisites
+are rejected. Inputs are validated before any output is written, and output
+preserves input order and duplicates. The default separator is a final newline
+per target; `-0` uses a final NUL byte per target. Shell globbing is left to the
+caller, and input or output paths are not normalized or required to exist.
+
+To build a target literally named `map` instead of invoking the subcommand,
+write `need -- map`.
+
+`get` combines mapping and building:
+
+```text
+need get [OPTIONS] <RULE> [--] <INPUT>...
+```
+
+It maps inputs with `RULE` using the same semantics as `need map`, then builds
+the mapped targets with the supplied build options. It is equivalent to
+`need [OPTIONS] $(need map <RULE> -- <INPUT>...)` without shell word splitting.
 
 ---
 

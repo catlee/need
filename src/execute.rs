@@ -19,6 +19,7 @@ use std::os::unix::process::CommandExt;
 use crate::{
     Result,
     hash::{hash_file, hash_symlink, hash_text, walk},
+    map::PercentPattern,
     model::{
         BuildCtx, Dependency, Jobs, OutputMode, ProjectPath, RuleId, SavedManifest, SavedRule,
         TargetMatch,
@@ -1178,15 +1179,10 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
     {
         let mut matches = Vec::new();
         for p in &r.outputs {
-            if let Some(pos) = p.as_str().find('%') {
-                let (a, b) = p.as_str().split_at(pos);
-                let b = &b[1..];
-                if t.starts_with(a) && t.ends_with(b) && t.len() >= a.len() + b.len() {
-                    matches.push((
-                        p.as_str().len() - 1,
-                        t[a.len()..t.len() - b.len()].to_string(),
-                    ));
-                }
+            if let Some(pattern) = PercentPattern::new(p.as_str())
+                && let Some(stem) = pattern.capture(t)
+            {
+                matches.push((p.as_str().len() - 1, stem.to_string()));
             }
         }
         if let Some(specificity) = matches.iter().map(|(specificity, _)| *specificity).max() {

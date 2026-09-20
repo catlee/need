@@ -5,7 +5,9 @@ use std::{
 
 mod cli;
 mod execute;
+mod get;
 mod hash;
+mod map;
 mod model;
 mod parser;
 mod state;
@@ -25,22 +27,49 @@ fn main() {
     }
 }
 fn run() -> Result<()> {
-    let mut args: Vec<String> = env::args().skip(1).collect();
-    if take_flag(&mut args, "--version") {
+    run_args(env::args().skip(1).collect())
+}
+
+pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
+    let literal_targets = args.first().is_some_and(|arg| arg == "--");
+    if literal_targets {
+        args.remove(0);
+    }
+    if !literal_targets && take_flag(&mut args, "--version") {
         println!("need {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
-    let force = take_flag(&mut args, "--force");
-    let dry = take_flag(&mut args, "--dry-run") || take_flag(&mut args, "-n");
-    let explain = take_flag(&mut args, "--explain");
-    let list = take_flag(&mut args, "--list");
-    let cargo = take_flag(&mut args, "--cargo");
-    let cli_output = take_value(&mut args, "--output")?;
-    let explicit_file = take_value(&mut args, "--file")?;
-    let jobs = take_jobs(&mut args)?;
-    if args.iter().any(|a| a == "--help" || a == "-h") {
+    if !literal_targets && args.first().is_some_and(|arg| arg == "map") {
+        args.remove(0);
+        return map::run(args);
+    }
+    if !literal_targets && let Some(index) = get_command_index(&args) {
+        args.remove(index);
+        return get::run(args);
+    }
+    let force = !literal_targets && take_flag(&mut args, "--force");
+    let dry = !literal_targets && (take_flag(&mut args, "--dry-run") || take_flag(&mut args, "-n"));
+    let explain = !literal_targets && take_flag(&mut args, "--explain");
+    let list = !literal_targets && take_flag(&mut args, "--list");
+    let cargo = !literal_targets && take_flag(&mut args, "--cargo");
+    let cli_output = if literal_targets {
+        None
+    } else {
+        take_value(&mut args, "--output")?
+    };
+    let explicit_file = if literal_targets {
+        None
+    } else {
+        take_value(&mut args, "--file")?
+    };
+    let jobs = if literal_targets {
+        Jobs::default()
+    } else {
+        take_jobs(&mut args)?
+    };
+    if !literal_targets && args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]"
+            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] <RULE> [--] <INPUT>..."
         );
         return Ok(());
     }
@@ -128,6 +157,39 @@ fn run() -> Result<()> {
         emit_cargo_metadata(&ctx, &file);
     }
     Ok(())
+}
+
+fn get_command_index(args: &[String]) -> Option<usize> {
+    let mut index = 0;
+    loop {
+        let argument = args.get(index)?;
+        if argument == "get" {
+            return Some(index);
+        }
+        match argument.as_str() {
+            "--force" | "--dry-run" | "-n" | "--explain" | "--list" | "--cargo" => index += 1,
+            "--file" | "--output" | "--jobs" => index += 2,
+            "-j" => {
+                index += if args
+                    .get(index + 1)
+                    .is_some_and(|value| value.parse::<usize>().is_ok())
+                {
+                    2
+                } else {
+                    1
+                }
+            }
+            argument
+                if argument.starts_with("--file=")
+                    || argument.starts_with("--output=")
+                    || argument.starts_with("--jobs=")
+                    || (argument.starts_with("-j") && argument.len() > 2) =>
+            {
+                index += 1
+            }
+            _ => return None,
+        }
+    }
 }
 
 fn expand_dependencies(

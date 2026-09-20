@@ -10,11 +10,15 @@ use crate::{
 };
 
 pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Vec<ParsedRule>)> {
-    let lines: Vec<String> = fs::read_to_string(path)
-        .map_err(|e| e.to_string())?
-        .lines()
-        .map(str::to_owned)
-        .collect();
+    let text = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    parse_needfile_text(path, &text)
+}
+
+pub(crate) fn parse_needfile_text(
+    path: &Path,
+    text: &str,
+) -> Result<(HashMap<String, String>, Vec<ParsedRule>)> {
+    let lines: Vec<String> = text.lines().map(str::to_owned).collect();
     let mut vars = HashMap::new();
     let mut rules = Vec::new();
     let mut i = 0;

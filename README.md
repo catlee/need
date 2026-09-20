@@ -41,6 +41,7 @@ The goal is a modern, narrow artifact build tool with:
 * pattern rules and globs
 * first-class multi-output and dynamic-output generators
 * compiler-generated dependency discovery through `@depfile(...)`
+* `need map` for constructing target filenames from `%` patterns
 * explicit dependency types for files, trees, environment values, strings, and so on
 * strong interoperability with `just`, Cargo, compilers, and existing tooling
 * no phony targets, workflow commands, deployment concepts, or general-purpose scripting language
@@ -222,6 +223,22 @@ need --force build/app       # rebuild the target, not its current dependencies
 need --list                  # list declared targets
 need --output=grouped build/app
 ```
+
+Construct target names without building or checking the filesystem:
+
+```sh
+need map 'thumbs/%: %' *.jpg *.png
+need map -0 'thumbs/%: %' *.jpg | xargs -0 need
+need get -j 'thumbs/%: %' -- *.jpg *.png
+need -j get 'thumbs/%: %' -- *.jpg *.png
+```
+
+`need map` preserves input order, validates all inputs before writing output,
+and leaves glob expansion to the shell.
+
+Use `need -- map` to build a target literally named `map`.
+
+`need get` maps the input filenames, then builds the resulting targets.
 
 For parallel builds:
 

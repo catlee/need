@@ -27,6 +27,8 @@ Execution
 - `need -j8 TARGET...` Build independent requested targets and graph nodes in parallel
 - `need --force TARGET` Rebuild the requested target or output group
 - `need --cargo TARGET` Build the target and emit Cargo rerun metadata
+- `need map [-0] 'TARGET: INPUT' INPUT...` Transform filenames with a Need-style `%` rule and write them to stdout without building
+- `need get [OPTIONS] 'TARGET: INPUT' [--] INPUT...` Map filenames and build the resulting targets
 
 Syntax
 ------
@@ -75,6 +77,19 @@ argument order matters.
 Build state and logs live under `.need/`. Successful recipes must produce every
 declared output. Dependency cycles are errors. `need` uses content signatures,
 not timestamps alone, to decide whether a rule is current.
+
+`need map` takes one Need-style rule with exactly one target pattern and one
+input pattern, for example `'thumbs/%: %'`. Each pattern requires exactly one
+`%`; the right-hand pattern matches each input and its capture is substituted
+into the left-hand target pattern. It preserves input order and duplicates,
+accepts nonexistent paths without normalization, and validates all inputs
+before writing output. Use `-0` for NUL-delimited output; shell glob expansion
+is the caller's responsibility.
+
+Use `need -- map` when `map` is a build target rather than the subcommand.
+
+`need get` maps its input filenames with the supplied rule, then builds the
+mapped targets with its build options.
 
 On Unix, SIGINT and SIGTERM stop the active recipe process group, retain an
 interrupted log under `.need/logs/`, and leave the output group stale for the
