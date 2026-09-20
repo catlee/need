@@ -97,6 +97,21 @@ error: ./needfile:19: recipe or modifier must be indented deeper than dependency
 help: indent this line farther than the dependency continuation above it
 ```
 
+For future syntax work, the selected direction for long dependency lists is a
+marked dependency block using `>` lines. It is not supported yet; continue to
+use the backslash form above. The intended shape is:
+
+```make
+target:
+  > src/main.c
+  > tree(config/)
+    command {{in}} -o {{out}}
+```
+
+The marker keeps dependencies visually distinct from recipes without making
+indentation alone determine their meaning. Short rules will continue to use
+the compact `target: dependency ...` form.
+
 ### Pattern rules
 
 Use one `%` as a stem:

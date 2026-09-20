@@ -235,6 +235,37 @@ Tabs have no special meaning. Implementations SHOULD reject inconsistent or ambi
 
 The trailing `\` is part of `need` syntax only while parsing the rule header and dependency continuation. Inside a recipe command, `\` has its normal shell meaning.
 
+### Long dependency lists
+
+The current grammar uses the explicit backslash continuation above. The
+selected direction for a future syntax extension is a marked dependency block:
+
+```make
+macos/.build/qemu-gpu-runtime/bin/qemu-system-aarch64:
+  > macos/build-qemu-gpu-runtime.sh
+  > macos/bundle-macho-dependencies.sh
+  > macos/pinned-runtime-bottles.sh
+  > tree(macos/patches/)
+  > env(CC) env(CFLAGS) env(CXX) env(CXXFLAGS)
+    @outputs(.need/runtime.outputs)
+    macos/build-qemu-gpu-runtime.sh
+```
+
+Each `>` line contributes whitespace-separated dependencies. The block must be
+contiguous and must appear before modifiers and recipe commands. A line whose
+first non-whitespace character is `>` is reserved for this purpose; `>` is not
+an order-only dependency operator. Short rules retain the compact
+`target: dependency ...` form, and the existing backslash form remains the
+supported syntax until this extension is implemented.
+
+This direction makes dependency lines visually distinct without making
+indentation alone carry grammar. It avoids backslash noise while keeping the
+extension to one marker and the existing relative-indentation rules. `|` was
+not selected because Make users reasonably expect it to introduce order-only
+prerequisites; a YAML-style `dependencies:` block was not selected because it
+adds block ceremony and a second indentation-sensitive construct. This is a
+design decision, not an implemented syntax promise.
+
 ## 7. Automatic Parent Directory Creation
 
 If a target's parent directory does not exist, `need` creates it automatically before executing the recipe.
