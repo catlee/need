@@ -43,7 +43,7 @@ core artifact graph, including:
 - dry-run, explain, list, force, parallel jobs for dependencies and multiple
   command-line targets, and configurable output modes
 - `--version` and `--help` command-line queries
-- `need clean` for removing generated state and logs under the selected project's `.need/` directory
+- `need outputs` for listing recorded successful output paths, `need clean` cleanup modes for removing state and/or those outputs, and `need logs TARGET` for inspecting the latest retained execution log
 - `need logs TARGET` for inspecting the latest retained execution log for a declared artifact target
 - `need map` for `%`-pattern filename transformation with newline or NUL output
 - `-n` as an alias for `--dry-run` and `--file PATH` for explicit needfile selection
@@ -1684,12 +1684,18 @@ build/%.png
 
 ## 37. Built-In Clean Semantics
 
-`need` does not require a `clean` target. The built-in `need clean` command
-removes the entire `.need/` directory for the project containing the discovered
-needfile. With `--file PATH`, the project is the directory containing that
-explicit needfile; relative paths are resolved from the invocation directory.
-It does not remove targets or any other project files. The command is safe to
-run repeatedly when `.need/` is already absent.
+`need` does not require a `clean` target. `need outputs [-0]` lists the unique
+project-relative paths recorded for successful outputs, in sorted order. The
+default separator is a newline; `-0` uses NUL separators for shell-safe use.
+
+The built-in `need clean` command removes the entire `.need/` directory for the
+project containing the discovered needfile. `need clean --outputs-only` removes
+only recorded outputs and retains `.need/`, while `need clean --remove-outputs`
+removes recorded outputs first and then `.need/`. With `--file PATH`, the
+project is the directory containing that explicit needfile; relative paths are
+resolved from the invocation directory. All modes take the project lock, only
+act on safe project-relative recorded file paths, and are idempotent when state
+or outputs are absent.
 
 Use `just` to remove build artifacts as well:
 
@@ -1697,14 +1703,6 @@ Use `just` to remove build artifacts as well:
 clean:
   rm -rf build .need
 ```
-
-A future:
-
-```sh
-need --outputs
-```
-
-may list known generated outputs to help other tools implement cleanup.
 
 Deletion remains an operational concern rather than dependency-graph semantics.
 
@@ -2047,7 +2045,7 @@ Options:
 The built-in cleanup command is:
 
 ```text
-need clean [--file PATH]
+need clean [--outputs-only|--remove-outputs] [--file PATH]
 ```
 
 The log inspection command is:

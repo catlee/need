@@ -2,7 +2,7 @@ use std::{
     collections::{BTreeSet, HashMap},
     env, fs,
     io::{self, Write},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -49,16 +49,13 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
         args.remove(0);
         return map::run(args);
     }
-    if !literal_targets && let Some(index) = get_command_index(&args) {
-        args.remove(index);
-        return get::run(args);
-    }
-    if !literal_targets && let Some(index) = get_clean_command_index(&args) {
+    if !literal_targets && let Some(index) = get_outputs_command_index(&args) {
         args.remove(index);
         let explicit_file = take_value(&mut args, "--file")?;
+        let nul = take_flag(&mut args, "-0");
         if !args.is_empty() {
             return Err(format!(
-                "unexpected argument for clean: {}\nhelp: use `need clean [--file PATH]`",
+                "unexpected argument for outputs: {}\nhelp: use `need outputs [-0] [--file PATH]`",
                 args.join(" ")
             ));
         }
@@ -68,6 +65,42 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
         )?;
         let root = file.parent().unwrap();
         let _lock = BuildLock::acquire(root)?;
+        cleanup_recovery_files(root)?;
+        return list_recorded_outputs(root, nul);
+    }
+    if !literal_targets && let Some(index) = get_command_index(&args) {
+        args.remove(index);
+        return get::run(args);
+    }
+    if !literal_targets && let Some(index) = get_clean_command_index(&args) {
+        args.remove(index);
+        let explicit_file = take_value(&mut args, "--file")?;
+        let outputs_only = take_flag(&mut args, "--outputs-only");
+        let remove_outputs = take_flag(&mut args, "--remove-outputs");
+        if outputs_only && remove_outputs {
+            return Err(
+                "`--outputs-only` and `--remove-outputs` cannot be used together\nhelp: choose whether to retain or remove .need state"
+                    .into(),
+            );
+        }
+        if !args.is_empty() {
+            return Err(format!(
+                "unexpected argument for clean: {}\nhelp: use `need clean [--outputs-only|--remove-outputs] [--file PATH]`",
+                args.join(" ")
+            ));
+        }
+        let file = select_needfile(
+            env::current_dir().map_err(|e| e.to_string())?,
+            explicit_file,
+        )?;
+        let root = file.parent().unwrap();
+        let _lock = BuildLock::acquire(root)?;
+        if outputs_only || remove_outputs {
+            remove_recorded_outputs(root)?;
+        }
+        if outputs_only {
+            return Ok(());
+        }
         return clean_state(root);
     }
     if !literal_targets && let Some(index) = get_logs_command_index(&args) {
@@ -111,7 +144,7 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
     };
     if !literal_targets && args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need clean [--file PATH]\n       need logs [--file PATH] TARGET\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] <RULE> [--] <INPUT>..."
+            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need outputs [-0] [--file PATH]\n       need clean [--outputs-only|--remove-outputs] [--file PATH]\n       need logs [--file PATH] TARGET\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] <RULE> [--] <INPUT>..."
         );
         return Ok(());
     }
@@ -247,6 +280,130 @@ fn get_clean_command_index(args: &[String]) -> Option<usize> {
             _ => return None,
         }
     }
+}
+
+fn get_outputs_command_index(args: &[String]) -> Option<usize> {
+    let mut index = 0;
+    loop {
+        let argument = args.get(index)?;
+        if argument == "outputs" {
+            return Some(index);
+        }
+        match argument.as_str() {
+            "--file" => index += 2,
+            argument if argument.starts_with("--file=") => index += 1,
+            _ => return None,
+        }
+    }
+}
+
+fn list_recorded_outputs(root: &Path, nul: bool) -> Result<()> {
+    let separator = if nul { b'\0' } else { b'\n' };
+    let mut stdout = io::stdout().lock();
+    for output in recorded_outputs(root)? {
+        stdout
+            .write_all(output.as_str().as_bytes())
+            .and_then(|()| stdout.write_all(&[separator]))
+            .map_err(|error| format!("could not write recorded outputs: {error}"))?;
+    }
+    Ok(())
+}
+
+fn recorded_outputs(root: &Path) -> Result<BTreeSet<ProjectPath>> {
+    let state = load_state(root).map_err(|error| {
+        format!(
+            "could not read recorded outputs from {}: {error}\nhelp: rebuild outputs or repair the state file",
+            state_path(root).display()
+        )
+    })?;
+    state
+        .rules
+        .values()
+        .flat_map(|rule| rule.outputs.keys().cloned())
+        .map(|output| {
+            recorded_output_path(root, &output)?;
+            Ok(output)
+        })
+        .collect()
+}
+
+fn remove_recorded_outputs(root: &Path) -> Result<()> {
+    for output in recorded_outputs(root)? {
+        if output.as_str() == ".need" || output.as_str().starts_with(".need/") {
+            return Err(format!(
+                "recorded output {output} is inside .need\nhelp: remove it manually; cleanup modes preserve state until it is removed as a whole"
+            ));
+        }
+        let path = safe_removal_path(root, &output)?;
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(format!(
+                    "could not inspect recorded output {output}: {error}\nhelp: check access to {}",
+                    path.display()
+                ));
+            }
+        };
+        if metadata.is_dir() {
+            return Err(format!(
+                "recorded output {output} is a directory\nhelp: only file outputs can be removed by `need clean`"
+            ));
+        }
+        if !metadata.is_file() && !metadata.file_type().is_symlink() {
+            return Err(format!(
+                "recorded output {output} is not a regular file\nhelp: remove it manually after checking its type"
+            ));
+        }
+        fs::remove_file(&path).map_err(|error| {
+            format!(
+                "could not remove recorded output {output}: {error}\nhelp: check access to {} and retry",
+                path.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn recorded_output_path(root: &Path, output: &ProjectPath) -> Result<PathBuf> {
+    let relative = Path::new(output.as_str());
+    if relative.is_absolute()
+        || relative.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(format!(
+            ".need/state.json contains unsafe recorded output path {output}\nhelp: recorded outputs must be project-relative paths"
+        ));
+    }
+    Ok(root.join(relative))
+}
+
+fn safe_removal_path(root: &Path, output: &ProjectPath) -> Result<PathBuf> {
+    let path = recorded_output_path(root, output)?;
+    let relative = Path::new(output.as_str());
+    let mut parent = root.to_path_buf();
+    for component in relative
+        .components()
+        .take(relative.components().count().saturating_sub(1))
+    {
+        parent.push(component.as_os_str());
+        match fs::symlink_metadata(&parent) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(format!(
+                    "recorded output {output} has a symlinked parent {}\nhelp: remove it manually after verifying the destination",
+                    parent.display()
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+            Err(error) => return Err(format!("could not inspect {}: {error}", parent.display())),
+        }
+    }
+    Ok(path)
 }
 
 fn get_logs_command_index(args: &[String]) -> Option<usize> {
