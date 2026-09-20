@@ -44,6 +44,7 @@ core artifact graph, including:
   command-line targets, and configurable output modes
 - `--version` and `--help` command-line queries
 - `need clean` for removing generated state and logs under the selected project's `.need/` directory
+- `need logs TARGET` for inspecting the latest retained execution log for a declared artifact target
 - `need map` for `%`-pattern filename transformation with newline or NUL output
 - `-n` as an alias for `--dry-run` and `--file PATH` for explicit needfile selection
 - Cargo metadata mode with transitive source and environment dependencies
@@ -2048,6 +2049,19 @@ The built-in cleanup command is:
 ```text
 need clean [--file PATH]
 ```
+
+The log inspection command is:
+
+```text
+need logs [--file PATH] TARGET
+```
+
+`need logs` resolves `TARGET` as an artifact target, including pattern-rule
+instances and remembered dynamic outputs, and selects the newest retained
+execution in that output group's hashed `.need/logs/` directory. It prints the
+execution status, log path, and captured stdout and stderr. It never builds the
+target or changes build state. Exactly one target is required; use `need -- logs`
+to build a target literally named `logs`.
 
 The `map` subcommand constructs target names without reading the filesystem or
 building artifacts:

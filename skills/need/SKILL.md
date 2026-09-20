@@ -17,6 +17,7 @@ Discovery
 - `need --dry-run TARGET` Show recipes that would run
 - `need -n TARGET` Short alias for `--dry-run`
 - `need --file PATH TARGET` Use a specific needfile; relative paths start at the invocation directory
+- `need logs [--file PATH] TARGET` Show the latest retained execution log for a declared artifact target without building it
 - `need clean [--file PATH]` Remove generated state and logs under the selected project's `.need/` directory
 
 Execution
@@ -99,6 +100,11 @@ On Unix, SIGINT and SIGTERM stop the active recipe process group, retain an
 interrupted log under `.need/logs/`, and leave the output group stale for the
 next invocation. State replacement is atomic; abandoned temporary state and
 capture files are cleaned on the next invocation.
+
+`need logs TARGET` resolves the target using normal exact, pattern, and dynamic
+output rules, then shows the newest retained execution for that output group.
+It prints the status, log path, and captured stdout/stderr; it does not build or
+modify state. Logs are retained according to `need.log.keep`.
 
 For dynamic secondary outputs, `@outputs(PATH)` names a UTF-8 manifest written
 by the recipe. List one project-relative path per line; `need` validates, tracks,

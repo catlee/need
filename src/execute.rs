@@ -104,7 +104,7 @@ pub(crate) fn abs(c: &BuildCtx, p: impl AsRef<str>) -> PathBuf {
     }
 }
 
-fn group_key(outputs: &[ProjectPath]) -> String {
+pub(crate) fn group_key(outputs: &[ProjectPath]) -> String {
     outputs
         .iter()
         .map(ProjectPath::as_str)
