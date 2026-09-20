@@ -165,6 +165,10 @@ process variables win by default. Use `need.env.override = true` to let the
 file win, `need.env.required = true` to require a file, or
 `need.env.file = .env.local` to use another filename.
 
+Command-output dependencies for toolchain probes are being designed but are not
+implemented yet. For now, model stable values with `env(...)`, `string(...)`, or
+an explicit generated file.
+
 Rules with generated secondary files can declare an output manifest:
 
 ```make
