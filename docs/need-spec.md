@@ -32,8 +32,7 @@ A useful rule of thumb is:
 
 ## Implementation Status
 
-This document describes the target design. The current prototype implements the
-core artifact graph, including:
+The current implementation includes the core artifact graph, including:
 
 - basic rules, variables, interpolation, pattern rules, and dependency globs
 - automatic output directories and multiple-output groups
@@ -2134,11 +2133,6 @@ The following decisions remain intentionally open.
 ### Variable expression grammar
 
 How closely should `need` adopt `just` expression syntax versus supporting only interpolation?
-
-### Depfiles
-
-What syntax should declare compiler-generated dependency files?
-
 
 ### Shell selection
 

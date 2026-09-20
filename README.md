@@ -52,7 +52,7 @@ Cargo      → Rust compilation
 
 `need` stays small enough to understand, but sophisticated enough that generated assets, codegen, SDK dependencies, and real incremental builds don’t require Make’s historical baggage.
 
-Some of the capabilities above are still being implemented. See [Implementation Status](docs/need-spec.md#implementation-status) for the current state.
+The current implementation status is tracked in the [Implementation Status](docs/need-spec.md#implementation-status) section of the specification.
 
 ## Alternatives
 
