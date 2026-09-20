@@ -165,12 +165,15 @@ process variables win by default. Use `need.env.override = true` to let the
 file win, `need.env.required = true` to require a file, or
 `need.env.file = .env.local` to use another filename.
 
-Command-output dependencies for toolchain probes are being designed but are not
-implemented yet. For now, model stable values with `env(...)`, `string(...)`, or
-an explicit generated file.
+Command-output dependencies such as `command(swift --version)` are not
+implemented. The parser does not treat `command(...)` as a dependency kind.
+For now, model stable values with `env(...)`, `string(...)`, or an explicit
+generated file.
+
 The specification reserves `stat(path)` for builds that need one entry's
-filesystem type, mode bits, or symlink target. It is not implemented yet;
-`file(...)`, `tree(...)`, and `mtime(...)` retain their current semantics.
+filesystem type, mode bits, or symlink target. It is not implemented, and the
+parser does not treat it as a metadata dependency; `file(...)`, `tree(...)`,
+and `mtime(...)` retain their current semantics.
 
 Rules with generated secondary files can declare an output manifest:
 
