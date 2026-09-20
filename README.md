@@ -265,11 +265,15 @@ interrupted log, and leave the output group stale for the next invocation.
 In `--cargo` mode, reachable environment references also emit Cargo
 `rerun-if-env-changed` metadata.
 
-After a recipe succeeds, `need` checks the same freshness signature again
-before recording output hashes and successful state. If an input changes during
-the recipe, the build fails with a rerun hint and leaves the recipe's outputs on
-disk without committing success. Glob membership is re-evaluated for this
-check.
+For a stale rule, `need` computes its normal freshness signature after resolving
+and building dependencies, then runs the recipe and validates its declared
+outputs, dynamic outputs, and depfile. It recomputes that same signature before
+recording output hashes and successful state. The check includes persisted
+depfile dependencies, semantic modifiers, and re-expanded glob membership. If
+an input changes during the recipe, the build fails with a rerun hint, leaves
+recipe outputs on disk as stale, and commits neither output hashes nor rule
+state. If the fingerprints match, newly discovered depfile dependencies and
+successful state are committed together.
 
 `need logs TARGET` inspects the latest retained execution for a declared artifact
 target. It prints the execution status and captured stdout and stderr without

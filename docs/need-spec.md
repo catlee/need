@@ -57,6 +57,7 @@ The current implementation includes the core artifact graph, including:
   dependencies and Make-style escaping/continuations
 - the design for explicit command-output freshness probes is documented below;
   command dependencies are not implemented yet
+- pre/post input-fingerprint validation around recipe execution
 - signal-aware recipe termination, interrupted logs, atomic state replacement,
   and startup cleanup of abandoned temporary artifacts
 
@@ -1311,15 +1312,42 @@ A rule is stale when any of the following is true:
 
 A current rule may be skipped.
 
-Before executing a stale recipe, `need` computes the rule's normal freshness
-signature after resolving and building its dependencies. After the recipe exits
-successfully, and all declared outputs, dynamic outputs, and depfiles validate,
-`need` recomputes that same signature. Glob dependencies are re-expanded for
-this second check, so a file added or removed while the recipe runs is detected.
-If the signatures differ, the build fails with an actionable rerun hint; files
-written by the recipe remain on disk, but output hashes and successful rule
-state are not committed. Previously discovered depfile dependencies remain part
-of both checks and newly discovered dependencies participate in later builds.
+### 20.1 Build transaction and input-fingerprint validation
+
+For a stale rule, `need` treats recipe execution as a logical build
+transaction. A successful build means that the outputs were produced from the
+same dependency state that `need` records as current:
+
+1. Resolve and build dependencies, including persisted dependencies discovered
+   by an earlier depfile.
+2. Compute the rule's normal freshness signature immediately before running the
+   recipe. This is the pre-recipe input fingerprint; it uses the ordinary
+   freshness-signature machinery, including resolved file, tree, mtime,
+   environment, and string dependencies, semantic modifiers, and the current
+   membership of dependency globs.
+3. Run the recipe.
+4. Validate declared outputs, dynamic outputs and their manifest, and any
+   declared depfile.
+5. Recompute the same freshness signature after the recipe. Globs are expanded
+   again for this post-recipe fingerprint, so files added or removed while the
+   recipe runs are detected. Persisted discovered dependencies participate in
+   this check just as they did in the pre-recipe check.
+6. Compare the pre- and post-recipe fingerprints. If they differ, fail with:
+   `inputs changed while building ...` and a hint to rerun after inputs stop
+   changing. Recipe outputs remain on disk, but are stale; no output hashes,
+   discovered dependencies from the new depfile, or successful rule state are
+   committed.
+7. If they match, hash the validated outputs, reconcile dynamic-output
+   ownership, and commit the successful rule state. Newly discovered depfile
+   dependencies become part of subsequent builds only through this successful
+   commit.
+
+The pre- and post-recipe checks deliberately share one signature mechanism;
+the post-check is not a separate timestamp or race-check algorithm. State is
+persisted only after the build transaction succeeds, using the normal atomic
+state replacement rules. Filesystem changes made by a recipe are not rolled
+back when the post-check fails, so the next invocation re-evaluates the rule
+from the unchanged last successful state.
 
 Output signatures use the same metadata-assisted hash cache as input files:
 
@@ -1407,13 +1435,16 @@ Expansion and dependency resolution follow a deterministic order:
 6. Substitute the bound stem into dependency patterns
 7. Expand dependency globs
 8. Evaluate dependency expressions such as file(), tree(), mtime(), env(), and string()
-9. Compute dependency, recipe, and semantic modifier signatures
+9. Compute the pre-recipe dependency, recipe, and semantic modifier signature
 10. Decide freshness
 11. Interpolate recipe values
 12. Shell-escape interpolated values
 13. Execute the recipe
-14. Validate outputs
-15. Record output signatures and commit successful state
+14. Validate outputs, dynamic output manifests, and depfiles
+15. Recompute the post-recipe signature using the same machinery, including
+    re-expanded globs
+16. Reject the build without committing state if the signatures differ
+17. Record output signatures and commit successful state if they match
 ```
 
 For a rule with a dependency glob, dependency resolution and building preserve

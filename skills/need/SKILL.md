@@ -84,11 +84,15 @@ argument order matters.
 
 Build state and logs live under `.need/`. Successful recipes must produce every
 declared output. Dependency cycles are errors. `need` uses content signatures,
-not timestamps alone, to decide whether a rule is current. After a successful
-recipe and output validation, it recomputes the same signature before recording
-output hashes or successful state. If inputs changed during the recipe, the
-build fails with a rerun hint, leaves outputs on disk, and does not commit
-success; glob membership is re-evaluated for this check.
+not timestamps alone, to decide whether a rule is current. For a stale rule it
+computes the normal freshness signature after resolving and building
+dependencies, runs the recipe, validates outputs/manifests/depfiles, then
+recomputes that same signature before recording output hashes or successful
+state. This includes persisted depfile dependencies, semantic modifiers, and
+re-expanded glob membership. If inputs changed during the recipe, the build
+fails with a rerun hint, leaves outputs on disk as stale, and commits neither
+output hashes nor rule state. Newly discovered depfile dependencies are saved
+only when the fingerprints match and the successful state is committed.
 
 `need map` takes one Need-style rule with exactly one target pattern and one
 input pattern, for example `'thumbs/%: %'`. Each pattern requires exactly one
