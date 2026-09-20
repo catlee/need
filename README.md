@@ -16,7 +16,7 @@ For when you just need simple build dependencies.
 
 `need` is a small build tool for making files exist and keeping them up to date.
 
-It handles artifact dependencies. Use `just` for commands such as testing, running a simulator, or cleaning a project.
+It handles artifact dependencies. Use `just` for commands such as testing, running a simulator, or cleaning build artifacts.
 
 ![screenshot](https://raw.githubusercontent.com/catlee/need/master/docs/screenshot.png)
 
@@ -218,6 +218,8 @@ need build/app               # build a target
 need --dry-run build/app     # show what would run
 need -n build/app            # short alias for --dry-run
 need --file path/to/needfile build/app  # select an explicit needfile
+need clean                              # remove the project's .need state and logs
+need clean --file path/to/needfile      # clean state beside an explicit needfile
 need --explain build/app     # explain current and stale targets
 need --force build/app       # rebuild the target, not its current dependencies
 need --list                  # list declared targets

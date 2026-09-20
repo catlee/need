@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeSet, HashMap},
-    env,
+    env, fs,
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 mod cli;
@@ -19,6 +20,8 @@ use parser::*;
 use state::*;
 
 type Result<T> = std::result::Result<T, String>;
+
+static CLEANUP_ID: AtomicU64 = AtomicU64::new(0);
 
 fn main() {
     if let Err(e) = run() {
@@ -47,6 +50,23 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
         args.remove(index);
         return get::run(args);
     }
+    if !literal_targets && let Some(index) = get_clean_command_index(&args) {
+        args.remove(index);
+        let explicit_file = take_value(&mut args, "--file")?;
+        if !args.is_empty() {
+            return Err(format!(
+                "unexpected argument for clean: {}\nhelp: use `need clean [--file PATH]`",
+                args.join(" ")
+            ));
+        }
+        let file = select_needfile(
+            env::current_dir().map_err(|e| e.to_string())?,
+            explicit_file,
+        )?;
+        let root = file.parent().unwrap();
+        let _lock = BuildLock::acquire(root)?;
+        return clean_state(root);
+    }
     let force = !literal_targets && take_flag(&mut args, "--force");
     let dry = !literal_targets && (take_flag(&mut args, "--dry-run") || take_flag(&mut args, "-n"));
     let explain = !literal_targets && take_flag(&mut args, "--explain");
@@ -69,7 +89,7 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
     };
     if !literal_targets && args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] <RULE> [--] <INPUT>..."
+            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need clean [--file PATH]\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] <RULE> [--] <INPUT>..."
         );
         return Ok(());
     }
@@ -190,6 +210,45 @@ fn get_command_index(args: &[String]) -> Option<usize> {
             _ => return None,
         }
     }
+}
+
+fn get_clean_command_index(args: &[String]) -> Option<usize> {
+    let mut index = 0;
+    loop {
+        let argument = args.get(index)?;
+        if argument == "clean" {
+            return Some(index);
+        }
+        match argument.as_str() {
+            "--file" => index += 2,
+            argument if argument.starts_with("--file=") => index += 1,
+            _ => return None,
+        }
+    }
+}
+
+fn clean_state(root: &std::path::Path) -> Result<()> {
+    let state = root.join(".need");
+    if !state.exists() {
+        return Ok(());
+    }
+    let cleanup = root.join(format!(
+        ".need.clean-{}-{}",
+        std::process::id(),
+        CLEANUP_ID.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::rename(&state, &cleanup).map_err(|error| {
+        format!(
+            "could not move {} out of the way: {error}\nhelp: retry `need clean` after resolving access to the project state directory",
+            state.display()
+        )
+    })?;
+    fs::remove_dir_all(&cleanup).map_err(|error| {
+        format!(
+            "could not remove temporary cleanup directory {}: {error}\nhelp: remove that directory manually and retry",
+            cleanup.display()
+        )
+    })
 }
 
 fn expand_dependencies(
@@ -354,6 +413,35 @@ mod tests {
             collect_env_refs(&rule.recipe, &raw_vars, &mut rule.env_refs);
         }
         ctx
+    }
+
+    #[test]
+    fn clean_removes_only_project_state() {
+        let root = temp_project("clean-state");
+        fs::create_dir_all(root.join(".need/logs/group")).unwrap();
+        fs::write(root.join(".need/state.json"), "state").unwrap();
+        fs::write(root.join(".need/logs/group/build.log"), "log").unwrap();
+        fs::write(root.join("output.txt"), "artifact").unwrap();
+
+        clean_state(&root).unwrap();
+
+        assert!(!root.join(".need").exists());
+        assert_eq!(
+            fs::read_to_string(root.join("output.txt")).unwrap(),
+            "artifact"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn clean_state_is_idempotent() {
+        let root = temp_project("clean-state-missing");
+
+        clean_state(&root).unwrap();
+        clean_state(&root).unwrap();
+
+        assert!(root.exists());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

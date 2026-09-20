@@ -17,6 +17,7 @@ Discovery
 - `need --dry-run TARGET` Show recipes that would run
 - `need -n TARGET` Short alias for `--dry-run`
 - `need --file PATH TARGET` Use a specific needfile; relative paths start at the invocation directory
+- `need clean [--file PATH]` Remove generated state and logs under the selected project's `.need/` directory
 
 Execution
 ---------
@@ -67,7 +68,10 @@ Notes
 -----
 
 `need` builds file artifacts. Use `just` for commands such as testing, running,
-cleaning, or starting services.
+cleaning build artifacts, or starting services. `need clean` only removes the
+`.need/` directory beside the discovered or explicitly selected needfile; it
+does not remove targets or other project files and is safe when `.need/` is
+already absent.
 
 `need` searches upward for `needfile`, resolves paths relative to the directory
 containing it, and creates output parent directories automatically. `{{in}}`

@@ -43,6 +43,7 @@ core artifact graph, including:
 - dry-run, explain, list, force, parallel jobs for dependencies and multiple
   command-line targets, and configurable output modes
 - `--version` and `--help` command-line queries
+- `need clean` for removing generated state and logs under the selected project's `.need/` directory
 - `need map` for `%`-pattern filename transformation with newline or NUL output
 - `-n` as an alias for `--dry-run` and `--file PATH` for explicit needfile selection
 - Cargo metadata mode with transitive source and environment dependencies
@@ -1680,11 +1681,16 @@ build/%.png
 
 ---
 
-## 37. No Built-In Clean Semantics
+## 37. Built-In Clean Semantics
 
-`need` does not require a `clean` target.
+`need` does not require a `clean` target. The built-in `need clean` command
+removes the entire `.need/` directory for the project containing the discovered
+needfile. With `--file PATH`, the project is the directory containing that
+explicit needfile; relative paths are resolved from the invocation directory.
+It does not remove targets or any other project files. The command is safe to
+run repeatedly when `.need/` is already absent.
 
-Use `just`:
+Use `just` to remove build artifacts as well:
 
 ```make
 clean:
@@ -2035,6 +2041,12 @@ Options:
     --cargo           emit Cargo rerun metadata
     --version
 -h, --help
+```
+
+The built-in cleanup command is:
+
+```text
+need clean [--file PATH]
 ```
 
 The `map` subcommand constructs target names without reading the filesystem or
