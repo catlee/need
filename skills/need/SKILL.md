@@ -18,7 +18,8 @@ Discovery
 - `need -n TARGET` Short alias for `--dry-run`
 - `need --file PATH TARGET` Use a specific needfile; relative paths start at the invocation directory
 - `need logs [--file PATH] TARGET` Show the latest retained execution log for a declared artifact target without building it
-- `need clean [--file PATH]` Remove generated state and logs under the selected project's `.need/` directory
+- `need outputs [-0]` List successful recorded outputs, newline- or NUL-delimited
+- `need clean [--outputs-only|--remove-outputs] [--file PATH]` Remove state, recorded outputs, or both
 
 Execution
 ---------
@@ -69,10 +70,12 @@ Notes
 -----
 
 `need` builds file artifacts. Use `just` for commands such as testing, running,
-cleaning build artifacts, or starting services. `need clean` only removes the
-`.need/` directory beside the discovered or explicitly selected needfile; it
-does not remove targets or other project files and is safe when `.need/` is
-already absent.
+or starting services. `need clean` removes `.need/` beside the discovered or
+explicitly selected needfile. `need clean --outputs-only` removes the paths
+recorded from successful builds while retaining state; `--remove-outputs` then
+removes state too. `need outputs [-0]` exposes that recorded set for other
+tools. These commands use the project lock and only act on safe project-relative
+recorded paths.
 
 `need` searches upward for `needfile`, resolves paths relative to the directory
 containing it, and creates output parent directories automatically. `{{in}}`

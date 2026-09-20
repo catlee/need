@@ -198,7 +198,11 @@ need build/app               # build a target
 need --dry-run build/app     # show what would run
 need -n build/app            # short alias for --dry-run
 need --file path/to/needfile build/app  # select an explicit needfile
+need outputs                            # list successful recorded outputs
+need outputs -0                         # list them with NUL separators
 need clean                              # remove the project's .need state and logs
+need clean --outputs-only               # remove recorded outputs but retain .need state
+need clean --remove-outputs             # remove recorded outputs, then .need state and logs
 need clean --file path/to/needfile      # clean state beside an explicit needfile
 need logs build/app                     # show the latest retained execution log
 need --explain build/app     # explain current and stale targets
