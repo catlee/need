@@ -57,6 +57,24 @@ listed file, makes it directly buildable on later runs, and removes files omitte
 from a later successful manifest. `{{out}}` continues to contain only the static
 outputs on the rule header.
 
+The manifest is checked after the recipe succeeds. Every listed file must exist;
+duplicate, absolute, or project-escaping paths are errors. The manifest itself is
+tracked as build metadata, so deleting or changing it makes the rule stale. A
+dynamic output belongs to the rule that listed it, and cannot also belong to
+another output group.
+
+For example:
+
+```make
+index.json: source
+  @outputs(.need/generated.outputs)
+  generate {{in}} {{out}} .need/generated.outputs
+```
+
+After a successful build, a dynamic output can be requested by path. On a clean
+checkout, build a statically declared output of the owning rule first so `need`
+can discover the manifest and its ownership.
+
 ### Continuation lines
 
 Long rule headers can continue on an indented line ending in `\`:
@@ -103,6 +121,10 @@ bundle.js: assets/*.js
 
 Matching files are sorted before they are used. Globs can also match concrete outputs declared elsewhere in the `needfile`, which lets generated files participate in the graph.
 Matches outside the project root are preserved as external paths, just like direct external dependencies.
+
+`need` re-evaluates a glob after an earlier dependency builds or removes files
+that could match it. This includes files discovered through an output manifest,
+so a downstream rule does not run with a stale glob expansion.
 
 ## Variables and interpolation
 
@@ -240,6 +262,23 @@ output.bin: input.dat string({{format}})
 
 Changing `format` invalidates the rule without pretending that the value is a file. String dependencies are freshness inputs; they are not included in `{{in}}`. 
 
+### Compiler depfiles
+
+Use `@depfile(PATH)` when a recipe writes a Make-style dependency file, such as
+one produced by a C or C++ compiler:
+
+```make
+build/%.o: src/%.c
+  @depfile(build/{{stem}}.d)
+  cc -MMD -MF build/{{stem}}.d -c {{in}} -o {{out}}
+```
+
+After a successful recipe, `need` reads the depfile and saves its discovered
+file dependencies for later freshness checks. They are not added to `{{in}}`,
+but generated discovered artifacts still participate in the build graph. The
+depfile must exist and use the supported Make-style syntax, including escaped
+spaces and backslash-newline continuations.
+
 ## Rule modifiers
 
 A modifier is an indented line beginning with `@`. The implemented modifier is `@output(MODE)`, which changes how that rule’s recipe output is displayed:
@@ -282,6 +321,8 @@ artifact.
 * a declared output is missing;
 * a declared output’s content differs from the recorded successful output;
 * a file, tree, environment, or string dependency changes;
+* a glob's membership changes, including after an upstream rule creates or removes a matching file;
+* a dynamic output, output manifest, or depfile is missing or changed;
 * the resolved recipe, variables, or semantic modifiers change;
 * `--force` is used.
 
@@ -303,14 +344,23 @@ need --explain TARGET        # show whether targets are current or stale
 need --force TARGET          # rebuild the target
 need --list                  # list declared outputs
 need --output=grouped TARGET # choose an output mode
+need clean                   # remove .need state and logs for the project
+need map 'out/%: %' INPUT...  # map input filenames to target filenames
+need get 'out/%: %' -- INPUT... # map inputs, then build the targets
 ```
 
 For a generated Cargo artifact, use `need --cargo TARGET` from `build.rs` so Cargo receives the relevant file and environment rerun directives.
 
-## Not implemented yet
+`need clean --file PATH` selects the project beside an explicit needfile. It
+removes only that project's `.need/` state and logs; it does not remove declared
+or dynamic artifact outputs.
 
-The larger design in [the specification](need-spec.md) includes features that are not available in the current implementation:
+`need map` accepts one target pattern and one input pattern, such as
+`'thumbs/%: %'`. It validates all inputs before writing output, preserves input
+order and duplicates, and writes one mapped target per line. Use `-0` for NUL
+separation. Shell glob expansion is left to the caller.
 
-* dynamic output manifests;
-* compiler depfiles;
-* re-evaluating globs after upstream rules create or remove files;
+`need get` uses the same mapping rules, then builds the mapped targets. Build
+options such as `-j`, `--force`, and `--file` may be supplied before the mapping
+rule. Both commands construct or build artifact targets; use `just` for tasks
+such as testing, cleaning generated artifacts, running programs, or deploying.
