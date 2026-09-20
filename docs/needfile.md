@@ -277,6 +277,30 @@ output.bin: input.dat string({{format}})
 
 Changing `format` invalidates the rule without pretending that the value is a file. String dependencies are freshness inputs; they are not included in `{{in}}`. 
 
+### Command-output probes (proposed)
+
+The motivating case for a command dependency is a toolchain or platform value
+that is available from a probe such as `swift --version`, but not from a stable
+file or one environment variable. The proposed syntax is:
+
+```make
+build/app: src/main.swift command(swift --version)
+  swiftc {{in}} -o {{out}}
+```
+
+This syntax is not implemented yet. When implemented, `command(...)` will be an
+explicit freshness-only dependency: its output will not be passed to the
+recipe, and it will not create a build-graph edge. The expanded command text,
+stdout, stderr, and exit status will contribute to freshness. A non-zero exit
+status will stop dependency resolution with an error.
+
+The command will run through `/bin/sh -c` in the needfile's directory, using
+the same environment and shell quoting model as recipes. Identical expanded
+probes will be memoized for one invocation, but probe results will not be cached
+between invocations. Automatic variables such as `{{in}}`, `{{out}}`, and
+`{{stem}}` will not be allowed in probes; ordinary variables and explicit
+environment references will remain available.
+
 ### Compiler depfiles
 
 Use `@depfile(PATH)` when a recipe writes a Make-style dependency file, such as

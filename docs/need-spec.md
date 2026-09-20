@@ -55,6 +55,8 @@ The current implementation includes the core artifact graph, including:
 - glob re-evaluation after upstream rules create or remove matching files
 - compiler depfiles through `@depfile(...)`, including persisted discovered
   dependencies and Make-style escaping/continuations
+- the design for explicit command-output freshness probes is documented below;
+  command dependencies are not implemented yet
 - signal-aware recipe termination, interrupted logs, atomic state replacement,
   and startup cleanup of abandoned temporary artifacts
 
@@ -533,6 +535,50 @@ bundle.zip: images/**/%.png
 ```
 
 because there is no target pattern from which to bind `%`.
+
+## 10.4 Command-output dependencies (proposed)
+
+Some artifacts depend on a toolchain or platform identity that is exposed by a
+command rather than a stable file or environment variable. `need` may support
+an explicit command probe for that case:
+
+```make
+build/app: src/main.swift command(swift --version)
+  swiftc {{in}} -o {{out}}
+```
+
+This is a freshness dependency only. It does not create a graph edge, appear in
+`{{in}}`, or make the command's output an artifact. It is deliberately opt-in;
+`need` does not inspect recipes or run arbitrary commands automatically.
+
+The proposed v0.3 semantics are:
+
+- The command body is expanded using the normal needfile variables and
+  environment references, then executed by `/bin/sh -c` from the directory
+  containing the needfile, using the current process environment. The shell
+  syntax and quoting rules are therefore the same as for recipes.
+- The command text, complete stdout, complete stderr, and exit status all
+  contribute to the dependency signature. The command text is included so
+  changing the probe itself invalidates the rule even if it currently returns
+  the same bytes.
+- A non-zero exit status is a dependency-resolution error. `need` reports the
+  command, exit status, and captured output, and does not run the dependent
+  recipe or record successful state.
+- Identical expanded command probes are run once per `need` invocation and
+  their result is reused by all rules in that invocation. Probe results are not
+  persisted independently of the rule signatures; the command is rerun on the
+  next invocation so external state can be observed.
+- Command probes are not allowed to use automatic variables such as `{{in}}`,
+  `{{out}}`, or `{{stem}}`. They may use ordinary variables and explicit
+  environment references, which keeps their inputs visible and prevents a
+  hidden per-target command graph.
+
+This feature remains intentionally narrower than a general task runner. It
+does not provide command targets, output capture for recipes, dependency
+discovery, or a way to make one command's stdout another rule's file input.
+Projects that need those behaviors should use a generated file or a task
+runner such as `just`. Until implemented, use an explicit `string(...)`,
+`env(...)`, or generated file dependency as appropriate.
 
 ---
 
