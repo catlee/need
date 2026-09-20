@@ -39,21 +39,24 @@ fn sigterm_retains_interrupted_log_and_rebuilds() {
     fs::write(root.join("input"), "second\n").unwrap();
     fs::write(
         root.join("needfile"),
-        "output: input\n  touch marker\n  sleep 30 & echo $! > child.pid\n  while :; do printf partial > {{out}}; sleep 0.02; done\n",
+        "output: input\n  sleep 30 & echo $! > marker\n  while :; do printf partial > {{out}}; sleep 0.02; done\n",
     )
     .unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_need"))
         .current_dir(&root)
         .spawn()
         .unwrap();
-    for _ in 0..100 {
-        if root.join("marker").exists() {
-            break;
+    let child_pid = (0..100).find_map(|_| {
+        let pid = fs::read_to_string(root.join("marker"))
+            .ok()
+            .and_then(|contents| contents.trim().parse::<u32>().ok())
+            .filter(|pid| *pid > 0);
+        if pid.is_none() {
+            thread::sleep(Duration::from_millis(10));
         }
-        thread::sleep(Duration::from_millis(10));
-    }
-    assert!(root.join("marker").exists());
-    let child_pid = fs::read_to_string(root.join("child.pid")).unwrap();
+        pid
+    });
+    let child_pid = child_pid.expect("recipe did not publish a valid child PID");
     Command::new("kill")
         .args(["-TERM", &child.id().to_string()])
         .status()
@@ -66,7 +69,7 @@ fn sigterm_retains_interrupted_log_and_rebuilds() {
     );
     assert!(
         !Command::new("kill")
-            .args(["-0", child_pid.trim()])
+            .args(["-0", &child_pid.to_string()])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
