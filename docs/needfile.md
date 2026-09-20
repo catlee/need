@@ -227,6 +227,18 @@ build/app: mtime(toolchain/)
 
 This is cheaper for large paths, but intentionally coarse. Use a content dependency when the contents matter.
 
+The planned `stat(path)` form will track one filesystem entry's type, Unix mode
+bits, and symlink target without following symlinks or recursively inspecting
+directories:
+
+```make
+build/app: file(script.sh) stat(script.sh)
+```
+
+It will not track content, timestamps, size, ownership, or directory children,
+and it will not add the path to `{{in}}`. `stat(...)` is specified for a future
+implementation and is not accepted by the current prototype.
+
 ### Environment values
 
 `env(NAME)` makes one environment variable an explicit dependency:

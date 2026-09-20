@@ -66,6 +66,11 @@ Use `file(path)`, `tree(path)`, `mtime(path)`, `env(NAME)`, and
 `string(value)` when the default file-content dependency is not the right
 semantics.
 
+The specification also defines a planned `stat(path)` dependency for one
+entry's type, Unix mode bits, and symlink target. It is not implemented in the
+current prototype; do not use it in a needfile until the implementation status
+is updated.
+
 Notes
 -----
 

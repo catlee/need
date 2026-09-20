@@ -168,6 +168,9 @@ file win, `need.env.required = true` to require a file, or
 Command-output dependencies for toolchain probes are being designed but are not
 implemented yet. For now, model stable values with `env(...)`, `string(...)`, or
 an explicit generated file.
+The specification reserves `stat(path)` for builds that need one entry's
+filesystem type, mode bits, or symlink target. It is not implemented yet;
+`file(...)`, `tree(...)`, and `mtime(...)` retain their current semantics.
 
 Rules with generated secondary files can declare an output manifest:
 
