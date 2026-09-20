@@ -222,7 +222,7 @@ build/app: file(script.sh) stat(script.sh)
 
 It will not track content, timestamps, size, ownership, or directory children,
 and it will not add the path to `{{in}}`. `stat(...)` is specified for a future
-implementation and is not accepted by the current prototype.
+implementation and is not a supported dependency expression.
 
 ### Environment values
 
@@ -274,7 +274,7 @@ output.bin: input.dat string({{format}})
 
 Changing `format` invalidates the rule without pretending that the value is a file. String dependencies are freshness inputs; they are not included in `{{in}}`. 
 
-### Command-output probes (proposed)
+### Command-output probes (proposed, not implemented)
 
 The motivating case for a command dependency is a toolchain or platform value
 that is available from a probe such as `swift --version`, but not from a stable
@@ -285,8 +285,8 @@ build/app: src/main.swift command(swift --version)
   swiftc {{in}} -o {{out}}
 ```
 
-This syntax is not implemented yet. When implemented, `command(...)` will be an
-explicit freshness-only dependency: its output will not be passed to the
+This syntax is not a supported dependency expression. When implemented,
+`command(...)` will be an explicit freshness-only dependency: its output will not be passed to the
 recipe, and it will not create a build-graph edge. The expanded command text,
 stdout, stderr, and exit status will contribute to freshness. A non-zero exit
 status will stop dependency resolution with an error.
@@ -389,7 +389,9 @@ For a generated Cargo artifact, use `need --cargo TARGET` from `build.rs` so Car
 
 `need clean --file PATH` selects the project beside an explicit needfile. It
 removes only that project's `.need/` state and logs; it does not remove declared
-or dynamic artifact outputs.
+or dynamic artifact outputs. Use `--outputs-only` to remove recorded outputs
+while retaining state, or `--remove-outputs` to remove recorded outputs and
+then the state.
 
 `need map` accepts one target pattern and one input pattern, such as
 `'thumbs/%: %'`. It validates all inputs before writing output, preserves input

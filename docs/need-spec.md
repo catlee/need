@@ -56,14 +56,15 @@ The current implementation includes the core artifact graph, including:
 - compiler depfiles through `@depfile(...)`, including persisted discovered
   dependencies and Make-style escaping/continuations
 - the design for explicit command-output freshness probes is documented below;
-  command dependencies are not implemented yet
+  `command(...)` dependencies are not implemented
 - pre/post input-fingerprint validation around recipe execution
 - signal-aware recipe termination, interrupted logs, atomic state replacement,
   and startup cleanup of abandoned temporary artifacts
 
-The following dependency form is specified but not yet implemented:
+The following dependency forms are specified but not yet implemented:
 
 - `stat(path)` for explicit, non-recursive filesystem metadata dependencies
+- `command(...)` for explicit command-output freshness probes
 
 Metadata-assisted BLAKE3 caching is implemented for regular-file hashes. The
 cache is persisted in `.need/state.json` and uses file size plus nanosecond mtime
