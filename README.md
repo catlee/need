@@ -1,15 +1,9 @@
 <h1 align=center><code>need</code></h1>
 
 <div align=center>
-  <a href="https://crates.io/crates/need-tool">
-    <img src="https://img.shields.io/crates/v/need-tool.svg" alt="crates.io version">
-  </a>
-  <a href="https://github.com/catlee/need/actions/workflows/ci.yml">
-    <img src="https://github.com/catlee/need/actions/workflows/ci.yml/badge.svg" alt="build status">
-  </a>
-  <a href="https://github.com/catlee/need/releases">
-    <img src="https://img.shields.io/github/downloads/catlee/need/total.svg" alt="downloads">
-  </a>
+<a href="https://crates.io/crates/need-tool"><img src="https://img.shields.io/crates/v/need-tool.svg" alt="crates.io version"></a>
+<a href="https://github.com/catlee/need/actions/workflows/ci.yml"><img src="https://github.com/catlee/need/actions/workflows/ci.yml/badge.svg" alt="build status"></a>
+<a href="https://crates.io/crates/need-tool"><img src="https://img.shields.io/crates/d/need-tool.svg" alt="crates.io downloads"></a>
 </div>
 
 For when you just need simple build dependencies.
