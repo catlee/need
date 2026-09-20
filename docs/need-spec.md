@@ -43,8 +43,9 @@ core artifact graph, including:
 - dry-run, explain, list, force, parallel jobs for dependencies and multiple
   command-line targets, and configurable output modes
 - `--version` and `--help` command-line queries
-- `need outputs` for listing recorded successful output paths, `need clean` cleanup modes for removing state and/or those outputs, and `need logs TARGET` for inspecting the latest retained execution log
-- `need logs TARGET` for inspecting the latest retained execution log for a declared artifact target
+- `need outputs` for listing recorded successful output paths, `need clean`
+  cleanup modes for removing state and/or those outputs, and `need logs TARGET`
+  for inspecting the latest retained execution log for a declared artifact target
 - `need map` for `%`-pattern filename transformation with newline or NUL output
 - `-n` as an alias for `--dry-run` and `--file PATH` for explicit needfile selection
 - Cargo metadata mode with transitive source and environment dependencies
