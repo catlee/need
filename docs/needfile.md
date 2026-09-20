@@ -281,7 +281,7 @@ spaces and backslash-newline continuations.
 
 ## Rule modifiers
 
-A modifier is an indented line beginning with `@`. The implemented modifier is `@output(MODE)`, which changes how that rule’s recipe output is displayed:
+A modifier is an indented line beginning with `@`. The `@output(MODE)` modifier changes how that rule’s recipe output is displayed:
 
 ```make
 build/app: src/main.c
