@@ -261,6 +261,12 @@ interrupted log, and leave the output group stale for the next invocation.
 In `--cargo` mode, reachable environment references also emit Cargo
 `rerun-if-env-changed` metadata.
 
+After a recipe succeeds, `need` checks the same freshness signature again
+before recording output hashes and successful state. If an input changes during
+the recipe, the build fails with a rerun hint and leaves the recipe's outputs on
+disk without committing success. Glob membership is re-evaluated for this
+check.
+
 `need logs TARGET` inspects the latest retained execution for a declared artifact
 target. It prints the execution status and captured stdout and stderr without
 building the target; use `--file PATH` to select a specific needfile.

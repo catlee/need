@@ -1235,6 +1235,16 @@ A rule is stale when any of the following is true:
 
 A current rule may be skipped.
 
+Before executing a stale recipe, `need` computes the rule's normal freshness
+signature after resolving and building its dependencies. After the recipe exits
+successfully, and all declared outputs, dynamic outputs, and depfiles validate,
+`need` recomputes that same signature. Glob dependencies are re-expanded for
+this second check, so a file added or removed while the recipe runs is detected.
+If the signatures differ, the build fails with an actionable rerun hint; files
+written by the recipe remain on disk, but output hashes and successful rule
+state are not committed. Previously discovered depfile dependencies remain part
+of both checks and newly discovered dependencies participate in later builds.
+
 Output signatures use the same metadata-assisted hash cache as input files:
 
 ```text

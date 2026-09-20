@@ -84,7 +84,11 @@ argument order matters.
 
 Build state and logs live under `.need/`. Successful recipes must produce every
 declared output. Dependency cycles are errors. `need` uses content signatures,
-not timestamps alone, to decide whether a rule is current.
+not timestamps alone, to decide whether a rule is current. After a successful
+recipe and output validation, it recomputes the same signature before recording
+output hashes or successful state. If inputs changed during the recipe, the
+build fails with a rerun hint, leaves outputs on disk, and does not commit
+success; glob membership is re-evaluated for this check.
 
 `need map` takes one Need-style rule with exactly one target pattern and one
 input pattern, for example `'thumbs/%: %'`. Each pattern requires exactly one

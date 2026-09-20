@@ -1960,6 +1960,94 @@ final: generated.txt generated/*
     }
 
     #[test]
+    fn rejects_inputs_changed_by_recipe_without_committing_state() {
+        let root = temp_project("input-changed-during-build");
+        fs::write(root.join("input.txt"), "before\n").unwrap();
+        let needfile = r#"out.txt: input.txt
+  if [ -e mutate ]; then printf 'during\n' > input.txt; rm mutate; fi
+  cp {{in}} {{out}}
+"#;
+        let mut first = context(&root, needfile);
+        build(&mut first, "out.txt", None).unwrap();
+        save_state(&root, &first.session.state).unwrap();
+        let saved = load_state(&root).unwrap();
+
+        fs::write(root.join("mutate"), "").unwrap();
+        let mut second = context(&root, needfile);
+        second.options.force = true;
+        second.session.state = saved.clone();
+        let error = build(&mut second, "out.txt", None).unwrap_err().to_string();
+
+        assert_eq!(
+            error,
+            "inputs changed while building out.txt\nhelp: rerun the build after the inputs stop changing"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("out.txt")).unwrap(),
+            "during\n"
+        );
+        assert_eq!(
+            serde_json::to_string(&load_state(&root).unwrap()).unwrap(),
+            serde_json::to_string(&saved).unwrap()
+        );
+
+        let mut third = context(&root, needfile);
+        third.session.state = load_state(&root).unwrap();
+        build(&mut third, "out.txt", None).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("out.txt")).unwrap(),
+            "during\n"
+        );
+        assert_eq!(third.session.state.rules.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_glob_membership_changed_by_recipe_without_committing_state() {
+        let root = temp_project("glob-changed-during-build");
+        fs::create_dir(root.join("inputs")).unwrap();
+        fs::write(root.join("inputs/one.txt"), "one\n").unwrap();
+        let needfile = r#"out.txt: inputs/*.txt
+  if [ -e mutate ]; then printf 'two\n' > inputs/two.txt; rm mutate; fi
+  cat {{in}} > {{out}}
+"#;
+        let mut first = context(&root, needfile);
+        build(&mut first, "out.txt", None).unwrap();
+        save_state(&root, &first.session.state).unwrap();
+        let saved = load_state(&root).unwrap();
+
+        fs::write(root.join("mutate"), "").unwrap();
+        let mut second = context(&root, needfile);
+        second.options.force = true;
+        second.session.state = saved.clone();
+        let error = build(&mut second, "out.txt", None).unwrap_err().to_string();
+
+        assert_eq!(
+            error,
+            "inputs changed while building out.txt\nhelp: rerun the build after the inputs stop changing"
+        );
+        assert_eq!(fs::read_to_string(root.join("out.txt")).unwrap(), "one\n");
+        assert_eq!(
+            fs::read_to_string(root.join("inputs/two.txt")).unwrap(),
+            "two\n"
+        );
+        assert_eq!(
+            serde_json::to_string(&load_state(&root).unwrap()).unwrap(),
+            serde_json::to_string(&saved).unwrap()
+        );
+
+        let mut third = context(&root, needfile);
+        third.session.state = load_state(&root).unwrap();
+        build(&mut third, "out.txt", None).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("out.txt")).unwrap(),
+            "one\ntwo\n"
+        );
+        assert_eq!(third.session.state.rules.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn force_rebuilds_requested_target_but_evaluates_dependencies_normally() {
         let root = temp_project("force-semantics");
         fs::write(root.join("current-source.txt"), "current\n").unwrap();

@@ -260,7 +260,6 @@ pub(crate) fn build_inner(
     deps.retain(|d| seen_deps.insert(d.clone()));
     seen_deps.clear();
     let mut inputs = Vec::new();
-    let mut dep_sig = Vec::new();
     let mut parallel_candidates = Vec::new();
     if !has_glob {
         for dependency in &deps {
@@ -333,8 +332,8 @@ pub(crate) fn build_inner(
             }
         }
     }
-    for dependency in deps {
-        let resolved = if let Dependency::File(path) = &dependency
+    for dependency in &deps {
+        let resolved: Vec<Dependency> = if let Dependency::File(path) = dependency
             && is_glob(path)
         {
             expand_glob(c, path)?
@@ -342,7 +341,7 @@ pub(crate) fn build_inner(
                 .map(Dependency::File)
                 .collect()
         } else {
-            vec![dependency]
+            vec![dependency.clone()]
         };
         for dependency in resolved {
             if !seen_deps.insert(dependency.clone()) {
@@ -375,40 +374,11 @@ pub(crate) fn build_inner(
             } else {
                 record_cargo_dependency(c, &dependency);
             }
-            dep_sig.push(format!(
-                "{dependency:?}={}",
-                dependency_signature(c, &dependency)?
-            ));
         }
     }
     let recipe = expand(&rule.recipe, &c.project.vars, &c.project.env_values);
-    let env_sig = rule
-        .env_refs
-        .iter()
-        .map(|name| {
-            format!(
-                "{name}={}",
-                c.project.env_values.get(name).cloned().unwrap_or_default()
-            )
-        })
-        .collect::<Vec<_>>();
-    let mods = rule
-        .options
-        .outputs
-        .as_ref()
-        .map(|path| format!("@outputs({path})"))
-        .unwrap_or_default();
-    let mods = format!(
-        "{mods}{}",
-        rule.options
-            .depfile
-            .as_ref()
-            .map(|path| format!("@depfile({path})"))
-            .unwrap_or_default()
-    );
-    let sig = hash_text(&format!(
-        "recipe={recipe}\nmods={mods}\ndeps={dep_sig:?}\nenv={env_sig:?}"
-    ));
+    let signature_deps = signature_dependencies(c, &deps)?;
+    let sig = input_signature(c, &rule, &recipe, &signature_deps)?;
     let manifest = rule.options.outputs.clone();
     let mut reasons = Vec::new();
     if force {
@@ -525,7 +495,6 @@ pub(crate) fn build_inner(
         if !abs(c, o).is_file() {
             return Err(format!("recipe did not produce {o}").into());
         }
-        outsig.insert(o.clone(), cached_file_hash(c, &abs(c, o))?);
     }
     let dynamic = if let Some(path) = &manifest {
         let dynamic = read_output_manifest(c, path.as_str())?;
@@ -537,18 +506,6 @@ pub(crate) fn build_inner(
                     "output manifest {path} lists missing output {output}\nhelp: write every listed output before the recipe exits"
                 ).into());
             }
-            outsig.insert(output.clone(), cached_file_hash(c, &p)?);
-        }
-        for output in known_dynamic
-            .iter()
-            .filter(|output| !dynamic.contains(*output))
-        {
-            let p = abs(c, output);
-            if p.exists() {
-                fs::remove_file(&p).map_err(|e| {
-                    format!("could not remove obsolete dynamic output {output}: {e}")
-                })?;
-            }
         }
         dynamic
     } else {
@@ -559,6 +516,27 @@ pub(crate) fn build_inner(
     } else {
         Vec::new()
     };
+    let post_signature_deps = signature_dependencies(c, &deps)?;
+    let post_sig = input_signature(c, &rule, &recipe, &post_signature_deps)?;
+    if post_sig != sig {
+        return Err(format!(
+            "inputs changed while building {key}\nhelp: rerun the build after the inputs stop changing"
+        )
+        .into());
+    }
+    for output in outputs.iter().chain(&dynamic) {
+        outsig.insert(output.clone(), cached_file_hash(c, &abs(c, output))?);
+    }
+    for output in known_dynamic
+        .iter()
+        .filter(|output| !dynamic.contains(*output))
+    {
+        let p = abs(c, output);
+        if p.exists() {
+            fs::remove_file(&p)
+                .map_err(|e| format!("could not remove obsolete dynamic output {output}: {e}"))?;
+        }
+    }
     status_line(c, "got", &key, "\x1b[32m");
     let saved_manifest = manifest.as_ref().map(|path| SavedManifest {
         path: path.clone(),
@@ -577,6 +555,73 @@ pub(crate) fn build_inner(
     c.session.built.extend(outputs.iter().cloned());
     c.session.built.extend(dynamic);
     Ok(())
+}
+
+fn input_signature(
+    c: &mut BuildCtx,
+    rule: &crate::model::Rule,
+    recipe: &str,
+    dependencies: &[Dependency],
+) -> Result<String> {
+    let dep_sig = dependencies
+        .iter()
+        .map(|dependency| {
+            Ok(format!(
+                "{dependency:?}={}",
+                dependency_signature(c, dependency)?
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let env_sig = rule
+        .env_refs
+        .iter()
+        .map(|name| {
+            format!(
+                "{name}={}",
+                c.project.env_values.get(name).cloned().unwrap_or_default()
+            )
+        })
+        .collect::<Vec<_>>();
+    let mods = rule
+        .options
+        .outputs
+        .as_ref()
+        .map(|path| format!("@outputs({path})"))
+        .unwrap_or_default();
+    let mods = format!(
+        "{mods}{}",
+        rule.options
+            .depfile
+            .as_ref()
+            .map(|path| format!("@depfile({path})"))
+            .unwrap_or_default()
+    );
+    Ok(hash_text(&format!(
+        "recipe={recipe}\nmods={mods}\ndeps={dep_sig:?}\nenv={env_sig:?}"
+    )))
+}
+
+fn signature_dependencies(c: &BuildCtx, dependencies: &[Dependency]) -> Result<Vec<Dependency>> {
+    let mut resolved = Vec::new();
+    let mut seen = HashSet::new();
+    for dependency in dependencies {
+        let expanded = if let Dependency::File(path) = dependency
+            && is_glob(path)
+        {
+            expand_glob(c, path)?
+                .into_iter()
+                .map(Dependency::File)
+                .collect()
+        } else {
+            vec![dependency.clone()]
+        };
+        for dependency in expanded {
+            if seen.insert(dependency.clone()) {
+                resolved.push(dependency);
+            }
+        }
+    }
+    Ok(resolved)
 }
 
 fn read_output_manifest(c: &BuildCtx, path: &str) -> Result<Vec<ProjectPath>> {
