@@ -165,10 +165,19 @@ process variables win by default. Use `need.env.override = true` to let the
 file win, `need.env.required = true` to require a file, or
 `need.env.file = .env.local` to use another filename.
 
-Command-output dependencies such as `command(swift --version)` are not
-implemented. The parser does not treat `command(...)` as a dependency kind.
-For now, model stable values with `env(...)`, `string(...)`, or an explicit
-generated file.
+Command-output dependencies run `/bin/sh -c` from the needfile directory and
+make the expanded command text, complete stdout and stderr, and exit status
+part of the freshness signature:
+
+```make
+build/app: command(swift --version)
+  build-with-swift {{out}}
+```
+
+They are freshness-only: they do not become graph edges or appear in
+`{{in}}`. A nonzero probe status stops dependency resolution before the recipe
+runs. Probe text may use variables and `{{env.NAME}}`, but not automatic
+variables such as `{{in}}`, `{{out}}`, or `{{stem}}`.
 
 The specification reserves `stat(path)` for builds that need one entry's
 filesystem type, mode bits, or symlink target. It is not implemented, and the

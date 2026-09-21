@@ -172,6 +172,10 @@ pub(crate) fn parse_dependency(raw: &str) -> Result<ParsedDependency> {
             "string(",
             ParsedDependency::String as fn(String) -> ParsedDependency,
         ),
+        (
+            "command(",
+            ParsedDependency::Command as fn(String) -> ParsedDependency,
+        ),
     ] {
         if let Some(value) = raw.strip_prefix(prefix).and_then(|x| x.strip_suffix(')')) {
             return Ok(constructor(unquote(value)));
@@ -188,6 +192,7 @@ pub(crate) fn parse_expanded_dependency(raw: &str) -> Result<Dependency> {
         ("mtime(", Dependency::Mtime as fn(String) -> Dependency),
         ("env(", Dependency::Env as fn(String) -> Dependency),
         ("string(", Dependency::String as fn(String) -> Dependency),
+        ("command(", Dependency::Command as fn(String) -> Dependency),
     ] {
         if let Some(value) = raw.strip_prefix(prefix).and_then(|x| x.strip_suffix(')')) {
             return Ok(constructor(unquote(value)));

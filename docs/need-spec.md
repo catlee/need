@@ -55,8 +55,7 @@ The current implementation includes the core artifact graph, including:
 - glob re-evaluation after upstream rules create or remove matching files
 - compiler depfiles through `@depfile(...)`, including persisted discovered
   dependencies and Make-style escaping/continuations
-- the design for explicit command-output freshness probes is documented below;
-  `command(...)` dependencies are not implemented
+- explicit command-output freshness probes through `command(...)`
 - pre/post input-fingerprint validation around recipe execution
 - signal-aware recipe termination, interrupted logs, atomic state replacement,
   and startup cleanup of abandoned temporary artifacts
@@ -64,7 +63,6 @@ The current implementation includes the core artifact graph, including:
 The following dependency forms are specified but not yet implemented:
 
 - `stat(path)` for explicit, non-recursive filesystem metadata dependencies
-- `command(...)` for explicit command-output freshness probes
 
 Metadata-assisted BLAKE3 caching is implemented for regular-file hashes. The
 cache is persisted in `.need/state.json` and uses file size plus nanosecond mtime
@@ -512,11 +510,11 @@ bundle.zip: images/**/%.png
 
 because there is no target pattern from which to bind `%`.
 
-## 10.4 Command-output dependencies (proposed)
+## 10.4 Command-output dependencies
 
 Some artifacts depend on a toolchain or platform identity that is exposed by a
-command rather than a stable file or environment variable. `need` may support
-an explicit command probe for that case:
+command rather than a stable file or environment variable. `need` supports an
+explicit command probe for that case:
 
 ```make
 build/app: src/main.swift command(swift --version)
@@ -527,7 +525,7 @@ This is a freshness dependency only. It does not create a graph edge, appear in
 `{{in}}`, or make the command's output an artifact. It is deliberately opt-in;
 `need` does not inspect recipes or run arbitrary commands automatically.
 
-The proposed v0.3 semantics are:
+The semantics are:
 
 - The command body is expanded using the normal needfile variables and
   environment references, then executed by `/bin/sh -c` from the directory

@@ -353,6 +353,7 @@ pub(crate) fn build_inner(
                     (Some(path.as_str()), false, false)
                 }
                 Dependency::Env(_) | Dependency::String(_) => (None, false, false),
+                Dependency::Command(_) => (None, false, false),
             };
             if let Some(path) = path {
                 if should_build {
@@ -981,7 +982,7 @@ pub(crate) fn record_cargo_dependency(c: &mut BuildCtx, dependency: &Dependency)
         Dependency::File(path) | Dependency::Tree(path) | Dependency::Mtime(path) => {
             c.session.cargo_deps.insert(path.clone());
         }
-        Dependency::String(_) => {}
+        Dependency::String(_) | Dependency::Command(_) => {}
     }
 }
 
@@ -1081,6 +1082,7 @@ pub(crate) fn resolve_dependency(
         )?)),
         Dependency::Env(name) => Ok(Dependency::Env(name.clone())),
         Dependency::String(value) => Ok(Dependency::String(value.clone())),
+        Dependency::Command(command) => Ok(Dependency::Command(command.clone())),
     }
 }
 
@@ -1412,6 +1414,7 @@ pub(crate) fn dependency_signature(c: &mut BuildCtx, dependency: &Dependency) ->
             return Ok(hash_text(&format!("{name}={value}")));
         }
         Dependency::String(value) => return Ok(hash_text(value)),
+        Dependency::Command(command) => return command_signature(c, command),
     };
     if matches!(dependency, Dependency::Mtime(_)) {
         let metadata = match fs::metadata(abs(c, path)) {
@@ -1453,6 +1456,51 @@ pub(crate) fn dependency_signature(c: &mut BuildCtx, dependency: &Dependency) ->
         return Ok(hash_text(&a.join("\n")));
     }
     cached_file_hash(c, &q)
+}
+
+fn command_signature(c: &mut BuildCtx, command: &str) -> Result<String> {
+    let mut probes = c
+        .session
+        .command_probes
+        .lock()
+        .map_err(|_| "command probe cache poisoned".to_string())?;
+    if let Some(result) = probes.get(command).cloned() {
+        return result;
+    }
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .current_dir(&c.project.root)
+        .envs(&c.project.env_values)
+        .output()
+        .map_err(|error| {
+            format!(
+                "could not run command dependency `{command}`: {error}\nhelp: check that the probe command is available and executable"
+            )
+        })?;
+    let status = exit_status(&output.status);
+    let signature = hash_command_output(command, &output.stdout, &output.stderr, &status);
+    let result = if output.status.success() {
+        Ok(signature)
+    } else {
+        Err(format!(
+            "command dependency failed: `{command}` ({}).\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        ))
+    };
+    probes.insert(command.to_owned(), result.clone());
+    result
+}
+
+fn hash_command_output(command: &str, stdout: &[u8], stderr: &[u8], status: &str) -> String {
+    let mut hasher = blake3::Hasher::new();
+    for value in [command.as_bytes(), stdout, stderr, status.as_bytes()] {
+        hasher.update(&(value.len() as u64).to_le_bytes());
+        hasher.update(value);
+    }
+    hasher.finalize().to_hex().to_string()
 }
 
 fn cached_file_hash(c: &mut BuildCtx, path: &Path) -> Result<String> {
