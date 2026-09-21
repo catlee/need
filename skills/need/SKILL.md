@@ -36,6 +36,12 @@ Execution
 Syntax
 ------
 
+Rule outputs and dependencies use quoted words. Single or double quotes group
+whitespace and are removed. Backslash escapes whitespace, quote characters, or
+another backslash; before other characters it stays literal. An ending
+backslash or unterminated quote is an error. The trailing backslash used for a
+continued rule header remains needfile syntax.
+
 ```make
 build/app: src/main.c
   cc {{in}} -o {{out}}

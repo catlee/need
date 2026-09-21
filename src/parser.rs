@@ -344,8 +344,26 @@ pub(crate) fn split_words(s: &str) -> Result<Vec<String>> {
     let mut cur = String::new();
     let mut quote = None;
     let mut depth = 0;
-    for c in s.chars() {
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
         match c {
+            '\\' => {
+                let Some(&next) = chars.peek() else {
+                    return Err(format!(
+                        "trailing escape in expression: {s}\nhelp: add a character after the final backslash or remove it"
+                    ));
+                };
+                let escapable = next.is_whitespace()
+                    || next == '\\'
+                    || quote.is_some_and(|matching| next == matching)
+                    || (quote.is_none() && matches!(next, '\'' | '"'));
+                if escapable {
+                    cur.push(next);
+                    chars.next();
+                } else {
+                    cur.push(c);
+                }
+            }
             '\'' | '"' if quote == Some(c) => quote = None,
             '\'' | '"' if quote.is_none() => quote = Some(c),
             '(' if quote.is_none() => {
@@ -353,6 +371,11 @@ pub(crate) fn split_words(s: &str) -> Result<Vec<String>> {
                 cur.push(c)
             }
             ')' if quote.is_none() => {
+                if depth == 0 {
+                    return Err(format!(
+                        "unmatched ')' in expression: {s}\nhelp: check dependency parentheses"
+                    ));
+                }
                 depth -= 1;
                 cur.push(c)
             }
@@ -365,8 +388,15 @@ pub(crate) fn split_words(s: &str) -> Result<Vec<String>> {
             c => cur.push(c),
         }
     }
-    if quote.is_some() || depth != 0 {
-        return Err(format!("unterminated expression: {s}"));
+    if let Some(quote) = quote {
+        return Err(format!(
+            "unterminated {quote} quote in expression: {s}\nhelp: close the quote with {quote}"
+        ));
+    }
+    if depth != 0 {
+        return Err(format!(
+            "unterminated expression: {s}\nhelp: close the dependency parentheses"
+        ));
     }
     if !cur.is_empty() {
         out.push(cur)
@@ -374,12 +404,9 @@ pub(crate) fn split_words(s: &str) -> Result<Vec<String>> {
     Ok(out)
 }
 pub(crate) fn unquote(s: &str) -> String {
-    if s.len() >= 2
-        && ((s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')))
-    {
-        s[1..s.len() - 1].into()
-    } else {
-        s.into()
+    match split_words(s) {
+        Ok(words) if words.len() == 1 => words.into_iter().next().unwrap(),
+        _ => s.into(),
     }
 }
 
@@ -592,5 +619,38 @@ mod tests {
             expand("{{sdk}}/{{env.MODE}}", &resolved, &env),
             "/opt/sdk/current/"
         );
+    }
+
+    #[test]
+    fn tokenizes_quoted_and_escaped_words() {
+        assert_eq!(
+            split_words(r#"assets/"My File" "it's""#).unwrap(),
+            vec!["assets/My File", "it's"]
+        );
+        assert_eq!(
+            split_words(r#""a\"b" 'c\'d'"#).unwrap(),
+            vec![r#"a"b"#, "c'd"]
+        );
+        assert_eq!(split_words(r#"a\\b"#).unwrap(), vec![r#"a\b"#]);
+        assert_eq!(split_words(r#"a\ b"#).unwrap(), vec!["a b"]);
+    }
+
+    #[test]
+    fn preserves_quotes_inside_command_expressions() {
+        assert_eq!(
+            split_words(r#"command(echo \"hello world\")"#).unwrap(),
+            vec![r#"command(echo "hello world")"#]
+        );
+    }
+
+    #[test]
+    fn reports_malformed_escapes_and_quotes() {
+        let trailing = split_words("path\\").unwrap_err();
+        assert!(trailing.contains("trailing escape"));
+        assert!(trailing.contains("help:"));
+
+        let unterminated = split_words("\"path").unwrap_err();
+        assert!(unterminated.contains("unterminated \" quote"));
+        assert!(unterminated.contains("help:"));
     }
 }

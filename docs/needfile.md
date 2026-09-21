@@ -35,6 +35,22 @@ build/app: "assets/My App.json" file("SDKs/current/bin/compiler")
   compiler {{in}} -o {{out}}
 ```
 
+Words use a small shell-like escaping rule. A backslash escapes whitespace, a
+quote character outside quotes, the active quote character inside quotes, or
+another backslash; a backslash before any other character remains literal.
+Quote delimiters are removed, so use an escaped quote when the quote itself
+belongs in the word. This also applies inside
+dependency expressions, including `command(...)`:
+
+```make
+build/output: "assets/My\ File.json" command(echo\ \"hello world\")
+  touch {{out}}
+```
+
+An escape at the end of a word and an unterminated quote are errors. The
+existing trailing `\` rule-header continuation syntax is handled before word
+tokenization.
+
 Indentation is relative: recipe commands and modifiers must be indented deeper than the rule header, and deeper than dependency-continuation lines when the header uses them. Unlike Make, a tab is not required. Blank lines and lines whose first non-whitespace character is `#` are ignored. Recipe lines are passed to `sh -c`.
 
 ### Multiple outputs
