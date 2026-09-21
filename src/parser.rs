@@ -50,7 +50,35 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
                     i
                 ));
             }
-            let value = split_words(v.trim())?;
+            let mut value = split_assignment_words(path, i, v.trim())?;
+            if value.is_empty() {
+                let mut block_indent = None;
+                while i < lines.len() {
+                    let block_line = &lines[i];
+                    let line_indent = block_line.len() - block_line.trim_start().len();
+                    let block_value = strip_inline_comment(block_line).trim();
+                    if block_value.is_empty() {
+                        i += 1;
+                        continue;
+                    }
+                    if line_indent <= indent {
+                        break;
+                    }
+                    if let Some(expected) = block_indent {
+                        if line_indent < expected {
+                            return Err(format!(
+                                "{}:{}: malformed indentation in variable block for {key}\nhelp: indent every value line at least as deeply as the first value line",
+                                display_path(path),
+                                i + 1
+                            ));
+                        }
+                    } else {
+                        block_indent = Some(line_indent);
+                    }
+                    value.extend(split_assignment_words(path, i + 1, block_value)?);
+                    i += 1;
+                }
+            }
             let mut combined = if op == "+=" {
                 vars.get(key).cloned().unwrap_or_default()
             } else {
@@ -71,7 +99,11 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
             continue;
         }
         if !trimmed.contains(':') {
-            return Err(format!("invalid line: {raw}"));
+            return Err(format!(
+                "{}:{}: invalid needfile line: {raw}\nhelp: assignments must start at column zero and rules use output: dependency syntax",
+                display_path(path),
+                i
+            ));
         }
         let mut header = trimmed.to_string();
         let mut continuation_indent = None;
@@ -157,6 +189,15 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
         });
     }
     Ok((vars, rules))
+}
+
+fn split_assignment_words(path: &Path, line: usize, value: &str) -> Result<Vec<String>> {
+    split_words(value).map_err(|error| {
+        format!(
+            "{}:{}: invalid variable value: {error}\nhelp: use balanced quotes and escapes in assignment values",
+            display_path(path), line
+        )
+    })
 }
 
 fn assignment(line: &str) -> Option<(&str, &str, &str)> {
@@ -710,6 +751,58 @@ mod tests {
         assert!(raw["empty"].is_empty());
         let resolved = resolve_variables(&raw, &HashMap::new()).unwrap();
         assert_eq!(resolved["all"], vec!["one", "two words", "three", "four"]);
+    }
+
+    #[test]
+    fn assignments_consume_indented_token_blocks_and_stop_at_top_level() {
+        let (raw, rules) = parse_needfile_text(
+            Path::new("needfile"),
+            "files =\n  one\n  \"two words\"\n\n  escaped\\ token\nnext = top\noutput: input\n  touch {{out}}\n",
+        )
+        .unwrap();
+
+        assert_eq!(raw["files"], vec!["one", "two words", "escaped token"]);
+        assert_eq!(raw["next"], vec!["top"]);
+        assert_eq!(rules.len(), 1);
+    }
+
+    #[test]
+    fn append_assignments_consume_blocks_and_empty_blocks_remain_empty() {
+        let (raw, _) = parse_needfile_text(
+            Path::new("needfile"),
+            "files = first\nfiles +=\n  second\nempty =\n\nnext = value\n",
+        )
+        .unwrap();
+
+        assert_eq!(raw["files"], vec!["first", "second"]);
+        assert!(raw["empty"].is_empty());
+        assert_eq!(raw["next"], vec!["value"]);
+    }
+
+    #[test]
+    fn reports_assignment_block_token_errors_with_location_and_hint() {
+        let error =
+            parse_needfile_text(Path::new("needfile"), "files =\n  \"unterminated\n").unwrap_err();
+
+        assert!(error.contains("needfile:2: invalid variable value"));
+        assert!(error.contains("help: use balanced quotes and escapes"));
+    }
+
+    #[test]
+    fn reports_indented_top_level_lines_with_location_and_hint() {
+        let error = parse_needfile_text(Path::new("needfile"), "  files = value\n").unwrap_err();
+
+        assert!(error.contains("needfile:1: invalid needfile line"));
+        assert!(error.contains("help: assignments must start at column zero"));
+    }
+
+    #[test]
+    fn reports_shallow_lines_inside_a_variable_block() {
+        let error =
+            parse_needfile_text(Path::new("needfile"), "files =\n    one\n  two\n").unwrap_err();
+
+        assert!(error.contains("needfile:3: malformed indentation"));
+        assert!(error.contains("help: indent every value line"));
     }
 
     #[test]
