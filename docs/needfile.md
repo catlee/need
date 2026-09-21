@@ -144,17 +144,27 @@ so a downstream rule does not run with a stale glob expansion.
 
 ## Variables and interpolation
 
-Simple variables use `name = value`:
+Variables are token lists. Assignment tokenizes the right-hand side once;
+quotes preserve spaces inside one token:
 
 ```make
 cc = "clang"
 flags = "-Wall -O2"
+sources = "src/My File.c" src/other.c
+sources += generated.c
 
 build/%.o: src/%.c
   {{cc}} {{flags}} -c {{in}} -o {{out}}
 ```
 
-Variables are strings. They can be used in outputs, dependencies, recipes, and rule modifiers. Referenced values contribute to the rule signature, so changing a variable causes the affected rule to become stale.
+`+=` appends tokens and requires the variable to have been defined with `=`.
+An empty assignment (`name =`) is an empty list. Variables can be used in
+outputs, dependencies, recipes, and rule modifiers. A standalone `{{name}}`
+splices every token with its boundaries preserved. An embedded reference must
+resolve to exactly one token; values are never implicitly joined, re-tokenized,
+or Cartesian-expanded. Indexing and slicing user variables are not supported.
+Referenced values contribute to the rule signature, so changing a variable
+causes the affected rule to become stale.
 
 Variable definitions are resolved before rules are expanded, so nested
 references are supported regardless of assignment order. Cycles are rejected
@@ -177,6 +187,12 @@ The built-in recipe values are:
 | `{{stem}}` | The stem selected by a pattern rule |
 
 Paths are shell-escaped before interpolation. A path such as `assets/My Font.otf` remains one argument. `{{stem}}` is valid only in pattern rules. Indexes must be in range, and slices use the half-open `start:end` form.
+
+User-variable tokens in recipes are shell-escaped individually. This means
+`{{sources}}` becomes one shell argument per token, while `--name={{name}}`
+requires `name` to contain exactly one token. The same standalone-splicing
+rule applies to output and dependency lists; dependency expressions such as
+`command(...)` are parsed after splicing exactly as if written directly.
 
 ## Dependency types
 

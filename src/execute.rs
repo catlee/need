@@ -24,7 +24,7 @@ use crate::{
         BuildCtx, Dependency, Jobs, OutputMode, ProjectPath, RuleId, SavedManifest, SavedRule,
         TargetMatch,
     },
-    parser::{expand, norm_rel},
+    parser::norm_rel,
 };
 
 #[derive(Debug)]
@@ -377,7 +377,14 @@ pub(crate) fn build_inner(
             }
         }
     }
-    let recipe = expand(&rule.recipe, &c.project.vars, &c.project.env_values);
+    let recipe = interpolate(
+        &rule.recipe,
+        &inputs,
+        &outputs,
+        stem.as_deref(),
+        &c.project.vars,
+        &c.project.env_values,
+    )?;
     let signature_deps = signature_dependencies(c, &deps)?;
     let sig = input_signature(c, &rule, &recipe, &signature_deps)?;
     let manifest = rule.options.outputs.clone();
@@ -1308,7 +1315,7 @@ pub(crate) fn interpolate(
     ins: &[String],
     outs: &[ProjectPath],
     stem: Option<&str>,
-    vars: &HashMap<String, String>,
+    vars: &HashMap<String, Vec<String>>,
     env_values: &HashMap<String, String>,
 ) -> Result<String> {
     let esc = |x: &str| shell_escape::unix::escape(x.into()).into_owned();
@@ -1328,7 +1335,25 @@ pub(crate) fn interpolate(
         if let Some(name) = token.strip_prefix("env.") {
             rendered.push_str(env_values.get(name).map(String::as_str).unwrap_or_default());
         } else if let Some(value) = vars.get(token) {
-            rendered.push_str(value);
+            let after = &rest[end + 2..];
+            let embedded = rest[..start]
+                .chars()
+                .next_back()
+                .is_some_and(|c| !c.is_whitespace())
+                || after.chars().next().is_some_and(|c| !c.is_whitespace());
+            if embedded && value.len() != 1 {
+                return Err(format!(
+                    "variable {token} expands to {} tokens in embedded recipe interpolation\nhelp: use {{{{{token}}}}} as a standalone recipe argument",
+                    value.len()
+                ));
+            }
+            rendered.push_str(
+                &value
+                    .iter()
+                    .map(|value| esc(value))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
         } else {
             rendered.push_str(&automatic_interpolation(token, ins, outs, stem, &esc)?);
         }

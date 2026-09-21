@@ -35,6 +35,8 @@ A useful rule of thumb is:
 The current implementation includes the core artifact graph, including:
 
 - basic rules, variables, interpolation, pattern rules, and dependency globs
+- token-list variables with `=`, `+=`, boundary-preserving splicing, and
+  embedded cardinality validation
 - automatic output directories and multiple-output groups
 - file, tree, mtime, environment, and string dependency expressions
 - opt-in dotenv loading with precedence, custom files, and freshness tracking
@@ -981,8 +983,19 @@ Variable semantics should remain intentionally small.
 For v0.2:
 
 - assignment uses `name = value`
+- append assignment uses `name += value`; the name must already be defined
 - interpolation uses `{{name}}`
-- values are strings
+- values are token lists, tokenized at assignment time; an empty assignment is
+  an empty list
+- a standalone variable reference splices all tokens without joining or
+  re-tokenizing them
+- an embedded variable reference requires exactly one token and is an error
+  otherwise; user variables have no indexing, slicing, or Cartesian expansion
+- output and dependency splicing occurs before parsing, so each resulting
+  dependency token—including `command(...)`—has the same meaning as a direct
+  token
+- user-variable tokens in recipes are shell-escaped individually; embedded
+  recipe references use the same one-token rule
 - variable definitions are resolved before rules are expanded
 - a variable may reference another variable, including one defined later
 - variable references are resolved depth-first and cycles are errors reported

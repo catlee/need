@@ -138,6 +138,22 @@ build/%.o: src/%.c
 
 The parent directory for an output is created automatically.
 
+Variables are token lists. Quotes preserve token boundaries, `+=` appends to a
+previously defined variable, and an empty assignment creates an empty list:
+
+```make
+inputs = "assets/My File.json" assets/other.json
+inputs += generated.json
+
+bundle: {{inputs}}
+  bundle-tool {{inputs}} -o {{out}}
+```
+
+Standalone references splice all tokens without re-tokenizing them. User
+variables in recipes are shell-escaped one token at a time; embedded
+references must contain exactly one token. The same rules apply to declared
+outputs and dependencies, including spliced `command(...)` expressions.
+
 ## Environment dependencies
 
 Reference environment variables explicitly when they affect a build:

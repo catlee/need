@@ -48,11 +48,12 @@ pub(crate) fn parse_job_count(value: &str) -> Result<Jobs> {
     }
     Ok(Jobs::Limited(NonZeroUsize::new(jobs).unwrap()))
 }
-pub(crate) fn ctx_config(vars: &HashMap<String, String>, key: &str) -> Option<String> {
-    vars.get(key).cloned()
+pub(crate) fn ctx_config(vars: &HashMap<String, Vec<String>>, key: &str) -> Option<String> {
+    vars.get(key).map(|value| value.join(" "))
 }
-pub(crate) fn cli_or_config_keep(vars: &HashMap<String, String>) -> Result<usize> {
+pub(crate) fn cli_or_config_keep(vars: &HashMap<String, Vec<String>>) -> Result<usize> {
     vars.get("need.log.keep").map_or(Ok(0), |value| {
+        let value = value.join(" ");
         value.parse().map_err(|_| {
             format!(
                 "invalid need.log.keep value: {value}\nhelp: set need.log.keep to a non-negative integer"

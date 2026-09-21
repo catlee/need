@@ -36,6 +36,15 @@ Execution
 Syntax
 ------
 
+User variables are token lists. Use `name = value` or append with `name += value`
+after defining the variable. Quotes preserve spaces, and `name =` creates an
+empty list. A standalone `{{name}}` splices all tokens in outputs,
+dependencies, and recipe arguments; an embedded reference requires exactly one
+token. Values are not implicitly joined, re-tokenized, Cartesian-expanded, or
+indexed/sliced. Recipe tokens are shell-escaped individually. Dependency
+expressions produced by splicing, including `command(...)`, are parsed the same
+as directly written expressions.
+
 Rule outputs and dependencies use quoted words. Single or double quotes group
 whitespace and are removed. Backslash escapes whitespace, quote characters, or
 another backslash; before other characters it stays literal. An ending

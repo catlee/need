@@ -164,7 +164,7 @@ pub(crate) struct SavedManifest {
 #[derive(Clone, Default)]
 pub(crate) struct ProjectData {
     pub(crate) root: PathBuf,
-    pub(crate) vars: HashMap<String, String>,
+    pub(crate) vars: HashMap<String, Vec<String>>,
     pub(crate) rules: Vec<Rule>,
     pub(crate) exact: HashMap<ProjectPath, usize>,
     pub(crate) env_values: HashMap<String, String>,

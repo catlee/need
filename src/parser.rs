@@ -9,15 +9,15 @@ use crate::{
     model::{Dependency, ParsedDependency, ParsedRule, ParsedRuleOptions},
 };
 
-pub(crate) fn parse_needfile(path: &Path) -> Result<(HashMap<String, String>, Vec<ParsedRule>)> {
+pub(crate) type Variables = HashMap<String, Vec<String>>;
+type ParsedNeedfile = (Variables, Vec<ParsedRule>);
+
+pub(crate) fn parse_needfile(path: &Path) -> Result<ParsedNeedfile> {
     let text = fs::read_to_string(path).map_err(|e| e.to_string())?;
     parse_needfile_text(path, &text)
 }
 
-pub(crate) fn parse_needfile_text(
-    path: &Path,
-    text: &str,
-) -> Result<(HashMap<String, String>, Vec<ParsedRule>)> {
+pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedfile> {
     let lines: Vec<String> = text.lines().map(str::to_owned).collect();
     let mut vars = HashMap::new();
     let mut rules = Vec::new();
@@ -36,22 +36,38 @@ pub(crate) fn parse_needfile_text(
         }
         let indent = raw.len() - raw.trim_start().len();
         if !raw.starts_with(char::is_whitespace)
-            && let Some((k, v)) = trimmed.split_once('=')
+            && let Some((k, op, v)) = assignment(trimmed)
             && !k.trim().is_empty()
             && k.trim()
                 .chars()
                 .all(|c| c == '_' || c == '.' || c == '-' || c.is_ascii_alphanumeric())
         {
             let key = k.trim();
-            let value = unquote(v.trim());
-            if key == "need.log.keep" && value.parse::<usize>().is_err() {
+            if op == "+=" && !vars.contains_key(key) {
                 return Err(format!(
-                    "{}:{}: invalid need.log.keep value: {value}\nhelp: set need.log.keep to a non-negative integer",
+                    "{}:{}: cannot append to undefined variable {key}\nhelp: define {key} with = before using +=",
+                    display_path(path),
+                    i
+                ));
+            }
+            let value = split_words(v.trim())?;
+            let mut combined = if op == "+=" {
+                vars.get(key).cloned().unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            combined.extend(value);
+            if key == "need.log.keep"
+                && (combined.len() != 1 || combined[0].parse::<usize>().is_err())
+            {
+                let display = combined.join(" ");
+                return Err(format!(
+                    "{}:{}: invalid need.log.keep value: {display}\nhelp: set need.log.keep to a non-negative integer",
                     display_path(path),
                     i,
                 ));
             }
-            vars.insert(key.into(), value);
+            vars.insert(key.into(), combined);
             continue;
         }
         if !trimmed.contains(':') {
@@ -141,6 +157,14 @@ pub(crate) fn parse_needfile_text(
         });
     }
     Ok((vars, rules))
+}
+
+fn assignment(line: &str) -> Option<(&str, &str, &str)> {
+    if let Some((left, right)) = line.split_once("+=") {
+        Some((left, "+=", right))
+    } else {
+        line.split_once('=').map(|(left, right)| (left, "=", right))
+    }
 }
 
 fn strip_inline_comment(line: &str) -> &str {
@@ -278,23 +302,29 @@ pub(crate) struct Dotenv {
     pub(crate) values: HashMap<String, String>,
 }
 
-pub(crate) fn load_dotenv(vars: &HashMap<String, String>, root: &Path) -> Result<Dotenv> {
+pub(crate) fn load_dotenv(vars: &HashMap<String, Vec<String>>, root: &Path) -> Result<Dotenv> {
     let requested = vars
         .get("need.env")
-        .is_some_and(|x| x == "load" || x == "true")
+        .is_some_and(|x| x.len() == 1 && (x[0] == "load" || x[0] == "true"))
         || vars.contains_key("need.env.file")
-        || vars.get("need.env.required").is_some_and(|x| x == "true")
-        || vars.get("need.env.override").is_some_and(|x| x == "true");
+        || vars
+            .get("need.env.required")
+            .is_some_and(|x| x == &["true"])
+        || vars
+            .get("need.env.override")
+            .is_some_and(|x| x == &["true"]);
     let mut values: HashMap<String, String> = env::vars().collect();
     if !requested {
         return Ok(Dotenv { values });
     }
     let filename = vars
         .get("need.env.file")
-        .map(String::as_str)
-        .unwrap_or(".env");
-    let path = find_dotenv(root, filename);
-    let required = vars.get("need.env.required").is_some_and(|x| x == "true");
+        .map(|x| x.join(" "))
+        .unwrap_or_else(|| ".env".into());
+    let path = find_dotenv(root, &filename);
+    let required = vars
+        .get("need.env.required")
+        .is_some_and(|x| x == &["true"]);
     let Some(path) = path else {
         if required {
             return Err(format!("required environment file not found: {filename}"));
@@ -304,7 +334,9 @@ pub(crate) fn load_dotenv(vars: &HashMap<String, String>, root: &Path) -> Result
     let text =
         fs::read_to_string(&path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
     let parsed = parse_dotenv(&text)?;
-    let override_env = vars.get("need.env.override").is_some_and(|x| x == "true");
+    let override_env = vars
+        .get("need.env.override")
+        .is_some_and(|x| x == &["true"]);
     for (name, value) in parsed {
         if override_env || !values.contains_key(&name) {
             values.insert(name.clone(), value);
@@ -433,14 +465,14 @@ pub(crate) fn unquote(s: &str) -> String {
 }
 
 struct VariableResolver {
-    vars: HashMap<String, String>,
+    vars: HashMap<String, Vec<String>>,
     env_values: HashMap<String, String>,
-    resolved: HashMap<String, String>,
+    resolved: HashMap<String, Vec<String>>,
     stack: Vec<String>,
 }
 
 impl VariableResolver {
-    fn new(vars: HashMap<String, String>, env_values: HashMap<String, String>) -> Self {
+    fn new(vars: HashMap<String, Vec<String>>, env_values: HashMap<String, String>) -> Self {
         Self {
             vars,
             env_values,
@@ -449,7 +481,7 @@ impl VariableResolver {
         }
     }
 
-    fn resolve_all(mut self) -> Result<HashMap<String, String>> {
+    fn resolve_all(mut self) -> Result<HashMap<String, Vec<String>>> {
         let mut names: Vec<_> = self.vars.keys().cloned().collect();
         names.sort();
         for name in names {
@@ -458,7 +490,7 @@ impl VariableResolver {
         Ok(self.resolved)
     }
 
-    fn resolve_variable(&mut self, name: &str) -> Result<String> {
+    fn resolve_variable(&mut self, name: &str) -> Result<Vec<String>> {
         if let Some(value) = self.resolved.get(name) {
             return Ok(value.clone());
         }
@@ -473,47 +505,92 @@ impl VariableResolver {
             .cloned()
             .ok_or_else(|| format!("undefined variable: {name}"))?;
         self.stack.push(name.to_string());
-        let resolved = self.expand(&value)?;
+        let mut resolved = Vec::new();
+        for word in value {
+            resolved.extend(self.expand_word(&word)?);
+        }
         self.stack.pop();
         self.resolved.insert(name.to_string(), resolved.clone());
         Ok(resolved)
     }
 
-    fn expand(&mut self, text: &str) -> Result<String> {
-        expand_tokens(text, |token| {
+    fn expand_word(&mut self, text: &str) -> Result<Vec<String>> {
+        if let Some(name) = standalone_variable(text)
+            && self.vars.contains_key(name)
+        {
+            return self.resolve_variable(name);
+        }
+        let expanded = expand_tokens(text, |token| {
             if let Some(name) = token.strip_prefix("env.") {
                 Ok(self.env_values.get(name).cloned().unwrap_or_default())
             } else if self.vars.contains_key(token) {
-                self.resolve_variable(token)
+                let value = self.resolve_variable(token)?;
+                if value.len() != 1 {
+                    return Err(format!(
+                        "variable {token} expands to {} tokens in embedded interpolation\nhelp: use {{{{{token}}}}} as a standalone token",
+                        value.len()
+                    ));
+                }
+                Ok(value.into_iter().next().unwrap_or_default())
             } else {
                 Ok(format!("{{{{{token}}}}}"))
             }
-        })
+        })?;
+        Ok(vec![expanded])
     }
 }
 
 pub(crate) fn resolve_variables(
-    vars: &HashMap<String, String>,
+    vars: &HashMap<String, Vec<String>>,
     env_values: &HashMap<String, String>,
-) -> Result<HashMap<String, String>> {
+) -> Result<HashMap<String, Vec<String>>> {
     VariableResolver::new(vars.clone(), env_values.clone()).resolve_all()
 }
 
 pub(crate) fn expand(
     s: &str,
-    v: &HashMap<String, String>,
+    v: &HashMap<String, Vec<String>>,
     env_values: &HashMap<String, String>,
 ) -> String {
-    expand_tokens(s, |token| {
+    expand_words(s, v, env_values)
+        .map(|words| words.join(" "))
+        .unwrap_or_else(|_| s.into())
+}
+
+pub(crate) fn expand_words(
+    s: &str,
+    v: &HashMap<String, Vec<String>>,
+    env_values: &HashMap<String, String>,
+) -> Result<Vec<String>> {
+    if let Some(name) = standalone_variable(s)
+        && let Some(value) = v.get(name)
+    {
+        return Ok(value.clone());
+    }
+    Ok(vec![expand_tokens(s, |token| {
         if let Some(name) = token.strip_prefix("env.") {
             Ok(env_values.get(name).cloned().unwrap_or_default())
         } else {
-            Ok(v.get(token)
-                .cloned()
-                .unwrap_or_else(|| format!("{{{{{token}}}}}")))
+            let Some(value) = v.get(token) else {
+                return Err(format!(
+                    "undefined variable: {token}\nhelp: define {token} before using it in a token-list context"
+                ));
+            };
+            if value.len() != 1 {
+                return Err(format!(
+                    "variable {token} expands to {} tokens in embedded interpolation\nhelp: use {{{{{token}}}}} as a standalone token",
+                    value.len()
+                ));
+            }
+            Ok(value[0].clone())
         }
-    })
-    .unwrap_or_else(|_| s.into())
+    })?])
+}
+
+fn standalone_variable(text: &str) -> Option<&str> {
+    text.strip_prefix("{{")
+        .and_then(|text| text.strip_suffix("}}"))
+        .filter(|name| !name.is_empty() && !name.contains('{') && !name.contains('}'))
 }
 
 fn expand_tokens<F>(text: &str, mut replacement: F) -> Result<String>
@@ -539,7 +616,7 @@ where
 
 pub(crate) fn collect_env_refs(
     text: &str,
-    vars: &HashMap<String, String>,
+    vars: &HashMap<String, Vec<String>>,
     refs: &mut BTreeSet<String>,
 ) {
     let mut rest = text;
@@ -562,7 +639,9 @@ pub(crate) fn collect_env_refs(
     }
     for (name, value) in vars {
         if text.contains(&format!("{{{{{name}}}}}")) {
-            collect_env_refs(value, vars, refs);
+            for value in value {
+                collect_env_refs(value, vars, refs);
+            }
         }
     }
 }
@@ -598,43 +677,86 @@ pub(crate) fn norm_rel(s: &str) -> Result<String> {
 mod tests {
     use super::*;
 
+    fn vars(entries: &[(&str, &str)]) -> HashMap<String, Vec<String>> {
+        entries
+            .iter()
+            .map(|(name, value)| ((*name).into(), split_words(value).unwrap()))
+            .collect()
+    }
+
     #[test]
     fn resolves_nested_variables() {
-        let vars = HashMap::from([
-            ("sdk".into(), "{{home}}/sdk".into()),
-            ("home".into(), "{{env.HOME}}".into()),
-        ]);
+        let vars = vars(&[("sdk", "{{home}}/sdk"), ("home", "{{env.HOME}}")]);
         let env = HashMap::from([("HOME".into(), "/home/test".into())]);
         let resolved = resolve_variables(&vars, &env).unwrap();
-        assert_eq!(resolved["sdk"], "/home/test/sdk");
+        assert_eq!(resolved["sdk"], vec!["/home/test/sdk"]);
     }
 
     #[test]
     fn reports_variable_cycles() {
-        let vars = HashMap::from([("a".into(), "{{b}}".into()), ("b".into(), "{{a}}".into())]);
+        let vars = vars(&[("a", "{{b}}"), ("b", "{{a}}")]);
         let error = resolve_variables(&vars, &HashMap::new()).unwrap_err();
         assert_eq!(error, "variable cycle: a -> b -> a");
     }
 
     #[test]
+    fn assignments_preserve_tokens_and_support_append() {
+        let (raw, _) = parse_needfile_text(
+            Path::new("needfile"),
+            "files = one \"two words\"\nfiles += three\nempty =\nall = {{files}} four\n",
+        )
+        .unwrap();
+        assert_eq!(raw["files"], vec!["one", "two words", "three"]);
+        assert!(raw["empty"].is_empty());
+        let resolved = resolve_variables(&raw, &HashMap::new()).unwrap();
+        assert_eq!(resolved["all"], vec!["one", "two words", "three", "four"]);
+    }
+
+    #[test]
+    fn rejects_append_to_undefined_variable() {
+        let error = parse_needfile_text(Path::new("needfile"), "files += one\n").unwrap_err();
+        assert!(error.contains("needfile:1: cannot append to undefined variable files"));
+        assert!(error.contains("help: define files with = before using +="));
+    }
+
+    #[test]
+    fn rejects_embedded_multi_token_variable_expansion() {
+        let vars = vars(&[("files", "one \"two words\"")]);
+        let resolved = resolve_variables(&vars, &HashMap::new()).unwrap();
+        let error = expand_words("prefix{{files}}", &resolved, &HashMap::new()).unwrap_err();
+        assert!(error.contains("variable files expands to 2 tokens"));
+        assert!(error.contains("help: use {{files}} as a standalone token"));
+    }
+
+    #[test]
+    fn rejects_undefined_variable_in_token_list_context() {
+        let error = expand_words("{{missing}}", &HashMap::new(), &HashMap::new()).unwrap_err();
+        assert_eq!(
+            error,
+            "undefined variable: missing\nhelp: define missing before using it in a token-list context"
+        );
+    }
+
+    #[test]
     fn preserves_quoted_values_and_does_not_reparse_replacements() {
         assert_eq!(unquote("\"Ada Lovelace\""), "Ada Lovelace");
-        let vars = HashMap::from([
-            ("name".into(), "Ada Lovelace".into()),
-            ("greeting".into(), "Hello, {{name}}".into()),
-            ("literal".into(), "{{name}}".into()),
+        let vars = vars(&[
+            ("name", "Ada Lovelace"),
+            ("greeting", "Hello, {{name}}"),
+            ("literal", "{{name}}"),
         ]);
         let resolved = resolve_variables(&vars, &HashMap::new()).unwrap();
-        assert_eq!(resolved["greeting"], "Hello, Ada Lovelace");
+        assert_eq!(resolved["greeting"], vec!["Hello,", "Ada", "Lovelace"]);
+        assert_eq!(resolved["literal"], vec!["Ada", "Lovelace"]);
         assert_eq!(
-            expand("'{{literal}}'", &resolved, &HashMap::new()),
-            "'Ada Lovelace'"
+            expand("{{literal}}", &resolved, &HashMap::new()),
+            "Ada Lovelace"
         );
     }
 
     #[test]
     fn interpolates_environment_values() {
-        let vars = HashMap::from([("sdk".into(), "{{env.SDK}}/current".into())]);
+        let vars = vars(&[("sdk", "{{env.SDK}}/current")]);
         let env = HashMap::from([("SDK".into(), "/opt/sdk".into())]);
         let resolved = resolve_variables(&vars, &env).unwrap();
         assert_eq!(
@@ -684,7 +806,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(vars["sources"], "a.c b.c");
+        assert_eq!(vars["sources"], vec!["a.c", "b.c"]);
         assert_eq!(rules[0].deps, vec![ParsedDependency::File("input".into())]);
         assert_eq!(rules[0].options.outputs.as_deref(), Some("manifest"));
         assert_eq!(rules[0].recipe, "  printf '# recipe' > {{out}}");
