@@ -3,6 +3,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     num::NonZeroUsize,
     path::PathBuf,
+    sync::{Arc, Mutex},
 };
 
 use crate::Result;
@@ -100,6 +101,7 @@ pub(crate) enum Dependency {
     Mtime(String),
     Env(String),
     String(String),
+    Command(String),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -110,6 +112,7 @@ pub(crate) enum ParsedDependency {
     Mtime(String),
     Env(String),
     String(String),
+    Command(String),
 }
 
 impl ParsedDependency {
@@ -121,6 +124,7 @@ impl ParsedDependency {
             | Self::Mtime(value)
             | Self::Env(value)
             | Self::String(value) => value,
+            Self::Command(value) => value,
         }
     }
 }
@@ -209,6 +213,7 @@ pub(crate) struct BuildSession {
     pub(crate) cargo_deps: BTreeSet<String>,
     pub(crate) cargo_env: BTreeSet<String>,
     pub(crate) stack: Vec<ProjectPath>,
+    pub(crate) command_probes: Arc<Mutex<HashMap<String, std::result::Result<String, String>>>>,
 }
 
 #[derive(Clone, Default)]

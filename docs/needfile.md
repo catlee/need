@@ -274,29 +274,28 @@ output.bin: input.dat string({{format}})
 
 Changing `format` invalidates the rule without pretending that the value is a file. String dependencies are freshness inputs; they are not included in `{{in}}`. 
 
-### Command-output probes (proposed, not implemented)
+### Command-output probes
 
 The motivating case for a command dependency is a toolchain or platform value
 that is available from a probe such as `swift --version`, but not from a stable
-file or one environment variable. The proposed syntax is:
+file or one environment variable. The syntax is:
 
 ```make
 build/app: src/main.swift command(swift --version)
   swiftc {{in}} -o {{out}}
 ```
 
-This syntax is not a supported dependency expression. When implemented,
-`command(...)` will be an explicit freshness-only dependency: its output will not be passed to the
-recipe, and it will not create a build-graph edge. The expanded command text,
-stdout, stderr, and exit status will contribute to freshness. A non-zero exit
-status will stop dependency resolution with an error.
+`command(...)` is an explicit freshness-only dependency: its output will not be
+passed to the recipe, and it will not create a build-graph edge. The expanded
+command text, complete stdout, stderr, and exit status contribute to
+freshness. A non-zero exit status stops dependency resolution with an error
+before the recipe runs.
 
-The command will run through `/bin/sh -c` in the needfile's directory, using
-the same environment and shell quoting model as recipes. Identical expanded
-probes will be memoized for one invocation, but probe results will not be cached
-between invocations. Automatic variables such as `{{in}}`, `{{out}}`, and
-`{{stem}}` will not be allowed in probes; ordinary variables and explicit
-environment references will remain available.
+The command runs through `/bin/sh -c` in the needfile's directory, using the
+current environment. Identical expanded probes are memoized for one invocation,
+but probe results are not cached between invocations. Automatic variables such
+as `{{in}}`, `{{out}}`, and `{{stem}}` are rejected in probes; ordinary variables
+and explicit environment references remain available.
 
 ### Compiler depfiles
 

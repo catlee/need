@@ -62,14 +62,16 @@ build/%.o: src/%.c
   cc -MMD -MF build/{{stem}}.d -c {{in}} -o {{out}}
 ```
 
-Use `file(path)`, `tree(path)`, `mtime(path)`, `env(NAME)`, and
-`string(value)` when the default file-content dependency is not the right
-semantics.
+Use `file(path)`, `tree(path)`, `mtime(path)`, `env(NAME)`, `string(value)`, and
+`command(shell probe)` when the default file-content dependency is not the
+right semantics. `command(...)` runs from the needfile directory and is
+freshness-only: expanded command text, complete stdout/stderr, and exit status
+are signed; nonzero status stops the build. It does not add a graph edge or
+appear in `{{in}}`, and automatic variables are not allowed in probes.
 
-`stat(path)` and `command(...)` are specified but not implemented dependency
-forms. Do not use them in a needfile. For filesystem metadata, use the existing
-`file(...)`, `tree(...)`, or `mtime(...)` forms; for command probes, use
-`env(...)`, `string(...)`, or an explicit generated file.
+`stat(path)` remains specified but is not implemented. Do not use it in a
+needfile; use the existing `file(...)`, `tree(...)`, or `mtime(...)` forms for
+filesystem metadata.
 
 Notes
 -----

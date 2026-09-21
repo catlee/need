@@ -583,16 +583,48 @@ fn expand_dependencies(
     dependencies
         .iter()
         .map(|dependency| match dependency {
-            ParsedDependency::Deferred(expression) => Ok(parse_expanded_dependency(&expand(
-                expression, vars, env_values,
-            ))?),
+            ParsedDependency::Deferred(expression) => {
+                let dependency = parse_expanded_dependency(&expand(expression, vars, env_values))?;
+                if let Dependency::Command(command) = &dependency {
+                    validate_command_probe(command)?;
+                }
+                Ok(dependency)
+            }
             ParsedDependency::File(x) => Ok(Dependency::File(expand(x, vars, env_values))),
             ParsedDependency::Tree(x) => Ok(Dependency::Tree(expand(x, vars, env_values))),
             ParsedDependency::Mtime(x) => Ok(Dependency::Mtime(expand(x, vars, env_values))),
             ParsedDependency::Env(x) => Ok(Dependency::Env(expand(x, vars, env_values))),
             ParsedDependency::String(x) => Ok(Dependency::String(expand(x, vars, env_values))),
+            ParsedDependency::Command(x) => {
+                let command = expand(x, vars, env_values);
+                validate_command_probe(&command)?;
+                Ok(Dependency::Command(command))
+            }
         })
         .collect()
+}
+
+fn validate_command_probe(command: &str) -> Result<()> {
+    let mut rest = command;
+    while let Some(start) = rest.find("{{") {
+        let token_start = start + 2;
+        let Some(end) = rest[token_start..].find("}}") else {
+            break;
+        };
+        let token = &rest[token_start..token_start + end];
+        if token == "in"
+            || token == "out"
+            || token == "stem"
+            || token.starts_with("in[")
+            || token.starts_with("out[")
+        {
+            return Err(format!(
+                "automatic variable {{{{{token}}}}} is not valid in command(...)\nhelp: use command text independent of rule inputs and outputs"
+            ));
+        }
+        rest = &rest[token_start + end + 2..];
+    }
+    Ok(())
 }
 
 fn resolve_rules(
@@ -678,6 +710,7 @@ fn resolve_rules(
                     path.matches('%').count() > 1
                 }
                 Dependency::Env(_) | Dependency::String(_) => false,
+                Dependency::Command(_) => false,
             })
         {
             return Err("only one % is supported per pattern".into());
@@ -1303,7 +1336,7 @@ mod tests {
         let path = root.join("needfile");
         fs::write(
             &path,
-            "out: input tree(resources) mtime(tool) env(MODE) string(\"v3\")\n  touch {{out}}\n",
+            "out: input tree(resources) mtime(tool) env(MODE) string(\"v3\") command(tool --version)\n  touch {{out}}\n",
         )
         .unwrap();
         let (_, rules) = parse_needfile(&path).unwrap();
@@ -1315,6 +1348,7 @@ mod tests {
                 ParsedDependency::Mtime("tool".into()),
                 ParsedDependency::Env("MODE".into()),
                 ParsedDependency::String("v3".into()),
+                ParsedDependency::Command("tool --version".into()),
             ]
         );
         fs::remove_dir_all(root).unwrap();
