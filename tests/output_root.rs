@@ -91,3 +91,36 @@ fn rejects_declared_output_outside_selected_root() {
     fs::remove_dir_all(project).unwrap();
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn rejects_recipe_metadata_outside_selected_root() {
+    for modifier in ["@outputs(../manifest)", "@depfile(../dependencies.d)"] {
+        let project = temp_dir("metadata-project");
+        let root = temp_dir("metadata-root");
+        fs::write(
+            project.join("needfile"),
+            format!("out:\n  {modifier}\n  touch {{out}}\n"),
+        )
+        .unwrap();
+
+        let output = run(
+            &project,
+            &[
+                "--file",
+                project.join("needfile").to_str().unwrap(),
+                "--root",
+                root.to_str().unwrap(),
+                "out",
+            ],
+        );
+        assert!(!output.status.success(), "{modifier}: {output:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("output path escapes the project root")
+        );
+        assert!(!root.join(".need/state.json").exists());
+
+        fs::remove_dir_all(project).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+}

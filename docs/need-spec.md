@@ -1467,6 +1467,9 @@ variable to refer to the directory containing the selected needfile. This
 provides stable access to checked-in generators and helpers when `--root`
 points at a cache.
 
+Recipe-generated metadata named by `@outputs(...)` or `@depfile(...)` must
+also be a relative path beneath the selected project root.
+
 The needfile itself may remain outside the project root, which allows a
 version-controlled needfile to build into a caller-selected cache tree.
 

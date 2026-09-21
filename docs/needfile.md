@@ -362,7 +362,8 @@ After a successful recipe, `need` reads the depfile and saves its discovered
 file dependencies for later freshness checks. They are not added to `{{in}}`,
 but generated discovered artifacts still participate in the build graph. The
 depfile must exist and use the supported Make-style syntax, including escaped
-spaces and backslash-newline continuations.
+spaces and backslash-newline continuations. Its path must remain beneath the
+selected project root.
 
 ## Rule modifiers
 

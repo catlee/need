@@ -753,7 +753,7 @@ fn resolve_rules(
             if value.is_empty() {
                 return Err("output manifest path is empty in rule modifier @outputs()".into());
             }
-            rule.options.outputs = Some(ProjectPath::new(&value)?);
+            rule.options.outputs = Some(ProjectPath::output(&value)?);
         }
         if let Some(value) = parsed
             .options
@@ -764,6 +764,11 @@ fn resolve_rules(
             if value.is_empty() {
                 return Err("depfile path is empty in rule modifier @depfile()".into());
             }
+            ProjectPath::output(&value).map_err(|error| {
+                format!(
+                    "invalid @depfile({value}) path: {error}\nhelp: keep recipe-generated metadata beneath the selected project root"
+                )
+            })?;
             rule.options.depfile = Some(value);
         }
         if rule
