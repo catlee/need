@@ -540,7 +540,7 @@ pub(crate) fn build_inner(
         .filter(|output| !dynamic.contains(*output))
     {
         let p = abs(c, output);
-        if p.exists() {
+        if fs::symlink_metadata(&p).is_ok() {
             fs::remove_file(&p)
                 .map_err(|e| format!("could not remove obsolete dynamic output {output}: {e}"))?;
         }

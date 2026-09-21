@@ -1614,6 +1614,7 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
+    #[cfg(unix)]
     #[test]
     fn tracks_dynamic_outputs_and_removes_obsolete_ones() {
         let root = temp_project("dynamic-outputs");
@@ -1634,12 +1635,16 @@ mod tests {
         current.session.state = load_state(&root).unwrap();
         build(&mut current, "a.txt", None).unwrap();
 
+        use std::os::unix::fs::symlink;
+
+        fs::remove_file(root.join("b.txt")).unwrap();
+        symlink("missing", root.join("b.txt")).unwrap();
         fs::write(root.join("mode"), "one").unwrap();
         let mut second = context(&root, needfile);
         second.session.state = load_state(&root).unwrap();
         build(&mut second, "out.txt", None).unwrap();
         assert!(root.join("a.txt").is_file());
-        assert!(!root.join("b.txt").exists());
+        assert!(fs::symlink_metadata(root.join("b.txt")).is_err());
         assert_eq!(
             second.session.state.rules.values().next().unwrap().dynamic,
             vec![ProjectPath::new("a.txt").unwrap()]
