@@ -257,6 +257,12 @@ hint. An unterminated quote MUST likewise be rejected. The trailing backslash
 used for a continued rule header is recognized as needfile syntax before word
 tokenization.
 
+On syntax lines, `#` starts an inline comment when it is outside single or
+double quotes and outside a dependency expression's parentheses. Quoted hashes
+and hashes inside expressions such as `command(...)` remain literal. Inline
+comments are not removed from recipe bodies; recipes are passed to the shell
+unchanged. A backslash does not escape `#` in needfile syntax.
+
 ## 7. Automatic Parent Directory Creation
 
 If a target's parent directory does not exist, `need` creates it automatically before executing the recipe.

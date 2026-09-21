@@ -51,7 +51,7 @@ An escape at the end of a word and an unterminated quote are errors. The
 existing trailing `\` rule-header continuation syntax is handled before word
 tokenization.
 
-Indentation is relative: recipe commands and modifiers must be indented deeper than the rule header, and deeper than dependency-continuation lines when the header uses them. Unlike Make, a tab is not required. Blank lines and lines whose first non-whitespace character is `#` are ignored. Recipe lines are passed to `sh -c`.
+Indentation is relative: recipe commands and modifiers must be indented deeper than the rule header, and deeper than dependency-continuation lines when the header uses them. Unlike Make, a tab is not required. Blank lines and lines whose first non-whitespace character is `#` are ignored. Syntax lines also support inline `#` comments outside quotes and dependency-expression parentheses. Recipe lines are passed to `sh -c` unchanged, so recipe comments retain shell semantics.
 
 ### Multiple outputs
 

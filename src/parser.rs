@@ -29,6 +29,11 @@ pub(crate) fn parse_needfile_text(
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
+        let syntax = strip_inline_comment(raw).trim_end().to_owned();
+        let trimmed = syntax.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
         let indent = raw.len() - raw.trim_start().len();
         if !raw.starts_with(char::is_whitespace)
             && let Some((k, v)) = trimmed.split_once('=')
@@ -66,7 +71,7 @@ pub(crate) fn parse_needfile_text(
             }
             continuation_indent = Some(continuation_indent.unwrap_or(0).max(ni));
             header.push(' ');
-            header.push_str(n.trim());
+            header.push_str(strip_inline_comment(n).trim_end().trim());
             i += 1
         }
         let (o, d) = header.split_once(':').unwrap();
@@ -116,8 +121,9 @@ pub(crate) fn parse_needfile_text(
             } else {
                 ""
             };
-            if l.starts_with('@') {
-                parse_rule_option(l, &mut options)?;
+            let syntax = strip_inline_comment(l).trim_end();
+            if syntax.starts_with('@') {
+                parse_rule_option(syntax, &mut options)?;
             } else if !l.is_empty() && !l.starts_with('#') {
                 recipe.push(l.into())
             }
@@ -135,6 +141,22 @@ pub(crate) fn parse_needfile_text(
         });
     }
     Ok((vars, rules))
+}
+
+fn strip_inline_comment(line: &str) -> &str {
+    let mut quote = None;
+    let mut parentheses = 0;
+    for (index, character) in line.char_indices() {
+        match character {
+            '\'' | '"' if quote == Some(character) => quote = None,
+            '\'' | '"' if quote.is_none() => quote = Some(character),
+            '(' if quote.is_none() => parentheses += 1,
+            ')' if quote.is_none() && parentheses > 0 => parentheses -= 1,
+            '#' if quote.is_none() && parentheses == 0 => return &line[..index],
+            _ => {}
+        }
+    }
+    line
 }
 
 fn display_path(path: &Path) -> String {
@@ -652,5 +674,36 @@ mod tests {
         let unterminated = split_words("\"path").unwrap_err();
         assert!(unterminated.contains("unterminated \" quote"));
         assert!(unterminated.contains("help:"));
+    }
+
+    #[test]
+    fn strips_inline_comments_from_needfile_syntax() {
+        let (vars, rules) = parse_needfile_text(
+            Path::new("needfile"),
+            "sources = a.c b.c # source list\noutput: input # rule header\n  @outputs(manifest) # modifier\n    printf '# recipe' > {{out}}\n",
+        )
+        .unwrap();
+
+        assert_eq!(vars["sources"], "a.c b.c");
+        assert_eq!(rules[0].deps, vec![ParsedDependency::File("input".into())]);
+        assert_eq!(rules[0].options.outputs.as_deref(), Some("manifest"));
+        assert_eq!(rules[0].recipe, "  printf '# recipe' > {{out}}");
+    }
+
+    #[test]
+    fn preserves_hashes_in_quotes_and_dependency_expressions() {
+        let (_, rules) = parse_needfile_text(
+            Path::new("needfile"),
+            "output: \"file#name\" command(printf '# probe') # comment\n  touch {{out}}\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            rules[0].deps,
+            vec![
+                ParsedDependency::File("file#name".into()),
+                ParsedDependency::Command("printf # probe".into()),
+            ]
+        );
     }
 }
