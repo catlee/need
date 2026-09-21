@@ -36,7 +36,7 @@ The current implementation includes the core artifact graph, including:
 
 - basic rules, variables, interpolation, pattern rules, and dependency globs
 - token-list variables with `=`, `+=`, boundary-preserving splicing, and
-  embedded cardinality validation
+  embedded cardinality validation, including indented multiline assignments
 - automatic output directories and multiple-output groups
 - file, tree, mtime, environment, and string dependency expressions
 - opt-in dotenv loading with precedence, custom files, and freshness tracking
@@ -984,6 +984,9 @@ For v0.2:
 
 - assignment uses `name = value`
 - append assignment uses `name += value`; the name must already be defined
+- an assignment with no value consumes subsequent indented token lines; blank
+  lines are allowed, the block ends at the next non-indented top-level line,
+  and later value lines may not be shallower than the first value line
 - interpolation uses `{{name}}`
 - values are token lists, tokenized at assignment time; an empty assignment is
   an empty list

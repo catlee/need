@@ -145,6 +145,10 @@ previously defined variable, and an empty assignment creates an empty list:
 inputs = "assets/My File.json" assets/other.json
 inputs += generated.json
 
+more-inputs =
+  first-generated.json
+  "generated/My File.json"
+
 bundle: {{inputs}}
   bundle-tool {{inputs}} -o {{out}}
 ```
@@ -153,6 +157,8 @@ Standalone references splice all tokens without re-tokenizing them. User
 variables in recipes are shell-escaped one token at a time; embedded
 references must contain exactly one token. The same rules apply to declared
 outputs and dependencies, including spliced `command(...)` expressions.
+An assignment with no value may consume subsequent indented token lines;
+blank lines are allowed, and the block ends at the next top-level line.
 
 ## Environment dependencies
 

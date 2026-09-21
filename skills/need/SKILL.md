@@ -45,6 +45,12 @@ indexed/sliced. Recipe tokens are shell-escaped individually. Dependency
 expressions produced by splicing, including `command(...)`, are parsed the same
 as directly written expressions.
 
+When `=` or `+=` has no value, subsequent indented lines form a token-list
+block; blank lines are allowed and the block ends at the next top-level line.
+Each non-blank line uses the normal needfile tokenizer. Do not add sentinels,
+brackets, commas, or other multiline conventions. Later value lines must not
+be shallower than the first value line.
+
 Rule outputs and dependencies use quoted words. Single or double quotes group
 whitespace and are removed. Backslash escapes whitespace, quote characters, or
 another backslash; before other characters it stays literal. An ending

@@ -1024,6 +1024,30 @@ mod tests {
     }
 
     #[test]
+    fn builds_with_multiline_variables_in_outputs_dependencies_and_recipe() {
+        let root = temp_project("multiline-variable-build");
+        fs::write(root.join("input.txt"), "hello\n").unwrap();
+        fs::write(
+            root.join("needfile"),
+            "outputs =\n  first.txt\n  second.txt\ndeps =\n  input.txt\ncommand = cp\n{{outputs}}: {{deps}}\n  {{command}} {{in}} {{out[0]}}\n  {{command}} {{in}} {{out[1]}}\n",
+        )
+        .unwrap();
+
+        let mut ctx = context(&root, &fs::read_to_string(root.join("needfile")).unwrap());
+        build(&mut ctx, "first.txt", None).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(root.join("first.txt")).unwrap(),
+            "hello\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("second.txt")).unwrap(),
+            "hello\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn expands_variables_before_parsing_dependency_expressions() {
         let root = temp_project("dependency-expression-variable");
         let path = root.join("needfile");

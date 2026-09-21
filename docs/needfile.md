@@ -153,6 +153,12 @@ flags = "-Wall -O2"
 sources = "src/My File.c" src/other.c
 sources += generated.c
 
+assets =
+  "assets/My File.json"
+  assets/other.json
+assets +=
+  generated.json
+
 build/%.o: src/%.c
   {{cc}} {{flags}} -c {{in}} -o {{out}}
 ```
@@ -165,6 +171,14 @@ resolve to exactly one token; values are never implicitly joined, re-tokenized,
 or Cartesian-expanded. Indexing and slicing user variables are not supported.
 Referenced values contribute to the rule signature, so changing a variable
 causes the affected rule to become stale.
+
+An assignment with no value consumes subsequent non-blank lines that are
+indented relative to the assignment. Each line is tokenized with the same
+word tokenizer; blank lines are allowed inside the block. The block ends at
+the next non-indented top-level line. There are no sentinel markers, brackets,
+commas, or other implicit multiline forms.
+Value lines may be more deeply indented, but a nonblank line must not be
+shallower than the first value line.
 
 Variable definitions are resolved before rules are expanded, so nested
 references are supported regardless of assignment order. Cycles are rejected
