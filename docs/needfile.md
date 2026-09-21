@@ -240,6 +240,18 @@ build/app: file({{sdk}}/bin/compiler)
   {{sdk}}/bin/compiler {{in}} -o {{out}}
 ```
 
+Use `file(...)` as an escape hatch when a literal filename resembles a
+dependency constructor. For example, `file(tree(foo))` names the literal file
+`tree(foo)`, while `tree(foo)` means the directory tree rooted at `foo`.
+Quoting can make an awkward filename explicit:
+
+```make
+target: file("tree(foo)")
+```
+
+The same rule applies to filenames that resemble any recognized constructor,
+including `env(...)`, `string(...)`, and `command(...)`.
+
 ### Directory trees
 
 `tree(path)` recursively tracks file membership, relative paths, and file contents:

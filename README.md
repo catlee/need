@@ -171,6 +171,20 @@ outputs and dependencies, including spliced `command(...)` expressions.
 An assignment with no value may consume subsequent indented token lines;
 blank lines are allowed, and the block ends at the next top-level line.
 
+## Dependency expressions
+
+Use `file(...)` when a literal filename collides with a dependency constructor.
+For example, `file(tree(foo))` means the file named `tree(foo)`, while
+`tree(foo)` means the directory tree rooted at `foo`. Quoting can make an
+awkward filename explicit:
+
+```make
+target: file("tree(foo)")
+```
+
+The same escape hatch applies to filenames resembling any recognized
+constructor, such as `env(...)`, `string(...)`, or `command(...)`.
+
 ## Environment dependencies
 
 Reference environment variables explicitly when they affect a build:

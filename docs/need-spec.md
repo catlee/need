@@ -1135,6 +1135,23 @@ Both mean that the file's content determines freshness.
 foo: file({{sdk}}/bin/monkeyc)
 ```
 
+`file(...)` is also the escape hatch for a literal filename that resembles a
+dependency constructor. For example:
+
+```make
+foo: file(tree(foo))
+```
+
+This names the literal file `tree(foo)`; in contrast, `tree(foo)` means the
+directory tree rooted at `foo`. Quoting may be used for awkward filenames:
+
+```make
+foo: file("tree(foo)")
+```
+
+The same rule applies to filenames resembling any recognized constructor,
+including `env(...)`, `string(...)`, and `command(...)`.
+
 ### 16.2 Modification-time Dependency
 
 ```make
