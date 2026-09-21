@@ -52,10 +52,11 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
     if !literal_targets && let Some(index) = get_outputs_command_index(&args) {
         args.remove(index);
         let explicit_file = take_value(&mut args, "--file")?;
+        let explicit_root = take_value(&mut args, "--root")?;
         let nul = take_flag(&mut args, "-0");
         if !args.is_empty() {
             return Err(format!(
-                "unexpected argument for outputs: {}\nhelp: use `need outputs [-0] [--file PATH]`",
+                "unexpected argument for outputs: {}\nhelp: use `need outputs [-0] [--file PATH] [--root PATH]`",
                 args.join(" ")
             ));
         }
@@ -63,10 +64,14 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
             env::current_dir().map_err(|e| e.to_string())?,
             explicit_file,
         )?;
-        let root = file.parent().unwrap();
-        let _lock = BuildLock::acquire(root)?;
-        cleanup_recovery_files(root)?;
-        return list_recorded_outputs(root, nul);
+        let root = select_root(
+            env::current_dir().map_err(|e| e.to_string())?,
+            explicit_root,
+            &file,
+        );
+        let _lock = BuildLock::acquire(&root)?;
+        cleanup_recovery_files(&root)?;
+        return list_recorded_outputs(&root, nul);
     }
     if !literal_targets && let Some(index) = get_command_index(&args) {
         args.remove(index);
@@ -75,6 +80,7 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
     if !literal_targets && let Some(index) = get_clean_command_index(&args) {
         args.remove(index);
         let explicit_file = take_value(&mut args, "--file")?;
+        let explicit_root = take_value(&mut args, "--root")?;
         let outputs_only = take_flag(&mut args, "--outputs-only");
         let remove_outputs = take_flag(&mut args, "--remove-outputs");
         if outputs_only && remove_outputs {
@@ -85,7 +91,7 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
         }
         if !args.is_empty() {
             return Err(format!(
-                "unexpected argument for clean: {}\nhelp: use `need clean [--outputs-only|--remove-outputs] [--file PATH]`",
+                "unexpected argument for clean: {}\nhelp: use `need clean [--outputs-only|--remove-outputs] [--file PATH] [--root PATH]`",
                 args.join(" ")
             ));
         }
@@ -93,22 +99,27 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
             env::current_dir().map_err(|e| e.to_string())?,
             explicit_file,
         )?;
-        let root = file.parent().unwrap();
-        let _lock = BuildLock::acquire(root)?;
+        let root = select_root(
+            env::current_dir().map_err(|e| e.to_string())?,
+            explicit_root,
+            &file,
+        );
+        let _lock = BuildLock::acquire(&root)?;
         if outputs_only || remove_outputs {
-            remove_recorded_outputs(root)?;
+            remove_recorded_outputs(&root)?;
         }
         if outputs_only {
             return Ok(());
         }
-        return clean_state(root);
+        return clean_state(&root);
     }
     if !literal_targets && let Some(index) = get_logs_command_index(&args) {
         args.remove(index);
         let explicit_file = take_value(&mut args, "--file")?;
+        let explicit_root = take_value(&mut args, "--root")?;
         if args.len() != 1 {
             return Err(format!(
-                "logs expects exactly one target, got {}\nhelp: use `need logs [--file PATH] TARGET`",
+                "logs expects exactly one target, got {}\nhelp: use `need logs [--file PATH] [--root PATH] TARGET`",
                 if args.is_empty() {
                     "no target".to_owned()
                 } else {
@@ -117,8 +128,8 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
             ));
         }
         let invocation_dir = env::current_dir().map_err(|e| e.to_string())?;
-        let file = select_needfile(invocation_dir, explicit_file)?;
-        let root = file.parent().unwrap().to_path_buf();
+        let file = select_needfile(invocation_dir.clone(), explicit_file)?;
+        let root = select_root(invocation_dir, explicit_root, &file);
         let _lock = BuildLock::acquire(&root)?;
         return show_logs(&file, &root, &args[0]);
     }
@@ -137,6 +148,11 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
     } else {
         take_value(&mut args, "--file")?
     };
+    let explicit_root = if literal_targets {
+        None
+    } else {
+        take_value(&mut args, "--root")?
+    };
     let jobs = if literal_targets {
         Jobs::default()
     } else {
@@ -144,7 +160,7 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
     };
     if !literal_targets && args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need outputs [-0] [--file PATH]\n       need clean [--outputs-only|--remove-outputs] [--file PATH]\n       need logs [--file PATH] TARGET\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] <RULE> [--] <INPUT>..."
+            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--root PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need outputs [-0] [--file PATH] [--root PATH]\n       need clean [--outputs-only|--remove-outputs] [--file PATH] [--root PATH]\n       need logs [--file PATH] [--root PATH] TARGET\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] <RULE> [--] <INPUT>..."
         );
         return Ok(());
     }
@@ -152,10 +168,18 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
         env::current_dir().map_err(|e| e.to_string())?,
         explicit_file,
     )?;
-    let root = file.parent().unwrap().to_path_buf();
+    let root = select_root(
+        env::current_dir().map_err(|e| e.to_string())?,
+        explicit_root,
+        &file,
+    );
     let (vars, parsed_rules) = parse_needfile(&file)?;
     let dotenv = load_dotenv(&vars, &root)?;
-    let resolved_vars = resolve_variables(&vars, &dotenv.values)?;
+    let mut resolved_vars = resolve_variables(&vars, &dotenv.values)?;
+    resolved_vars.insert(
+        "needfile.dir".into(),
+        vec![file.parent().unwrap().to_string_lossy().into_owned()],
+    );
     let output = if let Some(value) = cli_output.as_deref() {
         OutputMode::parse(value)?
     } else if let Some(value) = ctx_config(&vars, "need.output") {
@@ -243,7 +267,7 @@ fn get_command_index(args: &[String]) -> Option<usize> {
         }
         match argument.as_str() {
             "--force" | "--dry-run" | "-n" | "--explain" | "--list" | "--cargo" => index += 1,
-            "--file" | "--output" | "--jobs" => index += 2,
+            "--file" | "--root" | "--output" | "--jobs" => index += 2,
             "-j" => {
                 index += if args
                     .get(index + 1)
@@ -256,6 +280,7 @@ fn get_command_index(args: &[String]) -> Option<usize> {
             }
             argument
                 if argument.starts_with("--file=")
+                    || argument.starts_with("--root=")
                     || argument.starts_with("--output=")
                     || argument.starts_with("--jobs=")
                     || (argument.starts_with("-j") && argument.len() > 2) =>
@@ -275,8 +300,10 @@ fn get_clean_command_index(args: &[String]) -> Option<usize> {
             return Some(index);
         }
         match argument.as_str() {
-            "--file" => index += 2,
-            argument if argument.starts_with("--file=") => index += 1,
+            "--file" | "--root" => index += 2,
+            argument if argument.starts_with("--file=") || argument.starts_with("--root=") => {
+                index += 1
+            }
             _ => return None,
         }
     }
@@ -290,8 +317,10 @@ fn get_outputs_command_index(args: &[String]) -> Option<usize> {
             return Some(index);
         }
         match argument.as_str() {
-            "--file" => index += 2,
-            argument if argument.starts_with("--file=") => index += 1,
+            "--file" | "--root" => index += 2,
+            argument if argument.starts_with("--file=") || argument.starts_with("--root=") => {
+                index += 1
+            }
             _ => return None,
         }
     }
@@ -414,8 +443,10 @@ fn get_logs_command_index(args: &[String]) -> Option<usize> {
             return Some(index);
         }
         match argument.as_str() {
-            "--file" => index += 2,
-            argument if argument.starts_with("--file=") => index += 1,
+            "--file" | "--root" => index += 2,
+            argument if argument.starts_with("--file=") || argument.starts_with("--root=") => {
+                index += 1
+            }
             _ => return None,
         }
     }
@@ -670,7 +701,7 @@ fn resolve_rules(
             outputs: parsed
                 .outputs
                 .iter()
-                .map(|output| ProjectPath::new(output))
+                .map(|output| ProjectPath::output(output))
                 .collect::<Result<Vec<_>>>()?,
             deps: expand_dependencies(&parsed.deps, vars, env_values)?,
             recipe: parsed.recipe.clone(),
@@ -700,7 +731,7 @@ fn resolve_rules(
         }
         rule.outputs = output_words
             .iter()
-            .map(|x| ProjectPath::new(x))
+            .map(|x| ProjectPath::output(x))
             .collect::<Result<Vec<_>>>()?;
         if let Some(value) = parsed
             .options

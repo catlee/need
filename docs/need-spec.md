@@ -49,6 +49,7 @@ The current implementation includes the core artifact graph, including:
   for inspecting the latest retained execution log for a declared artifact target
 - `need map` for `%`-pattern filename transformation with newline or NUL output
 - `-n` as an alias for `--dry-run` and `--file PATH` for explicit needfile selection
+- `--root PATH` for selecting a project/output root independently of the needfile
 - Cargo metadata mode with transitive source and environment dependencies
 - dependency-cycle detection
 - cross-process advisory locking for build state and output groups
@@ -185,9 +186,11 @@ The filename is intentionally lowercase.
 
 The `--file PATH` option selects a specific needfile. Relative `PATH` values
 are resolved from the invocation working directory, not from a discovered
-needfile or its parent. Once selected, all paths in the needfile and recipe
-working-directory behavior remain relative to the directory containing that
-needfile.
+needfile or its parent. `--root PATH` optionally selects the project/output
+root, also relative to the invocation working directory. Without `--root`, the
+root is the directory containing the needfile. With `--root`, the needfile is
+configuration only: relative targets, sources, dependencies, recipe working
+directory, state, and logs are relative to the selected root.
 
 ---
 
@@ -904,9 +907,9 @@ artifact is built before its consumer without being added to `{{in}}`.
 The supported depfile subset is the commonly generated Make-style form:
 one target followed by `:`, whitespace-separated dependency paths, escaped
 spaces and backslashes, and backslash-newline continuations. Relative paths
-are interpreted from the needfile directory; absolute paths and paths outside
-the project remain valid wherever ordinary file dependency semantics allow
-them.
+are interpreted from the project root; absolute paths and paths outside the
+project remain valid wherever ordinary file dependency semantics allow them.
+Use `{{needfile.dir}}` when a separate root needs a checked-in helper path.
 
 A successful recipe with `@depfile(...)` MUST produce a readable, well-formed
 depfile. Missing or malformed depfiles are errors naming the depfile path and
@@ -1452,9 +1455,20 @@ Projects will normally ignore:
 
 ## 22. Working Directory and Path Semantics
 
-All paths in a `needfile` are resolved relative to the directory containing that `needfile`, unless explicitly absolute.
+All relative targets, sources, and dependency paths in a `needfile` are
+resolved relative to the project root: the directory containing the needfile,
+unless `--root PATH` selects another root. Absolute paths and `..` components
+may refer to external dependency inputs. Recipes execute with their current
+working directory set to the project root. Declared and dynamic output paths
+must be relative and remain beneath that root; paths escaping it are rejected.
 
-Recipes execute with their current working directory set to the directory containing the `needfile`.
+Recipes and dependency expressions may use the built-in `{{needfile.dir}}`
+variable to refer to the directory containing the selected needfile. This
+provides stable access to checked-in generators and helpers when `--root`
+points at a cache.
+
+The needfile itself may remain outside the project root, which allows a
+version-controlled needfile to build into a caller-selected cache tree.
 
 `need` may be invoked from any descendant directory.
 
@@ -2199,6 +2213,7 @@ Options:
 
 ```text
     --file PATH        use a specific needfile
+    --root PATH        use a separate project/output root
 -j [N], --jobs N       maximum parallel jobs; bare -j means unlimited
 -n, --dry-run         show what would run
     --explain         explain freshness decisions

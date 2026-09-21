@@ -17,9 +17,10 @@ Discovery
 - `need --dry-run TARGET` Show recipes that would run
 - `need -n TARGET` Short alias for `--dry-run`
 - `need --file PATH TARGET` Use a specific needfile; relative paths start at the invocation directory
+- `need --file PATH --root PATH TARGET` Use a version-controlled needfile with a separate project/output root
 - `need logs [--file PATH] TARGET` Show the latest retained execution log for a declared artifact target without building it
 - `need outputs [-0]` List successful recorded outputs, newline- or NUL-delimited
-- `need clean [--outputs-only|--remove-outputs] [--file PATH]` Remove state, recorded outputs, or both
+- `need clean [--outputs-only|--remove-outputs] [--file PATH] [--root PATH]` Remove state, recorded outputs, or both
 
 Execution
 ---------
@@ -85,7 +86,7 @@ build/%.o: src/%.c
 
 Use `file(path)`, `tree(path)`, `mtime(path)`, `env(NAME)`, `string(value)`, and
 `command(shell probe)` when the default file-content dependency is not the
-right semantics. `command(...)` runs from the needfile directory and is
+right semantics. `command(...)` runs from the project root and is
 freshness-only: expanded command text, complete stdout/stderr, and exit status
 are signed; nonzero status stops the build. It does not add a graph edge or
 appear in `{{in}}`, and automatic variables are not allowed in probes.
@@ -109,8 +110,12 @@ removes state too. `need outputs [-0]` exposes that recorded set for other
 tools. These commands use the project lock and only act on safe project-relative
 recorded paths.
 
-`need` searches upward for `needfile`, resolves paths relative to the directory
-containing it, and creates output parent directories automatically. `{{in}}`
+`need` searches upward for `needfile`, resolves paths relative to the project
+root (the needfile directory unless `--root PATH` is supplied), and creates
+output parent directories automatically. With `--root`, the needfile remains
+configuration, while relative targets, dependencies, recipe working directory,
+state, and logs use the selected root. Recipes and dependency expressions can
+use `{{needfile.dir}}` for checked-in helpers. `{{in}}`
 and `{{out}}` are shell-escaped; use indexed forms such as `{{in[0]}}` when
 argument order matters.
 

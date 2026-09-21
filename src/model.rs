@@ -29,6 +29,21 @@ impl ProjectPath {
     pub(crate) fn as_str(&self) -> &str {
         &self.0
     }
+
+    pub(crate) fn output(value: &str) -> Result<Self> {
+        let path = Self::new(value)?;
+        if std::path::Path::new(value).is_absolute() {
+            return Err(format!(
+                "output path is absolute: {value}\nhelp: use an output path beneath the selected project root"
+            ));
+        }
+        if path.as_str() == ".." || path.as_str().starts_with("../") {
+            return Err(format!(
+                "output path escapes the project root: {value}\nhelp: use an output path beneath the selected project root"
+            ));
+        }
+        Ok(path)
+    }
 }
 
 impl std::fmt::Display for ProjectPath {

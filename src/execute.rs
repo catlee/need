@@ -1257,7 +1257,7 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
         let o = c.project.rules[i]
             .outputs
             .iter()
-            .map(|x| ProjectPath::new(&x.as_str().replace('%', &s)))
+            .map(|x| ProjectPath::output(&x.as_str().replace('%', &s)))
             .collect::<Result<Vec<_>>>()?;
         return Ok(TargetMatch::Rule {
             id: RuleId(i),

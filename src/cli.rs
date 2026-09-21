@@ -97,3 +97,21 @@ pub(crate) fn select_needfile(
         None => find_needfile(invocation_dir),
     }
 }
+
+pub(crate) fn select_root(
+    invocation_dir: PathBuf,
+    explicit: Option<String>,
+    file: &std::path::Path,
+) -> PathBuf {
+    explicit.map_or_else(
+        || file.parent().unwrap().to_path_buf(),
+        |path| {
+            let path = PathBuf::from(path);
+            if path.is_absolute() {
+                path
+            } else {
+                invocation_dir.join(path)
+            }
+        },
+    )
+}

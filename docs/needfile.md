@@ -2,7 +2,11 @@
 
 This is the reference for writing a `needfile`. A `needfile` describes how files are produced. It does not define commands such as `test`, `clean`, or `deploy`; use a task runner such as `just` for those.
 
-`need` searches from the current directory upwards for a file named `needfile`. Paths in the file are relative to the directory containing that file. Use `need --file PATH` to select a specific needfile; a relative option path is resolved from the invocation directory.
+`need` searches from the current directory upwards for a file named `needfile`. Paths in the file are relative to the project root, normally the directory containing that file. Use `need --file PATH` to select a specific needfile; a relative option path is resolved from the invocation directory. Use `--root PATH` to select a separate project/output root; relative targets, dependencies, recipes, state, and logs then use that root. Outputs must remain beneath it, while dependencies may refer to external inputs. Use `{{needfile.dir}}` for checked-in helpers.
+
+Recipes run from the selected project root. The built-in `{{needfile.dir}}`
+variable provides the needfile directory when a recipe or dependency needs a
+checked-in helper alongside an externally selected output root.
 
 ## A first rule
 
@@ -337,7 +341,7 @@ command text, complete stdout, stderr, and exit status contribute to
 freshness. A non-zero exit status stops dependency resolution with an error
 before the recipe runs.
 
-The command runs through `/bin/sh -c` in the needfile's directory, using the
+The command runs through `/bin/sh -c` in the selected project root, using the
 current environment. Identical expanded probes are memoized for one invocation,
 but probe results are not cached between invocations. Automatic variables such
 as `{{in}}`, `{{out}}`, and `{{stem}}` are rejected in probes; ordinary variables

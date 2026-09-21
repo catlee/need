@@ -126,7 +126,11 @@ need build/app
 
 Use `need --file PATH` to select a specific needfile. Relative paths are
 resolved from the directory where `need` is invoked; paths inside that
-needfile remain relative to its directory. Use `-n` as the short alias for
+Without `--root`, paths inside that needfile remain relative to its directory.
+Use `--root PATH` to decouple the
+project/output root from the needfile; relative targets, dependencies, recipes,
+state, and logs then use that root. Recipes can refer to checked-in helpers
+with the built-in `{{needfile.dir}}`. Use `-n` as the short alias for
 `--dry-run`.
 
 See the [complete `needfile` format reference](docs/needfile.md) for rules,
@@ -202,7 +206,7 @@ process variables win by default. Use `need.env.override = true` to let the
 file win, `need.env.required = true` to require a file, or
 `need.env.file = .env.local` to use another filename.
 
-Command-output dependencies run `/bin/sh -c` from the needfile directory and
+Command-output dependencies run `/bin/sh -c` from the project root and
 make the expanded command text, complete stdout and stderr, and exit status
 part of the freshness signature:
 
@@ -254,12 +258,14 @@ need build/app               # build a target
 need --dry-run build/app     # show what would run
 need -n build/app            # short alias for --dry-run
 need --file path/to/needfile build/app  # select an explicit needfile
+need --file path/to/needfile --root "$XDG_CACHE_HOME/omarchy/theme-selector" out/preview
 need outputs                            # list successful recorded outputs
 need outputs -0                         # list them with NUL separators
 need clean                              # remove the project's .need state and logs
 need clean --outputs-only               # remove recorded outputs but retain .need state
 need clean --remove-outputs             # remove recorded outputs, then .need state and logs
 need clean --file path/to/needfile      # clean state beside an explicit needfile
+need clean --file path/to/needfile --root path/to/output-root
 need logs build/app                     # show the latest retained execution log
 need --explain build/app     # explain current and stale targets
 need --force build/app       # rebuild the target, not its current dependencies
