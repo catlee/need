@@ -6,6 +6,37 @@ All notable changes to `need` are documented here.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.0.4](https://github.com/catlee/need/compare/v0.0.3...v0.0.4) - 2026-09-21
+
+### Added
+
+- *(parser)* implement multiline token-list assignments
+- *(parser)* implement token-list variables and splicing
+- *(parser)* support inline comments in needfiles
+- *(parser)* support escaping in needfile word parsing
+- *(command)* add command freshness dependencies
+- *(outputs)* add recorded output cleanup
+- *(logs)* add logs inspection command
+
+### Fixed
+
+- *(build)* make input fingerprint transaction-safe
+- *(build)* recheck inputs after recipe execution
+
+### Other
+
+- document conventional commit policy
+- *(interruption)* fix readiness race
+- *(spec)* reconcile unsupported dependency forms
+- *(spec)* remove rejected long dependency syntax proposal
+- *(spec)* document explicit filesystem metadata dependencies
+- *(dependencies)* specify command-output dependency design
+- *(spec)* decide long dependency list syntax
+- *(spec)* remove stale implementation status notes
+- *(logs)* remove duplicate spec entry
+- *(needfile)* reconcile reference
+- make release-plz actions depend on CI
+
 ## [0.0.3](https://github.com/catlee/need/compare/v0.0.2...v0.0.3) - 2026-09-20
 
 ### Fixed
