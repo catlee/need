@@ -100,6 +100,13 @@ npx skills add ./skills/need --global
 
 Omit `--global` to install it for the current project instead.
 
+## Contributing
+
+Use [Conventional Commits](https://www.conventionalcommits.org/) for commit
+messages. Start with a lower-case type such as `feat`, `fix`, `docs`, `test`,
+`refactor`, `perf`, `build`, `ci`, or `chore`; an optional scope may follow,
+as in `fix(parser): preserve quoted tokens`.
+
 ## Basic usage
 
 Create a file named `needfile`:

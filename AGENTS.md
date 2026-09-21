@@ -13,6 +13,11 @@ specification, user documentation, and agent skill in sync.
 
 ## Making changes
 
+- Use [Conventional Commits](https://www.conventionalcommits.org/) for commit
+  messages. Use a lower-case type such as `feat`, `fix`, `docs`, `test`,
+  `refactor`, `perf`, `build`, `ci`, or `chore`, optionally followed by a
+  scope, then a concise imperative subject (for example,
+  `fix(parser): preserve quoted tokens`).
 - Keep `src/main.rs` behavior covered by tests in its `#[cfg(test)]` module.
 - Update `README.md` when basic usage or user-facing commands change.
 - Update `docs/need-spec.md` when behavior changes or a specified feature is
