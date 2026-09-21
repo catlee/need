@@ -79,6 +79,10 @@ appear in `{{in}}`, and automatic variables are not allowed in probes.
 needfile; use the existing `file(...)`, `tree(...)`, or `mtime(...)` forms for
 filesystem metadata.
 
+Syntax lines support inline `#` comments outside quotes and dependency
+expression parentheses. Recipe lines are passed to the shell unchanged; do not
+strip or reinterpret `#` in recipe bodies.
+
 Notes
 -----
 

@@ -54,6 +54,10 @@ Cargo      → Rust compilation
 
 The current implementation status is tracked in the [Implementation Status](docs/need-spec.md#implementation-status) section of the specification.
 
+Needfile syntax lines support inline `#` comments outside quotes and dependency
+expressions. Recipe lines are passed to the shell unchanged, so `#` in a recipe
+keeps the shell's normal meaning.
+
 ## Alternatives
 
 * **Make** is still a reasonable choice when portability and existing Makefiles matter more than ergonomics. If you use it, watch the whitespace. It has opinions.
