@@ -121,6 +121,10 @@ needfile remain relative to its directory. Use `-n` as the short alias for
 See the [complete `needfile` format reference](docs/needfile.md) for rules,
 variables, dependency types, interpolation, and output modes.
 
+Rule outputs and dependencies support quoted words and small, predictable
+escaping: backslash escapes whitespace, quote characters, or another
+backslash. A backslash before another character stays literal.
+
 Pattern rules work too:
 
 ```make

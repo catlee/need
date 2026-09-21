@@ -242,6 +242,21 @@ Tabs have no special meaning. Implementations SHOULD reject inconsistent or ambi
 
 The trailing `\` is part of `need` syntax only while parsing the rule header and dependency continuation. Inside a recipe command, `\` has its normal shell meaning.
 
+### 6.1 Word escaping
+
+Rule outputs and dependencies use one shared word tokenizer. Whitespace splits
+words outside quotes; single and double quotes group text and are removed; and
+parentheses group dependency expressions. A backslash escapes whitespace, a
+quote character outside quotes, the active quote character inside quotes, or
+another backslash. Before any other character, a backslash remains literal.
+This rule also applies inside expressions such as
+`command(...)`, so escaped quotes can preserve shell quoting there.
+
+An escape at the end of a word MUST be rejected with a diagnostic and `help:`
+hint. An unterminated quote MUST likewise be rejected. The trailing backslash
+used for a continued rule header is recognized as needfile syntax before word
+tokenization.
+
 ## 7. Automatic Parent Directory Creation
 
 If a target's parent directory does not exist, `need` creates it automatically before executing the recipe.
