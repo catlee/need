@@ -577,31 +577,62 @@ fn clean_state(root: &std::path::Path) -> Result<()> {
 
 fn expand_dependencies(
     dependencies: &[ParsedDependency],
-    vars: &HashMap<String, String>,
+    vars: &HashMap<String, Vec<String>>,
     env_values: &HashMap<String, String>,
 ) -> Result<Vec<Dependency>> {
-    dependencies
-        .iter()
-        .map(|dependency| match dependency {
+    let mut expanded = Vec::new();
+    for dependency in dependencies {
+        match dependency {
             ParsedDependency::Deferred(expression) => {
-                let dependency = parse_expanded_dependency(&expand(expression, vars, env_values))?;
-                if let Dependency::Command(command) = &dependency {
-                    validate_command_probe(command)?;
+                if let Dependency::Command(command) = parse_expanded_dependency(expression)? {
+                    validate_command_probe(&command)?;
                 }
-                Ok(dependency)
+                for word in expand_words(expression, vars, env_values)? {
+                    let dependency = parse_expanded_dependency(&word)?;
+                    if let Dependency::Command(command) = &dependency {
+                        validate_command_probe(command)?;
+                    }
+                    expanded.push(dependency);
+                }
             }
-            ParsedDependency::File(x) => Ok(Dependency::File(expand(x, vars, env_values))),
-            ParsedDependency::Tree(x) => Ok(Dependency::Tree(expand(x, vars, env_values))),
-            ParsedDependency::Mtime(x) => Ok(Dependency::Mtime(expand(x, vars, env_values))),
-            ParsedDependency::Env(x) => Ok(Dependency::Env(expand(x, vars, env_values))),
-            ParsedDependency::String(x) => Ok(Dependency::String(expand(x, vars, env_values))),
-            ParsedDependency::Command(x) => {
-                let command = expand(x, vars, env_values);
+            ParsedDependency::File(value) => {
+                expand_typed(value, vars, env_values, Dependency::File, &mut expanded)?
+            }
+            ParsedDependency::Tree(value) => {
+                expand_typed(value, vars, env_values, Dependency::Tree, &mut expanded)?
+            }
+            ParsedDependency::Mtime(value) => {
+                expand_typed(value, vars, env_values, Dependency::Mtime, &mut expanded)?
+            }
+            ParsedDependency::Env(value) => {
+                expand_typed(value, vars, env_values, Dependency::Env, &mut expanded)?
+            }
+            ParsedDependency::String(value) => {
+                expand_typed(value, vars, env_values, Dependency::String, &mut expanded)?
+            }
+            ParsedDependency::Command(value) => {
+                let command = expand(value, vars, env_values);
                 validate_command_probe(&command)?;
-                Ok(Dependency::Command(command))
+                expanded.push(Dependency::Command(command));
             }
-        })
-        .collect()
+        }
+    }
+    Ok(expanded)
+}
+
+fn expand_typed(
+    value: &str,
+    vars: &HashMap<String, Vec<String>>,
+    env_values: &HashMap<String, String>,
+    constructor: fn(String) -> Dependency,
+    output: &mut Vec<Dependency>,
+) -> Result<()> {
+    output.extend(
+        expand_words(value, vars, env_values)?
+            .into_iter()
+            .map(constructor),
+    );
+    Ok(())
 }
 
 fn validate_command_probe(command: &str) -> Result<()> {
@@ -629,9 +660,9 @@ fn validate_command_probe(command: &str) -> Result<()> {
 
 fn resolve_rules(
     parsed_rules: &[ParsedRule],
-    vars: &HashMap<String, String>,
+    vars: &HashMap<String, Vec<String>>,
     env_values: &HashMap<String, String>,
-    raw_vars: &HashMap<String, String>,
+    raw_vars: &HashMap<String, Vec<String>>,
 ) -> Result<Vec<Rule>> {
     let mut rules = Vec::new();
     for parsed in parsed_rules {
@@ -663,10 +694,13 @@ fn resolve_rules(
         for dependency in &parsed.deps {
             collect_env_refs(dependency.template(), raw_vars, &mut rule.env_refs);
         }
-        rule.outputs = rule
-            .outputs
+        let mut output_words = Vec::new();
+        for output in &parsed.outputs {
+            output_words.extend(expand_words(output, vars, env_values)?);
+        }
+        rule.outputs = output_words
             .iter()
-            .map(|x| ProjectPath::new(&expand(x.as_str(), vars, env_values)))
+            .map(|x| ProjectPath::new(x))
             .collect::<Result<Vec<_>>>()?;
         if let Some(value) = parsed
             .options
@@ -823,7 +857,7 @@ mod tests {
         let name = format!("NEED_TEST_{}", std::process::id());
         fs::write(root.join(".env"), format!("{name}=from-file\n")).unwrap();
         let mut vars = HashMap::new();
-        vars.insert("need.env".into(), "load".into());
+        vars.insert("need.env".into(), vec!["load".into()]);
         unsafe { env::set_var(&name, "from-process") };
         let loaded = load_dotenv(&vars, &root).unwrap();
         assert_eq!(loaded.values[&name], "from-process");
@@ -837,8 +871,8 @@ mod tests {
         let name = format!("NEED_TEST_OVERRIDE_{}", std::process::id());
         fs::write(root.join(".env"), format!("{name}=from-file\n")).unwrap();
         let mut vars = HashMap::new();
-        vars.insert("need.env".into(), "load".into());
-        vars.insert("need.env.override".into(), "true".into());
+        vars.insert("need.env".into(), vec!["load".into()]);
+        vars.insert("need.env.override".into(), vec!["true".into()]);
         unsafe { env::set_var(&name, "from-process") };
         let loaded = load_dotenv(&vars, &root).unwrap();
         assert_eq!(loaded.values[&name], "from-file");
@@ -850,10 +884,10 @@ mod tests {
     fn dotenv_required_and_custom_file() {
         let root = temp_project("dotenv-required");
         let mut vars = HashMap::new();
-        vars.insert("need.env.required".into(), "true".into());
+        vars.insert("need.env.required".into(), vec!["true".into()]);
         assert!(load_dotenv(&vars, &root).is_err());
         fs::write(root.join(".env.local"), "MODE=debug\n").unwrap();
-        vars.insert("need.env.file".into(), ".env.local".into());
+        vars.insert("need.env.file".into(), vec![".env.local".into()]);
         let loaded = load_dotenv(&vars, &root).unwrap();
         assert_eq!(loaded.values["MODE"], "debug");
         fs::remove_dir_all(root).unwrap();
@@ -865,8 +899,8 @@ mod tests {
         let name = "NEED_TEST_SIGNATURE";
         fs::write(root.join(".env"), format!("{name}=same\n")).unwrap();
         let mut vars = HashMap::new();
-        vars.insert("need.env".into(), "load".into());
-        vars.insert("need.env.override".into(), "true".into());
+        vars.insert("need.env".into(), vec!["load".into()]);
+        vars.insert("need.env.override".into(), vec!["true".into()]);
         let first = load_dotenv(&vars, &root).unwrap();
         fs::write(root.join(".env"), format!("# changed\n{name}=changed\n")).unwrap();
         let second = load_dotenv(&vars, &root).unwrap();
@@ -976,7 +1010,7 @@ mod tests {
         let path = root.join("needfile");
         fs::write(&path, "name = value\nout.txt: input.txt \\\n  config.txt\n    @output(grouped)\n    cp {{in[0]}} {{out}}\n").unwrap();
         let (vars, rules) = parse_needfile(&path).unwrap();
-        assert_eq!(vars["name"], "value");
+        assert_eq!(vars["name"], vec!["value"]);
         assert_eq!(
             rules[0].deps,
             vec![
@@ -1014,12 +1048,70 @@ mod tests {
     #[test]
     fn resolves_deferred_dependency_at_the_phase_boundary() {
         let parsed = ParsedDependency::Deferred("file({{input}})".into());
-        let vars = HashMap::from([(String::from("input"), String::from("source.txt"))]);
+        let vars = HashMap::from([(String::from("input"), vec![String::from("source.txt")])]);
 
         assert_eq!(
             expand_dependencies(&[parsed], &vars, &HashMap::new()).unwrap(),
             vec![Dependency::File("source.txt".into())]
         );
+    }
+
+    #[test]
+    fn splices_tokens_into_outputs_dependencies_and_command_expressions() {
+        let root = temp_project("token-list-contexts");
+        let path = root.join("needfile");
+        fs::write(
+            &path,
+            "outputs = one \"two words\"\ndeps = input command(printf probe)\n{{outputs}}: {{deps}}\n  touch {{out}}\n",
+        )
+        .unwrap();
+        let (raw, parsed) = parse_needfile(&path).unwrap();
+        let vars = resolve_variables(&raw, &HashMap::new()).unwrap();
+        let rules = resolve_rules(&parsed, &vars, &HashMap::new(), &raw).unwrap();
+        assert_eq!(
+            rules[0]
+                .outputs
+                .iter()
+                .map(ProjectPath::as_str)
+                .collect::<Vec<_>>(),
+            vec!["one", "two words"]
+        );
+        assert_eq!(
+            rules[0].deps,
+            vec![
+                Dependency::File("input".into()),
+                Dependency::Command("printf probe".into())
+            ]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn recipe_variable_tokens_are_shell_escaped_and_embedded_lists_fail() {
+        let vars = HashMap::from([
+            ("files".into(), vec!["one".into(), "two words".into()]),
+            ("single".into(), vec!["one word".into()]),
+        ]);
+        let rendered = interpolate(
+            "tool {{files}} --name={{single}}",
+            &[],
+            &[],
+            None,
+            &vars,
+            &HashMap::new(),
+        )
+        .unwrap();
+        assert_eq!(rendered, "tool one 'two words' --name='one word'");
+        let error = interpolate(
+            "tool --name={{files}}",
+            &[],
+            &[],
+            None,
+            &vars,
+            &HashMap::new(),
+        )
+        .unwrap_err();
+        assert!(error.contains("embedded recipe interpolation"));
     }
 
     #[test]
@@ -1294,8 +1386,8 @@ mod tests {
 
         let (vars, rules) = parse_needfile(&path).unwrap();
         assert!(rules.is_empty());
-        assert_eq!(vars["server"], "https://example.com/api?a=1");
-        assert_eq!(vars["message"], "value: with spaces");
+        assert_eq!(vars["server"], vec!["https://example.com/api?a=1"]);
+        assert_eq!(vars["message"], vec!["value: with spaces"]);
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1600,7 +1692,7 @@ final: generated.txt generated/*
         assert_eq!(resolved[0].options.output, Some(OutputMode::Grouped));
         let invalid = resolve_rules(
             &rules,
-            &HashMap::from([(String::from("mode"), String::from("nope"))]),
+            &HashMap::from([(String::from("mode"), vec![String::from("nope")])]),
             &HashMap::new(),
             &raw_vars,
         )
@@ -1628,7 +1720,7 @@ final: generated.txt generated/*
 
     #[test]
     fn does_not_reparse_variable_or_environment_values() {
-        let vars = HashMap::from([(String::from("literal"), String::from("{{out}}"))]);
+        let vars = HashMap::from([(String::from("literal"), vec![String::from("{{out}}")])]);
         let env = HashMap::from([(String::from("LITERAL"), String::from("{{in}}"))]);
 
         let rendered = interpolate(
@@ -1641,7 +1733,7 @@ final: generated.txt generated/*
         )
         .unwrap();
 
-        assert_eq!(rendered, "{{out}} {{in}} output.txt");
+        assert_eq!(rendered, "'{{out}}' {{in}} output.txt");
     }
 
     #[test]
