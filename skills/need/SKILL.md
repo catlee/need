@@ -88,10 +88,10 @@ thumbnails/%.jpg: images/%.jpg
   make-thumbnail {{in}} {{out}}
 ```
 
-Supported attributes include `@atomic`, `@allow-missing`, `@jobs(N)`, and the
-preferred `@outputs-from(PATH)`. The older indented modifier form remains
-supported. An attribute must be followed by a rule; otherwise `need` reports
-its path, line, and a placement hint.
+Supported attributes include `@atomic`, `@allow-missing`, `@jobs(N)`, and
+`@outputs-from(PATH)`. `@outputs-from(PATH)` is pre-rule only; the other
+attributes may also appear in a recipe block. An attribute must be followed by
+a rule; otherwise `need` reports its path, line, and a placement hint.
 
 Dependency expressions make freshness explicit:
 
