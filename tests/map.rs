@@ -115,3 +115,28 @@ fn get_reads_nul_delimited_inputs_from_stdin() {
     );
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn get_builds_streamed_declarations_with_pattern_recipes() {
+    let root = project("get-declarations");
+    let source = root.join("source file.jpg");
+    fs::write(&source, "source\n").unwrap();
+    fs::write(
+        root.join("needfile"),
+        "thumbs/%.jpg:\n  mkdir -p thumbs\n  printf run >> runs\n  cp {{in}} {{out}}\n",
+    )
+    .unwrap();
+    let declaration = format!("thumbs/one.jpg: \"{}\"\n", source.display());
+
+    let result = run_with_stdin(&root, &["get", "--from", "-"], declaration.as_bytes());
+
+    assert!(result.status.success(), "{:?}", result);
+    assert_eq!(
+        fs::read_to_string(root.join("thumbs/one.jpg")).unwrap(),
+        "source\n"
+    );
+    let again = run_with_stdin(&root, &["get", "--from", "-"], declaration.as_bytes());
+    assert!(again.status.success(), "{:?}", again);
+    assert_eq!(fs::read_to_string(root.join("runs")).unwrap(), "run");
+    fs::remove_dir_all(root).unwrap();
+}

@@ -34,6 +34,7 @@ Execution
 - `need map [-0] 'TARGET: INPUT' INPUT...` Transform filenames with a Need-style `%` rule and write them to stdout without building
 - `need get [OPTIONS] 'TARGET: INPUT' [--] INPUT...` Map filenames and build the resulting targets
 - `need get -0 --from - 'TARGET: INPUT'` Read NUL-delimited filenames from stdin, map them, and build the targets
+- `need get --from -` Read concrete `target: dependency...` declarations from stdin and build them with matching needfile recipes
 
 Syntax
 ------
@@ -145,6 +146,8 @@ Use `need -- map` when `map` is a build target rather than the subcommand.
 `need get` maps its input filenames with the supplied rule, then builds the
 mapped targets with its build options. `--from PATH` reads newline-delimited
 filenames from a file or `-` for stdin; add `-0` for NUL-delimited filenames.
+Without a mapping rule, `--from` accepts concrete declarations and supplies
+their file dependencies to matching needfile recipes.
 
 On Unix, SIGINT and SIGTERM stop the active recipe process group, retain an
 interrupted log under `.need/logs/`, and leave the output group stale for the

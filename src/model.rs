@@ -236,6 +236,7 @@ pub(crate) struct BuildCtx {
     pub(crate) project: ProjectData,
     pub(crate) options: BuildOptions,
     pub(crate) session: BuildSession,
+    pub(crate) concrete_deps: HashMap<ProjectPath, Vec<Dependency>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

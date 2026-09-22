@@ -36,7 +36,14 @@ fn run() -> Result<()> {
     run_args(env::args().skip(1).collect())
 }
 
-pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
+pub(crate) fn run_args(args: Vec<String>) -> Result<()> {
+    run_args_with_deps(args, HashMap::new())
+}
+
+pub(crate) fn run_args_with_deps(
+    mut args: Vec<String>,
+    concrete_deps: HashMap<ProjectPath, Vec<Dependency>>,
+) -> Result<()> {
     let literal_targets = args.first().is_some_and(|arg| arg == "--");
     if literal_targets {
         args.remove(0);
@@ -160,7 +167,7 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
     };
     if !literal_targets && args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--root PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need outputs [-0] [--file PATH] [--root PATH]\n       need clean [--outputs-only|--remove-outputs] [--file PATH] [--root PATH]\n       need logs [--file PATH] [--root PATH] TARGET\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] <RULE> [--] <INPUT>...\n       need get [OPTIONS] [-0] --from <PATH|-> <RULE>"
+            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--root PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need outputs [-0] [--file PATH] [--root PATH]\n       need clean [--outputs-only|--remove-outputs] [--file PATH] [--root PATH]\n       need logs [--file PATH] [--root PATH] TARGET\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] <RULE> [--] <INPUT>...\n       need get [OPTIONS] [-0] --from <PATH|-> <RULE>\n       need get [OPTIONS] --from <PATH|->"
         );
         return Ok(());
     }
@@ -207,6 +214,7 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
         },
         ..Default::default()
     };
+    ctx.concrete_deps = concrete_deps;
     for (i, rule) in ctx.project.rules.iter().enumerate() {
         if !rule.pattern {
             for output in &rule.outputs {

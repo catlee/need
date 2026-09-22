@@ -2288,6 +2288,7 @@ write `need -- map`.
 ```text
 need get [OPTIONS] <RULE> [--] <INPUT>...
 need get [OPTIONS] [-0] --from <PATH|-> <RULE>
+need get [OPTIONS] --from <PATH|->
 ```
 
 It maps inputs with `RULE` using the same semantics as `need map`, then builds
@@ -2295,6 +2296,11 @@ the mapped targets with the supplied build options. It is equivalent to
 `need [OPTIONS] $(need map <RULE> -- <INPUT>...)` without shell word splitting.
 `--from` reads newline-delimited inputs from a file, or standard input when its
 value is `-`; `-0` selects NUL-delimited input instead.
+
+Without `RULE`, `--from` reads a Needfile fragment containing concrete
+single-output declarations with file dependencies and no recipes or modifiers.
+For each declaration, `need` selects the matching recipe-bearing rule from the
+normal needfile and uses the streamed dependencies as that target's inputs.
 
 ---
 

@@ -229,17 +229,21 @@ pub(crate) fn build_inner(
         deps
     };
     let saved = c.session.state.rules.get(&key).cloned();
-    let discovered = saved
-        .as_ref()
-        .map(|saved| {
-            saved
-                .discovered
-                .iter()
-                .cloned()
-                .map(Dependency::File)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    let streamed = c.concrete_deps.get(&ProjectPath::new(target)?).cloned();
+    let has_streamed = streamed.is_some();
+    let discovered = streamed.unwrap_or_else(|| {
+        saved
+            .as_ref()
+            .map(|saved| {
+                saved
+                    .discovered
+                    .iter()
+                    .cloned()
+                    .map(Dependency::File)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    });
     let declared_paths = deps
         .iter()
         .filter_map(|dependency| match dependency {
@@ -253,7 +257,7 @@ pub(crate) fn build_inner(
             Dependency::File(path) => Some(path.clone()),
             _ => None,
         })
-        .filter(|path| !declared_paths.contains(path))
+        .filter(|path| !has_streamed && !declared_paths.contains(path))
         .collect::<HashSet<_>>();
     deps.extend(discovered);
     let mut seen_deps = HashSet::new();
