@@ -39,6 +39,7 @@ The current implementation includes the core artifact graph, including:
   embedded cardinality validation, including indented multiline assignments
 - automatic output directories and multiple-output groups
 - file, tree, mtime, environment, and string dependency expressions
+- opt-in symlink traversal for `tree(...)` dependencies
 - opt-in dotenv loading with precedence, custom files, and freshness tracking
 - content-based freshness and persistent state under `.need/`
 - dry-run, explain, list, force, parallel jobs for dependencies and multiple
@@ -1218,8 +1219,19 @@ foo: tree(config/)
 Changes anywhere in the tree make the dependency stale.
 
 Symlinks are included as leaf entries using their link targets, but `tree()`
-does not follow them. This prevents directory symlink cycles while keeping
-changes to symlink targets observable.
+does not follow them by default. To intentionally include the resolved
+contents of symlinked files and directories, use:
+
+```make
+foo: tree(config/, follow-symlinks=true)
+```
+
+The symlink entry and its textual target remain part of the fingerprint, so
+retargeting a link is a change even when the new target has identical
+contents. Followed targets may be outside the original tree root. Directory
+cycles are detected by resolved directory identity and are not traversed a
+second time on the active recursion path. Broken symlinks remain leaf entries
+and are fingerprinted by their link targets.
 
 This may be expensive for large trees and should be used intentionally.
 

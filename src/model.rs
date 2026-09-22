@@ -112,7 +112,7 @@ pub(crate) enum TargetMatch {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Dependency {
     File(String),
-    Tree(String),
+    Tree(String, bool),
     Mtime(String),
     Env(String),
     String(String),
@@ -123,7 +123,7 @@ pub(crate) enum Dependency {
 pub(crate) enum ParsedDependency {
     Deferred(String),
     File(String),
-    Tree(String),
+    Tree(String, bool),
     Mtime(String),
     Env(String),
     String(String),
@@ -135,7 +135,7 @@ impl ParsedDependency {
         match self {
             Self::Deferred(value)
             | Self::File(value)
-            | Self::Tree(value)
+            | Self::Tree(value, _)
             | Self::Mtime(value)
             | Self::Env(value)
             | Self::String(value) => value,

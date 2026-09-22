@@ -353,7 +353,7 @@ pub(crate) fn build_inner(
             }
             let (path, should_build, should_input) = match &dependency {
                 Dependency::File(path) => (Some(path.as_str()), true, true),
-                Dependency::Tree(path) | Dependency::Mtime(path) => {
+                Dependency::Tree(path, _) | Dependency::Mtime(path) => {
                     (Some(path.as_str()), false, false)
                 }
                 Dependency::Env(_) | Dependency::String(_) => (None, false, false),
@@ -994,7 +994,7 @@ pub(crate) fn record_cargo_dependency(c: &mut BuildCtx, dependency: &Dependency)
         Dependency::Env(name) => {
             c.session.cargo_env.insert(name.clone());
         }
-        Dependency::File(path) | Dependency::Tree(path) | Dependency::Mtime(path) => {
+        Dependency::File(path) | Dependency::Tree(path, _) | Dependency::Mtime(path) => {
             c.session.cargo_deps.insert(path.clone());
         }
         Dependency::String(_) | Dependency::Command(_) => {}
@@ -1091,7 +1091,10 @@ pub(crate) fn resolve_dependency(
 ) -> Result<Dependency> {
     match dependency {
         Dependency::File(path) => Ok(Dependency::File(resolve_pattern_path(path, pattern, stem)?)),
-        Dependency::Tree(path) => Ok(Dependency::Tree(resolve_pattern_path(path, pattern, stem)?)),
+        Dependency::Tree(path, follow_symlinks) => Ok(Dependency::Tree(
+            resolve_pattern_path(path, pattern, stem)?,
+            *follow_symlinks,
+        )),
         Dependency::Mtime(path) => Ok(Dependency::Mtime(resolve_pattern_path(
             path, pattern, stem,
         )?)),
@@ -1440,7 +1443,7 @@ fn automatic_interpolation(
 pub(crate) fn dependency_signature(c: &mut BuildCtx, dependency: &Dependency) -> Result<String> {
     let path = match dependency {
         Dependency::File(path) => path,
-        Dependency::Tree(path) => path,
+        Dependency::Tree(path, _) => path,
         Dependency::Mtime(path) => path,
         Dependency::Env(name) => {
             let value = c.project.env_values.get(name).cloned().unwrap_or_default();
@@ -1468,15 +1471,24 @@ pub(crate) fn dependency_signature(c: &mut BuildCtx, dependency: &Dependency) ->
             ));
         }
     }
-    if matches!(dependency, Dependency::Tree(_)) {
+    if let Dependency::Tree(_, follow_symlinks) = dependency {
         let mut a = Vec::new();
-        for e in walk(&q)? {
+        for e in walk(&q, *follow_symlinks)? {
             let hash = if fs::symlink_metadata(&e)
                 .map_err(|error| error.to_string())?
                 .file_type()
                 .is_symlink()
             {
-                hash_symlink(&e)?
+                let link_hash = hash_symlink(&e)?;
+                if *follow_symlinks
+                    && fs::metadata(&e)
+                        .map(|metadata| metadata.is_file())
+                        .unwrap_or(false)
+                {
+                    hash_text(&format!("{link_hash}:{}", cached_file_hash(c, &e)?))
+                } else {
+                    link_hash
+                }
             } else {
                 cached_file_hash(c, &e)?
             };

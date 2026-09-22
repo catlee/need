@@ -93,6 +93,11 @@ freshness-only: expanded command text, complete stdout/stderr, and exit status
 are signed; nonzero status stops the build. It does not add a graph edge or
 appear in `{{in}}`, and automatic variables are not allowed in probes.
 
+`tree(path)` does not follow symlinks by default. Use
+`tree(path, follow-symlinks=true)` to include resolved symlink contents;
+symlink targets remain part of the fingerprint, external targets are allowed,
+and directory cycles terminate safely.
+
 `stat(path)` remains specified but is not implemented. Do not use it in a
 needfile; use the existing `file(...)`, `tree(...)`, or `mtime(...)` forms for
 filesystem metadata.

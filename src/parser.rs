@@ -238,14 +238,14 @@ fn display_path(path: &Path) -> String {
 
 pub(crate) fn parse_dependency(raw: &str) -> Result<ParsedDependency> {
     let raw = unquote(raw);
+    if let Some(value) = raw.strip_prefix("tree(").and_then(|x| x.strip_suffix(')')) {
+        return parse_tree_options(unquote(value))
+            .map(|(path, follow)| ParsedDependency::Tree(path, follow));
+    }
     for (prefix, constructor) in [
         (
             "file(",
             ParsedDependency::File as fn(String) -> ParsedDependency,
-        ),
-        (
-            "tree(",
-            ParsedDependency::Tree as fn(String) -> ParsedDependency,
         ),
         (
             "mtime(",
@@ -273,9 +273,12 @@ pub(crate) fn parse_dependency(raw: &str) -> Result<ParsedDependency> {
 
 pub(crate) fn parse_expanded_dependency(raw: &str) -> Result<Dependency> {
     let raw = unquote(raw);
+    if let Some(value) = raw.strip_prefix("tree(").and_then(|x| x.strip_suffix(')')) {
+        return parse_tree_options(unquote(value))
+            .map(|(path, follow)| Dependency::Tree(path, follow));
+    }
     for (prefix, constructor) in [
         ("file(", Dependency::File as fn(String) -> Dependency),
-        ("tree(", Dependency::Tree as fn(String) -> Dependency),
         ("mtime(", Dependency::Mtime as fn(String) -> Dependency),
         ("env(", Dependency::Env as fn(String) -> Dependency),
         ("string(", Dependency::String as fn(String) -> Dependency),
@@ -286,6 +289,19 @@ pub(crate) fn parse_expanded_dependency(raw: &str) -> Result<Dependency> {
         }
     }
     Ok(Dependency::File(raw))
+}
+
+fn parse_tree_options(value: String) -> Result<(String, bool)> {
+    let Some((path, options)) = value.split_once(',') else {
+        return Ok((unquote(&value), false));
+    };
+    let option = options.trim();
+    if option != "follow-symlinks=true" {
+        return Err(format!(
+            "invalid tree() option {option:?}\nhelp: use `follow-symlinks=true`"
+        ));
+    }
+    Ok((unquote(path.trim()), true))
 }
 
 fn parse_dependency_template(raw: &str) -> Result<ParsedDependency> {

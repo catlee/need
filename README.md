@@ -185,6 +185,11 @@ target: file("tree(foo)")
 The same escape hatch applies to filenames resembling any recognized
 constructor, such as `env(...)`, `string(...)`, or `command(...)`.
 
+`tree(path)` does not follow symlinks by default. Use
+`tree(path, follow-symlinks=true)` when the resolved contents of symlinked
+files or directories should be included. Symlink targets remain fingerprinted,
+and directory cycles are stopped safely.
+
 ## Environment dependencies
 
 Reference environment variables explicitly when they affect a build:

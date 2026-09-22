@@ -637,8 +637,12 @@ fn expand_dependencies(
             ParsedDependency::File(value) => {
                 expand_typed(value, vars, env_values, Dependency::File, &mut expanded)?
             }
-            ParsedDependency::Tree(value) => {
-                expand_typed(value, vars, env_values, Dependency::Tree, &mut expanded)?
+            ParsedDependency::Tree(value, follow_symlinks) => {
+                expanded.extend(
+                    expand_words(value, vars, env_values)?
+                        .into_iter()
+                        .map(|path| Dependency::Tree(path, *follow_symlinks)),
+                );
             }
             ParsedDependency::Mtime(value) => {
                 expand_typed(value, vars, env_values, Dependency::Mtime, &mut expanded)?
@@ -784,7 +788,7 @@ fn resolve_rules(
             .iter()
             .any(|value| value.as_str().matches('%').count() > 1)
             || rule.deps.iter().any(|dependency| match dependency {
-                Dependency::File(path) | Dependency::Tree(path) | Dependency::Mtime(path) => {
+                Dependency::File(path) | Dependency::Tree(path, _) | Dependency::Mtime(path) => {
                     path.matches('%').count() > 1
                 }
                 Dependency::Env(_) | Dependency::String(_) => false,
@@ -1107,7 +1111,7 @@ mod tests {
             expand_dependencies(&rules[0].deps, &vars, &HashMap::new()).unwrap(),
             vec![
                 Dependency::File("toolchain".into()),
-                Dependency::Tree("resources".into())
+                Dependency::Tree("resources".into(), false)
             ]
         );
         fs::remove_dir_all(root).unwrap();
@@ -1512,7 +1516,7 @@ mod tests {
             rules[0].deps,
             vec![
                 ParsedDependency::File("input".into()),
-                ParsedDependency::Tree("resources".into()),
+                ParsedDependency::Tree("resources".into(), false),
                 ParsedDependency::Mtime("tool".into()),
                 ParsedDependency::Env("MODE".into()),
                 ParsedDependency::String("v3".into()),
@@ -1523,17 +1527,30 @@ mod tests {
     }
 
     #[test]
+    fn parses_opt_in_tree_symlink_traversal() {
+        assert_eq!(
+            parse_expanded_dependency("tree(themes, follow-symlinks=true)").unwrap(),
+            Dependency::Tree("themes".into(), true)
+        );
+        assert!(
+            parse_expanded_dependency("tree(themes, follow-symlinks=false)")
+                .unwrap_err()
+                .contains("follow-symlinks=true")
+        );
+    }
+
+    #[test]
     fn substitutes_stem_in_typed_dependency_paths() {
         let stem = Some("icons/logo");
         assert_eq!(
             vec![
                 resolve_dependency(&Dependency::File("src/%.yml".into()), true, stem),
-                resolve_dependency(&Dependency::Tree("resources/%".into()), true, stem),
+                resolve_dependency(&Dependency::Tree("resources/%".into(), false), true, stem),
                 resolve_dependency(&Dependency::Mtime("tools/%".into()), true, stem),
             ],
             vec![
                 Ok(Dependency::File("src/icons/logo.yml".into())),
-                Ok(Dependency::Tree("resources/icons/logo".into())),
+                Ok(Dependency::Tree("resources/icons/logo".into(), false)),
                 Ok(Dependency::Mtime("tools/icons/logo".into())),
             ]
         );
@@ -1555,7 +1572,8 @@ mod tests {
         let file =
             dependency_signature(&mut ctx, &Dependency::File("resources/input".into())).unwrap();
         assert_eq!(ctx.session.state.hashes.len(), 1);
-        let tree = dependency_signature(&mut ctx, &Dependency::Tree("resources".into())).unwrap();
+        let tree =
+            dependency_signature(&mut ctx, &Dependency::Tree("resources".into(), false)).unwrap();
         let mtime = dependency_signature(&mut ctx, &Dependency::Mtime("tool".into())).unwrap();
         fs::write(root.join("resources/other"), "other").unwrap();
         assert_eq!(
@@ -1564,7 +1582,7 @@ mod tests {
         );
         assert_ne!(
             tree,
-            dependency_signature(&mut ctx, &Dependency::Tree("resources".into())).unwrap()
+            dependency_signature(&mut ctx, &Dependency::Tree("resources".into(), false)).unwrap()
         );
         assert_eq!(
             mtime,
@@ -1591,15 +1609,55 @@ mod tests {
             ..Default::default()
         };
 
-        let first = dependency_signature(&mut ctx, &Dependency::Tree("resources".into())).unwrap();
-        let second = dependency_signature(&mut ctx, &Dependency::Tree("resources".into())).unwrap();
+        let first =
+            dependency_signature(&mut ctx, &Dependency::Tree("resources".into(), false)).unwrap();
+        let second =
+            dependency_signature(&mut ctx, &Dependency::Tree("resources".into(), false)).unwrap();
 
         assert_eq!(first, second);
         assert_eq!(ctx.session.state.hashes.len(), 1);
         assert_eq!(
-            walk(&tree).unwrap(),
+            walk(&tree, false).unwrap(),
             vec![tree.join("input"), tree.join("self")]
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tree_can_follow_external_symlinks_without_recursing_forever() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_project("tree-follow-symlinks");
+        let external = root.parent().unwrap().join("tree-follow-symlinks-external");
+        let _ = fs::remove_dir_all(&external);
+        fs::create_dir_all(external.join("nested")).unwrap();
+        fs::write(external.join("nested/input"), "one").unwrap();
+        fs::create_dir(root.join("resources")).unwrap();
+        symlink(&external, root.join("resources/external")).unwrap();
+        symlink(root.join("resources"), external.join("cycle")).unwrap();
+        let mut ctx = BuildCtx {
+            project: ProjectData {
+                root: root.clone(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let followed =
+            dependency_signature(&mut ctx, &Dependency::Tree("resources".into(), true)).unwrap();
+        fs::write(external.join("nested/input"), "two").unwrap();
+        let changed =
+            dependency_signature(&mut ctx, &Dependency::Tree("resources".into(), true)).unwrap();
+
+        assert_ne!(followed, changed);
+        assert!(
+            walk(&root.join("resources"), true)
+                .unwrap()
+                .iter()
+                .any(|path| path.ends_with("nested/input"))
+        );
+        fs::remove_dir_all(&external).unwrap();
         fs::remove_dir_all(root).unwrap();
     }
 
