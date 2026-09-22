@@ -6,354 +6,84 @@
 <a href="https://crates.io/crates/need-tool"><img src="https://img.shields.io/crates/d/need-tool.svg" alt="crates.io downloads"></a>
 </div>
 
-For when you just need simple build dependencies.
+`need` is a small build tool for file artifacts. Describe what files depend on
+what; it rebuilds stale outputs using content signatures.
 
-`need` is a small build tool for making files exist and keeping them up to date.
+> `just` does things. `need` makes things exist.
 
-It handles artifact dependencies. Use `just` for commands such as testing, running a simulator, or cleaning build artifacts.
+Use `need` for generated files and `just` for workflows such as test, run,
+clean, and deploy.
+
+It keeps Make's useful `target: dependencies` model, without phony tasks,
+stamp files, tabs, or timestamp-only freshness. It is deliberately not a
+workflow runner or general-purpose build system.
 
 ![screenshot](https://raw.githubusercontent.com/catlee/need/master/docs/screenshot.png)
 
-## Why do you need `need`?
-
-There’s still a useful gap between **Make** and **task runners like `just`**.
-
-Make has the right core idea: describe dependencies and rebuild only what’s stale. But its ergonomics are dated and error-prone: tab-sensitive recipes, awkward directory handling, `.PHONY`, stamp files, weak support for multi-output generators, and timestamp-centric semantics. I’ve wasted more time than I’d like on recipes that failed because of whitespace, plus the painful boilerplate for creating directories and stamp files.
-
-`just` fixes the command-running experience, but it deliberately does not solve incremental artifact builds.
-
-`need` is meant to be the small missing layer:
-
-> **`just` does things. `need` makes things exist.**
-
-The goal is a modern, narrow artifact build tool with:
-
-* Make-like `target: dependencies` rules
-* normal indentation
-* automatic parent-directory creation
-* content hashing instead of relying only on mtimes
-* pattern rules and globs
-* first-class multi-output and dynamic-output generators
-* compiler-generated dependency discovery through `@depfile(...)`
-* `need map` for constructing target filenames from `%` patterns
-* explicit dependency types for files, trees, environment values, strings, and so on
-* strong interoperability with `just`, Cargo, compilers, and existing tooling
-* no phony targets, workflow commands, deployment concepts, or general-purpose scripting language
-
-The underlying philosophy is that artifact relationships should be declarative, while workflows should remain imperative.
-
-So instead of forcing everything into one build system:
-
-```text
-needfile   → what files derive from what
-justfile   → build, test, run, clean, deploy, emulator, Docker…
-Cargo      → Rust compilation
-```
-
-`need` stays small enough to understand, but sophisticated enough that generated assets, codegen, SDK dependencies, and real incremental builds don’t require Make’s historical baggage.
-
-The current implementation status is tracked in the [Implementation Status](docs/need-spec.md#implementation-status) section of the specification.
-
-Needfile syntax lines support inline `#` comments outside quotes and dependency
-expressions. Recipe lines are passed to the shell unchanged, so `#` in a recipe
-keeps the shell's normal meaning.
-
-## Alternatives
-
-* **Make** is still a reasonable choice when portability and existing Makefiles matter more than ergonomics. If you use it, watch the whitespace. It has opinions.
-* **`just`** is a good task runner for commands such as testing, running, cleaning, and deployment. It complements `need`; it does not replace artifact dependency tracking.
-* **Cargo** should own Rust compilation. `need` is useful for generated assets, code generation, SDK tools, and other artifacts that Cargo does not naturally manage.
-* **Ninja, Bazel, Meson, and similar tools** make sense for larger projects that need a broader build system, multiple languages, or distributed builds.
-
-The point is not to replace every build tool. It is to make the small, common artifact-build case pleasant.
-
 ## Install
-
-`need` can be installed via cargo:
 
 ```sh
 cargo install need-tool
 ```
 
-Or, from this checkout:
+From this checkout, `just install` installs to `~/.local/bin`.
 
-```sh
-just install
-```
+## Quick start
 
-That installs `need` in `~/.local/bin`. Make sure that directory is in your `PATH`.
-
-## Agent skill
-
-This repository includes an agent skill for working with `need` and `needfile`.
-Install it globally for Codex with:
-
-```sh
-npx skills add catlee/need --skill need --global
-```
-
-The same command works from a local checkout:
-
-```sh
-npx skills add ./skills/need --global
-```
-
-Omit `--global` to install it for the current project instead.
-
-## Contributing
-
-Use [Conventional Commits](https://www.conventionalcommits.org/) for commit
-messages. Start with a lower-case type such as `feat`, `fix`, `docs`, `test`,
-`refactor`, `perf`, `build`, `ci`, or `chore`; an optional scope may follow,
-as in `fix(parser): preserve quoted tokens`.
-
-## Basic usage
-
-Create a file named `needfile`:
+Create a `needfile`:
 
 ```make
 build/app: src/main.c
   cc {{in}} -o {{out}}
+
+build/%.o: src/%.c
+  cc -c {{in}} -o {{out}}
 ```
 
-Then build the target:
+Then build an artifact:
 
 ```sh
 need build/app
 ```
 
-`need` searches upward for `needfile`, so it can be run from a project subdirectory. If the target is already current, the recipe is skipped.
+`need` finds `needfile` in the current directory or an ancestor, creates output
+directories, and skips recipes whose outputs are current. `{{in}}` and
+`{{out}}` are shell-escaped. Use `{{in[0]}}` or `{{out[1]}}` when a recipe
+needs a particular input or output.
 
-Use `need --file PATH` to select a specific needfile. Relative paths are
-resolved from the directory where `need` is invoked; paths inside that
-Without `--root`, paths inside that needfile remain relative to its directory.
-Use `--root PATH` to decouple the
-project/output root from the needfile; relative targets, dependencies, recipes,
-state, and logs then use that root. Recipes can refer to checked-in helpers
-with the built-in `{{needfile.dir}}`. Use `-n` as the short alias for
-`--dry-run`.
+## Rules
 
-See the [complete `needfile` format reference](docs/needfile.md) for rules,
-variables, dependency types, interpolation, and output modes.
-
-Rule outputs and dependencies support quoted words and small, predictable
-escaping: backslash escapes whitespace, quote characters, or another
-backslash. A backslash before another character stays literal.
-
-Pattern rules work too:
+Rules are Make-like, with sane whitespace-sensitive indentation. Spaces work;
+tabs are not special. A rule may have multiple outputs, variables, patterns,
+globs, and explicit dependency expressions:
 
 ```make
-build/%.o: src/%.c
-  cc -c {{in}} -o {{out}}
+assets = logo.svg icon.svg
+
+public/logo.png public/icon.png: {{assets}} env(BRAND_COLOR)
+  render-assets {{in}} --color "{{env.BRAND_COLOR}}" --out {{out}}
 ```
 
-The parent directory for an output is created automatically.
+Use `file(path)`, `tree(path)`, `mtime(path)`, `env(NAME)`, `string(value)`,
+and `command(command)` when file-content freshness is not the right model.
+`tree(path)` does not follow symlinks unless given `follow-symlinks=true`.
 
-Variables are token lists. Quotes preserve token boundaries, `+=` appends to a
-previously defined variable, and an empty assignment creates an empty list:
+Rules can have attributes immediately before their headers:
 
 ```make
-inputs = "assets/My File.json" assets/other.json
-inputs += generated.json
-
-more-inputs =
-  first-generated.json
-  "generated/My File.json"
-
-bundle: {{inputs}}
-  bundle-tool {{inputs}} -o {{out}}
+@atomic
+@jobs(2)
+thumbnails/%.jpg: images/%.png
+  make-thumbnail {{in}} {{out}}
 ```
 
-Standalone references splice all tokens without re-tokenizing them. User
-variables in recipes are shell-escaped one token at a time; embedded
-references must contain exactly one token. The same rules apply to declared
-outputs and dependencies, including spliced `command(...)` expressions.
-An assignment with no value may consume subsequent indented token lines;
-blank lines are allowed, and the block ends at the next top-level line.
+`@atomic` publishes outputs only after a successful recipe. Other attributes
+are `@allow-missing`, `@jobs(N)`, `@depfile(PATH)`, and
+`@outputs-from(PATH)`. The dynamic-output manifest attribute is pre-rule only;
+the other attributes may also appear in a recipe block.
 
-## Dependency expressions
-
-Use `file(...)` when a literal filename collides with a dependency constructor.
-For example, `file(tree(foo))` means the file named `tree(foo)`, while
-`tree(foo)` means the directory tree rooted at `foo`. Quoting can make an
-awkward filename explicit:
-
-```make
-target: file("tree(foo)")
-```
-
-The same escape hatch applies to filenames resembling any recognized
-constructor, such as `env(...)`, `string(...)`, or `command(...)`.
-
-`tree(path)` does not follow symlinks by default. Use
-`tree(path, follow-symlinks=true)` when the resolved contents of symlinked
-files or directories should be included. Symlink targets remain fingerprinted,
-and directory cycles are stopped safely.
-
-## Environment dependencies
-
-Reference environment variables explicitly when they affect a build:
-
-```make
-sdk = "{{env.SDK_PATH}}"
-
-build/app: src/main.c "{{sdk}}/bin/compiler"
-  "{{sdk}}/bin/compiler" {{in}} -o {{out}}
-```
-
-The value of a referenced environment variable becomes part of the rule’s
-freshness signature. Changing `SDK_PATH` therefore retriggers the build,
-even if the input files have not changed.
-
-For environment values that are not part of a path or recipe, use an explicit
-dependency:
-
-```make
-build/app: src/main.c env(BUILD_MODE)
-  compiler --mode "{{env.BUILD_MODE}}" {{in}} -o {{out}}
-```
-
-The entire process environment is not hashed automatically. To load a `.env`
-file, opt in from the `needfile`:
-
-```make
-need.env = load
-```
-
-`need` searches for `.env` next to the `needfile` and in its ancestors. Existing
-process variables win by default. Use `need.env.override = true` to let the
-file win, `need.env.required = true` to require a file, or
-`need.env.file = .env.local` to use another filename.
-
-Command-output dependencies run `/bin/sh -c` from the project root and
-make the expanded command text, complete stdout and stderr, and exit status
-part of the freshness signature:
-
-```make
-build/app: command(swift --version)
-  build-with-swift {{out}}
-```
-
-They are freshness-only: they do not become graph edges or appear in
-`{{in}}`. A nonzero probe status stops dependency resolution before the recipe
-runs. Probe text may use variables and `{{env.NAME}}`, but not automatic
-variables such as `{{in}}`, `{{out}}`, or `{{stem}}`.
-
-The specification reserves `stat(path)` for builds that need one entry's
-filesystem type, mode bits, or symlink target. It is not implemented, and the
-parser does not treat it as a metadata dependency; `file(...)`, `tree(...)`,
-and `mtime(...)` retain their current semantics.
-
-Rules with generated secondary files can declare an output manifest:
-
-```make
-@outputs-from(.need/generated.outputs)
-index.json: source
-  generate {{in}} {{out}} .need/generated.outputs
-```
-
-The manifest lists one project-relative file per line. `need` tracks those
-files as part of the output group and removes ones omitted by a later successful
-build.
-
-For static multi-output rules whose successful result may be only a subset,
-put `@allow-missing` immediately before the rule. `need` records absent outputs
-as current for the dependency fingerprint, reports them with `--explain`, and
-removes previously produced outputs omitted by a later successful run. The
-modifier is deliberately incompatible with dynamic `@outputs-from(...)` manifests.
-It can be combined with `@atomic` for static groups; only produced outputs are
-published, with the same rollback guarantees as other atomic rules.
-
-Compiler recipes can persist header dependencies with a Make-style depfile:
-
-```make
-build/%.o: src/%.c
-  @depfile(build/{{stem}}.d)
-  cc -MMD -MF build/{{stem}}.d -c {{in}} -o {{out}}
-```
-
-Discovered dependencies affect later freshness checks but are not added to
-`{{in}}`. A generated discovered artifact still participates in the normal
-build graph.
-
-For recipes whose outputs must not be observed while they are being written,
-add the opt-in `@atomic` modifier. `need` substitutes same-directory temporary
-paths for `{{out}}`, validates them, and renames them into place after success;
-failed or interrupted recipes leave existing outputs untouched. This supports
-declared single and multi-output rules, but not dynamic `@outputs-from(...)`
-manifests.
-
-## Useful options
-
-```sh
-need --version
-need                         # build the first concrete target
-need build/app               # build a target
-need --dry-run build/app     # show what would run
-need -n build/app            # short alias for --dry-run
-need --file path/to/needfile build/app  # select an explicit needfile
-need --file path/to/needfile --root "$XDG_CACHE_HOME/omarchy/theme-selector" out/preview
-need outputs                            # list successful recorded outputs
-need outputs -0                         # list them with NUL separators
-need clean                              # remove the project's .need state and logs
-need clean --outputs-only               # remove recorded outputs but retain .need state
-need clean --remove-outputs             # remove recorded outputs, then .need state and logs
-need clean --file path/to/needfile      # clean state beside an explicit needfile
-need clean --file path/to/needfile --root path/to/output-root
-need logs build/app                     # show the latest retained execution log
-need --explain build/app     # explain current and stale targets
-need --force build/app       # rebuild the target, not its current dependencies
-need --list                  # list declared targets
-need --output=grouped build/app
-```
-
-Construct target names without building or checking the filesystem:
-
-```sh
-need map 'thumbs/%: %' *.jpg *.png
-need map -0 'thumbs/%: %' *.jpg | xargs -0 need
-need get -j 'thumbs/%: %' -- *.jpg *.png
-find media -type f -print0 | need get -0 --from - -j 'thumbs/%: %'
-printf 'thumbs/logo.jpg: assets/logo.png\n' | need get --from -
-need -j get 'thumbs/%: %' -- *.jpg *.png
-```
-
-`need map` preserves input order, validates all inputs before writing output,
-and leaves glob expansion to the shell.
-
-Use `need -- map` to build a target literally named `map`.
-
-`need get` maps input filenames, then builds the resulting targets. With a
-mapping rule, `--from PATH` reads newline-delimited filenames from a file or
-`-` for standard input; add `-0` for NUL-delimited filenames. Without a mapping
-rule, `--from` reads concrete `target: dependency...` declarations and matches
-each target to a recipe in the needfile.
-
-For parallel builds:
-
-```sh
-need -j8 build/app
-need -j build/app          # unlimited parallelism
-need -j2 build/app build/lib # build independent requested targets in parallel
-```
-
-Rules can cap their own concurrent instances with `@jobs(N)` while `-j`
-remains the overall ceiling:
-
-```make
-video-thumbnails/%.jpg: videos/%.mp4
-  @jobs(2)
-  ffmpeg -i {{in}} {{out}}
-```
-
-Rule attributes may also be placed immediately before the rule they affect.
-This is the preferred form for `@atomic`, `@allow-missing`, `@jobs(N)`, and
-`@outputs-from(PATH)`; the older indented form remains supported for the other
-modifiers.
-
-For example, an Omarchy thumbnail pipeline can make each still safe to read
-while it is being generated, then let a discovery command feed concrete
-target/dependency declarations to `need` in parallel:
+For discovered inputs, feed concrete declarations to `need get` while keeping
+the recipe in the needfile:
 
 ```make
 @atomic
@@ -365,42 +95,46 @@ thumbnails/still/%.jpg:
 discover-thumbnails | need get -j --from -
 ```
 
-## Cargo
+## Commands
 
-Call `need` from `build.rs` when Cargo owns the Rust build and `need` owns generated artifacts:
-
-```rust
-use std::process::{Command, Stdio};
-
-fn main() {
-    let status = Command::new("need")
-        .args(["--cargo", "build/generated.rs"])
-        .stdout(Stdio::inherit())
-        .status()
-        .expect("failed to run need");
-
-    assert!(status.success());
-}
+```sh
+need build/app                 # build an artifact
+need -j build/app build/lib    # build independent artifacts in parallel
+need --explain build/app       # explain freshness
+need --dry-run build/app       # show recipes without running them
+need --force build/app         # rebuild this artifact
+need --list                    # list rules
+need outputs                   # list successful recorded outputs
+need logs build/app            # show the latest recipe log
+need clean                     # remove state and logs
+need map 'thumbs/%: %' *.jpg   # map source paths to target paths
+need get -j 'thumbs/%: %' -- *.jpg  # map and build source paths
 ```
 
-`--cargo` builds the target, then emits Cargo rerun metadata for the relevant source files and environment dependencies.
+`need get` builds mapped inputs, or concrete `target: dependency...`
+declarations from `--from FILE` or standard input. Pass `-0` for NUL-delimited
+input.
 
-`need` uses content signatures rather than timestamps alone. Build state and logs live under `.need/`.
-On Unix, SIGINT and SIGTERM stop the active recipe process group, retain an
-interrupted log, and leave the output group stale for the next invocation.
-In `--cargo` mode, reachable environment references also emit Cargo
-`rerun-if-env-changed` metadata.
+Use `--file PATH` to choose a needfile and `--root PATH` to put outputs, state,
+and logs under a separate project root. `{{needfile.dir}}` still refers to the
+checked-in needfile directory.
 
-For a stale rule, `need` computes its normal freshness signature after resolving
-and building dependencies, then runs the recipe and validates its declared
-outputs, dynamic outputs, and depfile. It recomputes that same signature before
-recording output hashes and successful state. The check includes persisted
-depfile dependencies, semantic modifiers, and re-expanded glob membership. If
-an input changes during the recipe, the build fails with a rerun hint, leaves
-recipe outputs on disk as stale, and commits neither output hashes nor rule
-state. If the fingerprints match, newly discovered depfile dependencies and
-successful state are committed together.
+## Agent skill
 
-`need logs TARGET` inspects the latest retained execution for a declared artifact
-target. It prints the execution status and captured stdout and stderr without
-building the target; use `--file PATH` to select a specific needfile.
+This repository includes an agent skill for working with `need` and `needfile`:
+
+```sh
+npx skills add catlee/need --skill need --global
+```
+
+## Reference
+
+The [needfile reference](docs/needfile.md) covers syntax and interpolation.
+The [specification](docs/need-spec.md) covers freshness, output groups, state,
+and logging. The [implementation status](docs/need-spec.md#implementation-status)
+tracks completed work.
+
+## Contributing
+
+Use [Conventional Commits](https://www.conventionalcommits.org/), for example
+`fix(parser): preserve quoted tokens`.
