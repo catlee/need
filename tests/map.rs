@@ -23,6 +23,19 @@ fn run(root: &Path, args: &[&str]) -> Output {
         .unwrap()
 }
 
+fn run_with_stdin(root: &Path, args: &[&str], stdin: &[u8]) -> Output {
+    use std::io::Write;
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_need"))
+        .args(args)
+        .current_dir(root)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.as_mut().unwrap().write_all(stdin).unwrap();
+    child.wait_with_output().unwrap()
+}
+
 #[test]
 fn double_dash_builds_a_target_named_map() {
     let root = project("double-dash");
@@ -70,6 +83,35 @@ fn get_maps_and_builds_targets() {
     assert_eq!(
         fs::read_to_string(root.join("thumbs/a.jpg")).unwrap(),
         "a\n"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn get_reads_nul_delimited_inputs_from_stdin() {
+    let root = project("get-stdin");
+    fs::write(root.join("a file.jpg"), "a\n").unwrap();
+    fs::write(root.join("b.jpg"), "b\n").unwrap();
+    fs::write(
+        root.join("needfile"),
+        "thumbs/%: %\n  mkdir -p thumbs\n  cp {{in}} {{out}}\n",
+    )
+    .unwrap();
+
+    let result = run_with_stdin(
+        &root,
+        &["get", "-0", "--from", "-", "thumbs/%: %"],
+        b"a file.jpg\0b.jpg\0",
+    );
+
+    assert!(result.status.success(), "{:?}", result);
+    assert_eq!(
+        fs::read_to_string(root.join("thumbs/a file.jpg")).unwrap(),
+        "a\n"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("thumbs/b.jpg")).unwrap(),
+        "b\n"
     );
     fs::remove_dir_all(root).unwrap();
 }

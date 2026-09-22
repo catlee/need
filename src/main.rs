@@ -160,7 +160,7 @@ pub(crate) fn run_args(mut args: Vec<String>) -> Result<()> {
     };
     if !literal_targets && args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--root PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need outputs [-0] [--file PATH] [--root PATH]\n       need clean [--outputs-only|--remove-outputs] [--file PATH] [--root PATH]\n       need logs [--file PATH] [--root PATH] TARGET\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] <RULE> [--] <INPUT>..."
+            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--root PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need outputs [-0] [--file PATH] [--root PATH]\n       need clean [--outputs-only|--remove-outputs] [--file PATH] [--root PATH]\n       need logs [--file PATH] [--root PATH] TARGET\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] <RULE> [--] <INPUT>...\n       need get [OPTIONS] [-0] --from <PATH|-> <RULE>"
         );
         return Ok(());
     }

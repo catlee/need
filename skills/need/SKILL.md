@@ -33,6 +33,7 @@ Execution
 - `need --cargo TARGET` Build the target and emit Cargo rerun metadata
 - `need map [-0] 'TARGET: INPUT' INPUT...` Transform filenames with a Need-style `%` rule and write them to stdout without building
 - `need get [OPTIONS] 'TARGET: INPUT' [--] INPUT...` Map filenames and build the resulting targets
+- `need get -0 --from - 'TARGET: INPUT'` Read NUL-delimited filenames from stdin, map them, and build the targets
 
 Syntax
 ------
@@ -142,7 +143,8 @@ is the caller's responsibility.
 Use `need -- map` when `map` is a build target rather than the subcommand.
 
 `need get` maps its input filenames with the supplied rule, then builds the
-mapped targets with its build options.
+mapped targets with its build options. `--from PATH` reads newline-delimited
+filenames from a file or `-` for stdin; add `-0` for NUL-delimited filenames.
 
 On Unix, SIGINT and SIGTERM stop the active recipe process group, retain an
 interrupted log under `.need/logs/`, and leave the output group stale for the

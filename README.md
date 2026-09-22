@@ -293,6 +293,7 @@ Construct target names without building or checking the filesystem:
 need map 'thumbs/%: %' *.jpg *.png
 need map -0 'thumbs/%: %' *.jpg | xargs -0 need
 need get -j 'thumbs/%: %' -- *.jpg *.png
+find media -type f -print0 | need get -0 --from - -j 'thumbs/%: %'
 need -j get 'thumbs/%: %' -- *.jpg *.png
 ```
 
@@ -301,7 +302,9 @@ and leaves glob expansion to the shell.
 
 Use `need -- map` to build a target literally named `map`.
 
-`need get` maps the input filenames, then builds the resulting targets.
+`need get` maps the input filenames, then builds the resulting targets. Use
+`--from PATH` to read newline-delimited filenames from a file or `-` for
+standard input; add `-0` for NUL-delimited filenames.
 
 For parallel builds:
 

@@ -2287,11 +2287,14 @@ write `need -- map`.
 
 ```text
 need get [OPTIONS] <RULE> [--] <INPUT>...
+need get [OPTIONS] [-0] --from <PATH|-> <RULE>
 ```
 
 It maps inputs with `RULE` using the same semantics as `need map`, then builds
 the mapped targets with the supplied build options. It is equivalent to
 `need [OPTIONS] $(need map <RULE> -- <INPUT>...)` without shell word splitting.
+`--from` reads newline-delimited inputs from a file, or standard input when its
+value is `-`; `-0` selects NUL-delimited input instead.
 
 ---
 

@@ -445,6 +445,7 @@ need --output=grouped TARGET # choose an output mode
 need clean                   # remove .need state and logs for the project
 need map 'out/%: %' INPUT...  # map input filenames to target filenames
 need get 'out/%: %' -- INPUT... # map inputs, then build the targets
+find media -type f -print0 | need get -0 --from - 'out/%: %'
 ```
 
 For a generated Cargo artifact, use `need --cargo TARGET` from `build.rs` so Cargo receives the relevant file and environment rerun directives.
@@ -462,5 +463,7 @@ separation. Shell glob expansion is left to the caller.
 
 `need get` uses the same mapping rules, then builds the mapped targets. Build
 options such as `-j`, `--force`, and `--file` may be supplied before the mapping
-rule. Both commands construct or build artifact targets; use `just` for tasks
-such as testing, cleaning generated artifacts, running programs, or deploying.
+rule. `--from PATH` reads newline-delimited input filenames from a file or `-`
+for standard input; add `-0` for NUL-delimited filenames. Both commands
+construct or build artifact targets; use `just` for tasks such as testing,
+cleaning generated artifacts, running programs, or deploying.
