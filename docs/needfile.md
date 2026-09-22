@@ -83,6 +83,9 @@ tracked as build metadata, so deleting or changing it makes the rule stale. A
 dynamic output belongs to the rule that listed it, and cannot also belong to
 another output group.
 
+`@atomic` cannot be combined with `@outputs(...)`; atomic publication currently
+supports declared outputs only.
+
 For example:
 
 ```make
@@ -395,6 +398,13 @@ Available modes are:
 | `grouped` | Print output after the recipe finishes |
 | `log` | Capture output under `.need/logs/` |
 | `silent` | Suppress successful recipe output |
+
+Use `@atomic` to publish declared outputs through same-directory temporary
+paths. `{{out}}` and indexed forms refer to those temporary paths while the
+recipe runs; after successful validation, `need` renames each output into its
+declared path. Failed or interrupted recipes leave existing outputs untouched.
+Each member of a multi-output group is published separately, and symlink
+outputs are supported. The modifier contributes to the rule signature.
 
 The project-wide default can be set with:
 

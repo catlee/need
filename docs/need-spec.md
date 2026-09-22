@@ -59,6 +59,7 @@ The current implementation includes the core artifact graph, including:
 - glob re-evaluation after upstream rules create or remove matching files
 - compiler depfiles through `@depfile(...)`, including persisted discovered
   dependencies and Make-style escaping/continuations
+- opt-in atomic publication for declared file outputs through `@atomic`
 - explicit command-output freshness probes through `command(...)`
 - per-rule concurrency limits through `@jobs(N)`
 - pre/post input-fingerprint validation around recipe execution
@@ -314,6 +315,34 @@ Semantics:
 - partial output groups are invalid
 - concurrent requests for different members of the same group coalesce to one recipe invocation
 - one concrete output path may belong to at most one rule/output group
+
+### 8.1 Atomic publication
+
+A rule may opt into atomic publication for its declared file outputs with the
+`@atomic` modifier:
+
+```make
+thumbs/%.jpg: images/%.png
+  @atomic
+  convert {{in}} {{out}}
+```
+
+For an atomic rule, `{{out}}` and its indexed forms refer to unique temporary
+paths in the same destination directories as the declared outputs. `need`
+validates those temporary files after the recipe succeeds, then renames each
+one to its declared path before committing successful state. Existing declared
+outputs therefore remain untouched when a recipe fails or is interrupted.
+
+Each output in a multi-output rule is published with its own filesystem rename;
+the group is not one filesystem transaction. Symlink outputs are published by
+renaming the symlink itself. Atomic publication requires filesystem rename
+semantics that replace the destination; a cross-filesystem publication fails
+with a diagnostic. `@atomic` currently cannot be combined with
+`@outputs(...)`, because dynamic output paths are discovered after recipe
+execution rather than being available for temporary-path substitution.
+
+Temporary paths are removed after failed builds and stale temporary paths are
+removed during the next invocation's recovery cleanup.
 
 Example:
 

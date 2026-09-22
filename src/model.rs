@@ -88,6 +88,7 @@ pub(crate) struct ParsedRuleOptions {
     pub(crate) outputs: Option<String>,
     pub(crate) depfile: Option<String>,
     pub(crate) jobs: Option<String>,
+    pub(crate) atomic: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -96,6 +97,7 @@ pub(crate) struct RuleOptions {
     pub(crate) outputs: Option<ProjectPath>,
     pub(crate) depfile: Option<String>,
     pub(crate) jobs: Option<NonZeroUsize>,
+    pub(crate) atomic: bool,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]

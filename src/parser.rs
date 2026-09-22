@@ -322,10 +322,20 @@ pub(crate) fn parse_modifier_value(modifier: &str) -> Result<&str> {
             return Ok(value);
         }
     }
+    if modifier == "@atomic" {
+        return Ok("");
+    }
     Err(format!("unsupported rule modifier {modifier}"))
 }
 
 fn parse_rule_option(modifier: &str, options: &mut ParsedRuleOptions) -> Result<()> {
+    if modifier == "@atomic" {
+        if options.atomic {
+            return Err("a rule may declare only one @atomic modifier".into());
+        }
+        options.atomic = true;
+        return Ok(());
+    }
     let value = parse_modifier_value(modifier)?;
     if let Some(value) = modifier
         .strip_prefix("@output(")

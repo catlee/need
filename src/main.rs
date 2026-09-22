@@ -802,6 +802,12 @@ fn resolve_rules(
             }
             rule.options.jobs = Some(std::num::NonZeroUsize::new(jobs).unwrap());
         }
+        rule.options.atomic = parsed.options.atomic;
+        if rule.options.atomic && rule.options.outputs.is_some() {
+            return Err("@atomic cannot be combined with @outputs(...)
+help: atomic publication currently supports declared outputs only"
+                .into());
+        }
         if rule
             .outputs
             .iter()

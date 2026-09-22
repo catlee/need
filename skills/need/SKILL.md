@@ -130,6 +130,13 @@ use `{{needfile.dir}}` for checked-in helpers. `{{in}}`
 and `{{out}}` are shell-escaped; use indexed forms such as `{{in[0]}}` when
 argument order matters.
 
+Use the opt-in `@atomic` rule modifier when readers must never observe a
+partially written declared output. `need` substitutes same-directory
+temporary paths for `{{out}}`, validates them, and renames them into place
+only after the recipe succeeds. Existing outputs remain untouched on failure;
+multi-output rules publish each file separately, and `@atomic` cannot be used
+with dynamic `@outputs(...)` manifests.
+
 Build state and logs live under `.need/`. Successful recipes must produce every
 declared output. Dependency cycles are errors. `need` uses content signatures,
 not timestamps alone, to decide whether a rule is current. For a stale rule it

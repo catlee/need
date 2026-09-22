@@ -268,6 +268,13 @@ Discovered dependencies affect later freshness checks but are not added to
 `{{in}}`. A generated discovered artifact still participates in the normal
 build graph.
 
+For recipes whose outputs must not be observed while they are being written,
+add the opt-in `@atomic` modifier. `need` substitutes same-directory temporary
+paths for `{{out}}`, validates them, and renames them into place after success;
+failed or interrupted recipes leave existing outputs untouched. This supports
+declared single and multi-output rules, but not dynamic `@outputs(...)`
+manifests.
+
 ## Useful options
 
 ```sh

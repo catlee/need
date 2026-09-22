@@ -69,6 +69,28 @@ pub(crate) fn cleanup_recovery_files(r: &Path) -> Result<()> {
                 .map_err(|e| e.to_string())?;
         }
     }
+    cleanup_atomic_temporary_outputs(r)?;
+    Ok(())
+}
+
+fn cleanup_atomic_temporary_outputs(root: &Path) -> Result<()> {
+    let Ok(entries) = fs::read_dir(root) else {
+        return Ok(());
+    };
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let file_type = entry.file_type().map_err(|e| e.to_string())?;
+        if file_type.is_dir() {
+            if name != ".need" && name != ".git" {
+                cleanup_atomic_temporary_outputs(&path)?;
+            }
+        } else if name.starts_with(".need-tmp-") {
+            fs::remove_file(path).map_err(|e| e.to_string())?;
+        }
+    }
     Ok(())
 }
 
@@ -106,6 +128,7 @@ mod tests {
             .as_nanos();
         let root = std::env::temp_dir().join(format!("need-state-{suffix}"));
         fs::create_dir_all(root.join(".need/tmp/abandoned")).unwrap();
+        fs::create_dir_all(root.join("nested")).unwrap();
         root
     }
 
@@ -116,10 +139,12 @@ mod tests {
         save_state(&root, &state).unwrap();
         fs::write(root.join(".need/state.json.abandoned.tmp"), b"{").unwrap();
         fs::write(root.join(".need/tmp/abandoned/stdout"), b"partial").unwrap();
+        fs::write(root.join("nested/.need-tmp-stale-output"), b"partial").unwrap();
 
         cleanup_recovery_files(&root).unwrap();
         assert!(!root.join(".need/state.json.abandoned.tmp").exists());
         assert!(!root.join(".need/tmp/abandoned").exists());
+        assert!(!root.join("nested/.need-tmp-stale-output").exists());
         assert_eq!(
             serde_json::to_string(&load_state(&root).unwrap()).unwrap(),
             serde_json::to_string(&state).unwrap()

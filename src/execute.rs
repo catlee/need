@@ -516,10 +516,23 @@ pub(crate) fn build_inner(
             println!("{key}\n  stale\n{reasons}");
         }
     }
+    let recipe_outputs = if rule.options.atomic && !c.options.dry {
+        temporary_outputs(&outputs)?
+    } else {
+        outputs.clone()
+    };
+    let _temporary_outputs = TemporaryOutputs::new(
+        c,
+        if rule.options.atomic && !c.options.dry {
+            recipe_outputs.clone()
+        } else {
+            Vec::new()
+        },
+    );
     let rendered = interpolate(
         &rule.recipe,
         &inputs,
-        &outputs,
+        &recipe_outputs,
         stem.as_deref(),
         &c.project.vars,
         &c.project.env_values,
@@ -534,7 +547,7 @@ pub(crate) fn build_inner(
         c.session.built.extend(outputs.iter().cloned());
         return Ok(());
     }
-    for o in &outputs {
+    for o in &recipe_outputs {
         if let Some(p) = abs(c, o).parent() {
             fs::create_dir_all(p).map_err(|e| e.to_string())?
         }
@@ -547,9 +560,9 @@ pub(crate) fn build_inner(
     status_line(c, "need", &key, "\x1b[33m");
     let mode = rule.options.output.unwrap_or(c.options.output);
     run_recipe(c, &key, &rendered, mode)?;
-    for o in &outputs {
-        if !abs(c, o).is_file() {
-            return Err(format!("recipe did not produce {o}").into());
+    for (output, recipe_output) in outputs.iter().zip(&recipe_outputs) {
+        if !abs(c, recipe_output).is_file() {
+            return Err(format!("recipe did not produce {output}").into());
         }
     }
     let dynamic = if let Some(path) = &manifest {
@@ -579,6 +592,9 @@ pub(crate) fn build_inner(
             "inputs changed while building {key}\nhelp: rerun the build after the inputs stop changing"
         )
         .into());
+    }
+    if rule.options.atomic {
+        publish_outputs(c, &recipe_outputs, &outputs)?;
     }
     let mut saved_deps = deps;
     saved_deps.extend(discovered.iter().cloned().map(Dependency::File));
@@ -617,6 +633,60 @@ pub(crate) fn build_inner(
     Ok(())
 }
 
+fn temporary_outputs(outputs: &[ProjectPath]) -> Result<Vec<ProjectPath>> {
+    let id = NEXT_PUBLICATION_ID.fetch_add(1, Ordering::Relaxed);
+    outputs
+        .iter()
+        .map(|output| {
+            let path = Path::new(output.as_str());
+            let name = path
+                .file_name()
+                .ok_or_else(|| format!("output has no file name: {output}"))?
+                .to_string_lossy();
+            let temporary = path
+                .parent()
+                .unwrap_or_else(|| Path::new(""))
+                .join(format!(".need-tmp-{id}-{}-{name}", std::process::id()));
+            ProjectPath::output(&temporary.to_string_lossy())
+        })
+        .collect()
+}
+
+struct TemporaryOutputs {
+    paths: Vec<PathBuf>,
+}
+
+impl TemporaryOutputs {
+    fn new(c: &BuildCtx, paths: Vec<ProjectPath>) -> Self {
+        Self {
+            paths: paths.into_iter().map(|path| abs(c, path)).collect(),
+        }
+    }
+}
+
+impl Drop for TemporaryOutputs {
+    fn drop(&mut self) {
+        for path in &self.paths {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+fn publish_outputs(
+    c: &BuildCtx,
+    temporary: &[ProjectPath],
+    final_outputs: &[ProjectPath],
+) -> Result<()> {
+    for (temporary, final_output) in temporary.iter().zip(final_outputs) {
+        fs::rename(abs(c, temporary), abs(c, final_output)).map_err(|error| {
+            format!(
+                "could not publish {final_output} from {temporary}: {error}\nhelp: atomic publication requires both paths to be on the same filesystem"
+            )
+        })?;
+    }
+    Ok(())
+}
+
 fn input_signature(
     c: &mut BuildCtx,
     rule: &crate::model::Rule,
@@ -649,12 +719,13 @@ fn input_signature(
         .map(|path| format!("@outputs({path})"))
         .unwrap_or_default();
     let mods = format!(
-        "{mods}{}",
+        "{mods}{}{}",
         rule.options
             .depfile
             .as_ref()
             .map(|path| format!("@depfile({path})"))
-            .unwrap_or_default()
+            .unwrap_or_default(),
+        if rule.options.atomic { "@atomic" } else { "" }
     );
     Ok(hash_text(&format!(
         "recipe={recipe}\nmods={mods}\ndeps={dep_sig:?}\nenv={env_sig:?}"
@@ -862,6 +933,7 @@ pub(crate) fn required_by(error: BuildError, target: &str) -> BuildError {
 }
 
 static OUTPUT_LOCK: Mutex<()> = Mutex::new(());
+static NEXT_PUBLICATION_ID: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn display_key(key: &str) -> String {
     key.replace('\0', " ")
