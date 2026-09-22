@@ -94,14 +94,10 @@ fn rejects_declared_output_outside_selected_root() {
 
 #[test]
 fn rejects_recipe_metadata_outside_selected_root() {
-    for modifier in ["@outputs-from(../manifest)", "@depfile(../dependencies.d)"] {
+    for attribute in ["@outputs-from(../manifest)", "@depfile(../dependencies.d)"] {
         let project = temp_dir("metadata-project");
         let root = temp_dir("metadata-root");
-        let needfile = if modifier.starts_with("@outputs-from") {
-            format!("{modifier}\nout:\n  touch {{out}}\n")
-        } else {
-            format!("out:\n  {modifier}\n  touch {{out}}\n")
-        };
+        let needfile = format!("{attribute}\nout:\n  touch {{out}}\n");
         fs::write(project.join("needfile"), needfile).unwrap();
 
         let output = run(
@@ -114,7 +110,7 @@ fn rejects_recipe_metadata_outside_selected_root() {
                 "out",
             ],
         );
-        assert!(!output.status.success(), "{modifier}: {output:?}");
+        assert!(!output.status.success(), "{attribute}: {output:?}");
         assert!(
             String::from_utf8_lossy(&output.stderr)
                 .contains("output path escapes the project root")

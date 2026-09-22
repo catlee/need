@@ -59,7 +59,7 @@ fn read_declarations(path: &str) -> Result<HashMap<ProjectPath, Vec<Dependency>>
             || rule.options.outputs.is_some()
             || rule.options.depfile.is_some()
         {
-            return Err("get declarations must contain one target, file dependencies, and no recipe or modifiers".into());
+            return Err("get declarations must contain one target, file dependencies, and no recipe or attributes".into());
         }
         let output = ProjectPath::output(&rule.outputs[0])?;
         let deps = rule

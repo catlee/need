@@ -55,7 +55,7 @@ An escape at the end of a word and an unterminated quote are errors. The
 existing trailing `\` rule-header continuation syntax is handled before word
 tokenization.
 
-Indentation is relative: recipe commands and modifiers must be indented deeper than the rule header, and deeper than dependency-continuation lines when the header uses them. Unlike Make, a tab is not required. Blank lines and lines whose first non-whitespace character is `#` are ignored. Syntax lines also support inline `#` comments outside quotes and dependency-expression parentheses. Recipe lines are passed to `sh -c` unchanged, so recipe comments retain shell semantics.
+Indentation is relative: recipe commands must be indented deeper than the rule header, and deeper than dependency-continuation lines when the header uses them. Unlike Make, a tab is not required. Blank lines and lines whose first non-whitespace character is `#` are ignored. Syntax lines also support inline `#` comments outside quotes and dependency-expression parentheses. Recipe lines are passed to `sh -c` unchanged, so recipe comments retain shell semantics.
 
 ### Multiple outputs
 
@@ -88,9 +88,8 @@ supports declared outputs only.
 
 ### Partial declared outputs
 
-Put `@allow-missing` immediately before a rule (or as an indented rule
-modifier) when a successful recipe may produce any subset of its declared
-outputs:
+Put `@allow-missing` immediately before a rule when a successful recipe may
+produce any subset of its declared outputs:
 
 ```make
 @allow-missing
@@ -134,13 +133,13 @@ build/app: src/main.c \
 ```
 
 The continuation lines must be indented farther than the rule header.
-Recipe commands and modifiers following a continued header must be indented farther than every continuation line.
+Recipe commands following a continued header must be indented farther than every continuation line.
 
 If the indentation is too shallow, `need` reports the `needfile` path and
 line number and suggests indenting the line farther than the continuation:
 
 ```text
-error: ./needfile:19: recipe or modifier must be indented deeper than dependency continuation
+error: ./needfile:19: recipe must be indented deeper than dependency continuation
 help: indent this line farther than the dependency continuation above it
 ```
 
@@ -196,7 +195,7 @@ build/%.o: src/%.c
 
 `+=` appends tokens and requires the variable to have been defined with `=`.
 An empty assignment (`name =`) is an empty list. Variables can be used in
-outputs, dependencies, recipes, and rule modifiers. A standalone `{{name}}`
+outputs, dependencies, recipes, and rule attributes. A standalone `{{name}}`
 splices every token with its boundaries preserved. An embedded reference must
 resolve to exactly one token; values are never implicitly joined, re-tokenized,
 or Cartesian-expanded. Indexing and slicing user variables are not supported.
@@ -392,8 +391,8 @@ Use `@depfile(PATH)` when a recipe writes a Make-style dependency file, such as
 one produced by a C or C++ compiler:
 
 ```make
+@depfile(build/{{stem}}.d)
 build/%.o: src/%.c
-  @depfile(build/{{stem}}.d)
   cc -MMD -MF build/{{stem}}.d -c {{in}} -o {{out}}
 ```
 
@@ -404,15 +403,14 @@ depfile must exist and use the supported Make-style syntax, including escaped
 spaces and backslash-newline continuations. Its path must remain beneath the
 selected project root.
 
-## Rule modifiers
+## Rule attributes
 
-Rule attributes may be placed immediately before the rule they affect. The
-older indented modifier form remains supported. The `@output(MODE)` modifier
-changes how that rule’s recipe output is displayed:
+Rule attributes appear immediately before the rule they affect. The
+`@output(MODE)` attribute changes how that rule’s recipe output is displayed:
 
 ```make
+@output(grouped)
 build/app: src/main.c
-  @output(grouped)
   cc {{in}} -o {{out}}
 ```
 
@@ -434,7 +432,7 @@ paths. `{{out}}` and indexed forms refer to those temporary paths while the
 recipe runs; after successful validation, `need` renames each output into its
 declared path. Failed or interrupted recipes leave existing outputs untouched.
 Each member of a multi-output group is published separately, and symlink
-outputs are supported. The modifier contributes to the rule signature.
+outputs are supported. The attribute contributes to the rule signature.
 
 The project-wide default can be set with:
 
@@ -448,8 +446,8 @@ Successful logs can be retained with:
 need.log.keep = 5
 ```
 
-Semantic modifiers contribute to the rule signature. The presentation-only
-`@output(...)` modifier changes logging behavior without invalidating the
+Semantic attributes contribute to the rule signature. The presentation-only
+`@output(...)` attribute changes logging behavior without invalidating the
 artifact.
 
 ## Freshness and state
@@ -462,7 +460,7 @@ artifact.
 * a file, tree, environment, or string dependency changes;
 * a glob's membership changes, including after an upstream rule creates or removes a matching file;
 * a dynamic output, output manifest, or depfile is missing or changed;
-* the resolved recipe, variables, or semantic modifiers change;
+* the resolved recipe, variables, or semantic attributes change;
 * `--force` is used.
 
 The state is content-based rather than timestamp-only. The `.need/` directory can be removed to discard cached build state; the next build will recreate it.

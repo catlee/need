@@ -224,10 +224,10 @@ The grammar uses relative indentation rather than requiring a specific number of
 
 - the rule header begins at the rule's base indentation
 - dependency-continuation lines MUST be indented deeper than the rule header
-- recipe commands and rule modifiers MUST be indented deeper than dependency-continuation lines, if any
-- when there are no dependency-continuation lines, recipe commands and rule modifiers need only be indented deeper than the rule header
+- recipe commands MUST be indented deeper than dependency-continuation lines, if any
+- when there are no dependency-continuation lines, recipe commands need only be indented deeper than the rule header
 
-If a recipe or modifier is not indented deeply enough after a continued
+If a recipe is not indented deeply enough after a continued
 header, the diagnostic MUST include the `needfile` path and offending line
 number and SHOULD include a `help:` hint explaining that the line must be
 indented farther than the dependency continuation.
@@ -728,13 +728,10 @@ or slice forms.
 
 ---
 
-## 12. Rule Modifiers
+## 12. Rule Attributes
 
-A rule body may contain `need` directives in addition to shell commands.
-
-Rule attributes use an `@name(...)` syntax and may appear immediately before
-the rule they affect. The other attributes are also accepted at the old
-indented body level for compatibility; `@outputs-from(PATH)` is pre-rule only.
+Rule attributes use an `@name(...)` syntax and appear immediately before the
+rule they affect. They are not shell commands.
 
 Example:
 
@@ -754,17 +751,16 @@ The leading `@` distinguishes a `need` directive from shell text.
 `@outputs-from(PATH)` is the only dynamic-output declaration and must appear
 immediately before the rule.
 
-Rule modifiers affect dependency/output metadata; they are not executed as shell commands.
+Rule attributes affect dependency/output metadata.
 
 ### `@allow-missing`
 
-`@allow-missing` may appear immediately before a rule or as an indented rule
-modifier. It permits a successful recipe to produce any subset of that rule's
+`@allow-missing` permits a successful recipe to produce any subset of that rule's
 static outputs, records the present and absent subset, and lets an unchanged
 dependency fingerprint remain current even when an output is absent. A later
 successful subset change removes previously recorded outputs that are omitted.
 It is conservative by design: dynamic manifests cannot be combined with this
-modifier. With `@atomic`, only produced static outputs are published and prior
+attribute. With `@atomic`, only produced static outputs are published and prior
 outputs are restored if the recipe or validation fails.
 
 ### `@outputs-from(path)`
@@ -950,8 +946,8 @@ Cleanup occurs only for paths that `need` can prove were previously owned by tha
 Example:
 
 ```make
+@depfile(build/{{stem}}.d)
 build/%.o: src/%.c
-    @depfile(build/{{stem}}.d)
     {{cc}} -MMD -MF build/{{stem}}.d -c {{in}} -o {{out}}
 ```
 
@@ -982,27 +978,27 @@ concurrently when the invocation enables parallelism. `N` must be a positive
 integer. It is most useful on pattern rules whose instances are independent:
 
 ```make
+@jobs(8)
 thumbnails/%.jpg: images/%.jpg
-    @jobs(8)
     make-thumbnail {{in}} {{out}}
 
+@jobs(2)
 video-thumbnails/%.jpg: videos/%.mp4
-    @jobs(2)
     ffmpeg -i {{in}} {{out}}
 ```
 
 The command-line `-j`/`--jobs` value remains the overall ceiling. A rule limit
 does not reserve capacity or create a resource pool: instances of different
-rules may use the remaining slots. The modifier affects scheduling only and
+rules may use the remaining slots. The attribute affects scheduling only and
 does not affect freshness signatures.
 
-### Modifier Semantics
+### Attribute Semantics
 
-Rule modifiers:
+Rule attributes:
 
 - are evaluated as part of rule execution semantics
-- semantic modifiers are included in the rule signature
-- presentation-only modifiers, such as `@output(...)`, are not included in the rule signature
+- semantic attributes are included in the rule signature
+- presentation-only attributes, such as `@output(...)`, are not included in the rule signature
 - may reference variables and environment values
 - are not included in `{{in}}`
 - are not shell commands
@@ -1471,7 +1467,7 @@ A rule is stale when any of the following is true:
 - an `mtime(...)` dependency changed
 - an `env(...)` value changed
 - a `string(...)` value changed
-- the recipe signature or a semantic modifier changed
+- the recipe signature or a semantic attribute changed
 - an upstream generated dependency rebuilt
 - the rule has no previous successful build state
 
@@ -1488,7 +1484,7 @@ same dependency state that `need` records as current:
 2. Compute the rule's normal freshness signature immediately before running the
    recipe. This is the pre-recipe input fingerprint; it uses the ordinary
    freshness-signature machinery, including resolved file, tree, mtime,
-   environment, and string dependencies, semantic modifiers, and the current
+   environment, and string dependencies, semantic attributes, and the current
    membership of dependency globs.
 3. Run the recipe.
 4. Validate declared outputs, dynamic outputs and their manifest, and any
@@ -1614,7 +1610,7 @@ Expansion and dependency resolution follow a deterministic order:
 6. Substitute the bound stem into dependency patterns
 7. Expand dependency globs
 8. Evaluate dependency expressions such as file(), tree(), mtime(), env(), and string()
-9. Compute the pre-recipe dependency, recipe, and semantic modifier signature
+9. Compute the pre-recipe dependency, recipe, and semantic attribute signature
 10. Decide freshness
 11. Interpolate recipe values
 12. Shell-escape interpolated values
@@ -2235,7 +2231,7 @@ Parent directories are created automatically.
 ## 44. Compiler Dependency Files
 
 Compiler-generated depfiles are implemented by Section 12's
-`@depfile(...)` modifier. This section is retained as the C/C++ use-case
+`@depfile(...)` attribute. This section is retained as the C/C++ use-case
 reference; the supported syntax and lifecycle are defined normatively above.
 
 ---
@@ -2375,7 +2371,7 @@ need map [-0] <RULE> <INPUT>...
 pattern, for example `thumbs/%: %`. Each pattern must contain exactly one `%`.
 Each input must match the complete right-hand pattern; the captured text,
 including path separators, is substituted into the left-hand target pattern.
-Recipes, modifiers, variables, multiple targets, and multiple prerequisites
+Recipes, attributes, variables, multiple targets, and multiple prerequisites
 are rejected. Inputs are validated before any output is written, and output
 preserves input order and duplicates. The default separator is a final newline
 per target; `-0` uses a final NUL byte per target. Shell globbing is left to the
@@ -2399,7 +2395,7 @@ the mapped targets with the supplied build options. It is equivalent to
 value is `-`; `-0` selects NUL-delimited input instead.
 
 Without `RULE`, `--from` reads a Needfile fragment containing concrete
-single-output declarations with file dependencies and no recipes or modifiers.
+single-output declarations with file dependencies and no recipes or attributes.
 For each declaration, `need` selects the matching recipe-bearing rule from the
 normal needfile and uses the streamed dependencies as that target's inputs.
 

@@ -78,9 +78,8 @@ thumbnails/%.jpg: images/%.png
 ```
 
 `@atomic` publishes outputs only after a successful recipe. Other attributes
-are `@allow-missing`, `@jobs(N)`, `@depfile(PATH)`, and
-`@outputs-from(PATH)`. The dynamic-output manifest attribute is pre-rule only;
-the other attributes may also appear in a recipe block.
+are `@allow-missing`, `@jobs(N)`, `@depfile(PATH)`, `@output(MODE)`, and
+`@outputs-from(PATH)`. All attributes appear immediately before their rule.
 
 For discovered inputs, feed concrete declarations to `need get` while keeping
 the recipe in the needfile:

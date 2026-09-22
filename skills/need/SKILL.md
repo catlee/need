@@ -67,8 +67,8 @@ build/app: src/main.c
 build/%.o: src/%.c
   cc -c {{in}} -o {{out}}
 
+@jobs(2)
 video-thumbnails/%.jpg: videos/%.mp4
-  @jobs(2)
   ffmpeg -i {{in}} {{out}}
 
 font.fnt font_0.png: source.otf
@@ -88,10 +88,10 @@ thumbnails/%.jpg: images/%.jpg
   make-thumbnail {{in}} {{out}}
 ```
 
-Supported attributes include `@atomic`, `@allow-missing`, `@jobs(N)`, and
-`@outputs-from(PATH)`. `@outputs-from(PATH)` is pre-rule only; the other
-attributes may also appear in a recipe block. An attribute must be followed by
-a rule; otherwise `need` reports its path, line, and a placement hint.
+Supported attributes include `@atomic`, `@allow-missing`, `@jobs(N)`,
+`@depfile(PATH)`, `@output(MODE)`, and `@outputs-from(PATH)`. All attributes
+must appear immediately before their rule. An attribute must be followed by a
+rule; otherwise `need` reports its path, line, and a placement hint.
 
 Dependency expressions make freshness explicit:
 
@@ -99,8 +99,8 @@ Dependency expressions make freshness explicit:
 output.bin: input.dat env(BUILD_MODE)
   tool {{in}} -o {{out}}
 
+@depfile(build/{{stem}}.d)
 build/%.o: src/%.c
-  @depfile(build/{{stem}}.d)
   cc -MMD -MF build/{{stem}}.d -c {{in}} -o {{out}}
 ```
 
@@ -144,7 +144,7 @@ use `{{needfile.dir}}` for checked-in helpers. `{{in}}`
 and `{{out}}` are shell-escaped; use indexed forms such as `{{in[0]}}` when
 argument order matters.
 
-Use the opt-in `@atomic` rule modifier when readers must never observe a
+Use the opt-in `@atomic` attribute when readers must never observe a
 partially written declared output. `need` substitutes same-directory
 temporary paths for `{{out}}`, validates them, and renames them into place
 only after the recipe succeeds. Existing outputs remain untouched on failure;
@@ -157,7 +157,7 @@ not timestamps alone, to decide whether a rule is current. For a stale rule it
 computes the normal freshness signature after resolving and building
 dependencies, runs the recipe, validates outputs/manifests/depfiles, then
 recomputes that same signature before recording output hashes or successful
-state. This includes persisted depfile dependencies, semantic modifiers, and
+state. This includes persisted depfile dependencies, semantic attributes, and
 re-expanded glob membership. If inputs changed during the recipe, the build
 fails with a rerun hint, leaves outputs on disk as stale, and commits neither
 output hashes nor rule state. Newly discovered depfile dependencies are saved
@@ -211,9 +211,9 @@ pattern rules. Discovered file paths persist in `.need/state.json`, affect
 freshness on later builds, and remain out of `{{in}}`; generated discovered
 artifacts still use the normal graph. The supported syntax includes a target
 and colon, whitespace-separated paths, escaped spaces/backslashes, and
-backslash-newline continuations. The modifier must be nonempty and appear only
+backslash-newline continuations. The attribute must be nonempty and appear only
 once per rule.
 
 Use `@jobs(N)` to limit concurrent instances of a rule to positive integer `N`.
-The global `-j`/`--jobs` setting remains the overall ceiling; the rule modifier
+The global `-j`/`--jobs` setting remains the overall ceiling; the attribute
 only affects scheduling and does not change freshness signatures.

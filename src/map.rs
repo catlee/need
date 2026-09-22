@@ -61,7 +61,7 @@ impl PatternMap {
             || rule.options.outputs.is_some()
             || rule.options.depfile.is_some()
         {
-            return Err("map rule must not contain a recipe or modifiers".into());
+            return Err("map rule must not contain a recipe or attributes".into());
         }
         let to = &rule.outputs[0];
         let ParsedDependency::File(from) = &rule.deps[0] else {
@@ -209,7 +209,7 @@ mod tests {
     fn accepts_rule_syntax_and_rejects_other_rule_shapes() {
         assert_eq!(
             PatternMap::from_rule("out/%: in/%\n  echo no").unwrap_err(),
-            "map rule must not contain a recipe or modifiers"
+            "map rule must not contain a recipe or attributes"
         );
         assert_eq!(
             PatternMap::from_rule("out/% other/%: in/%").unwrap_err(),

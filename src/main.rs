@@ -754,7 +754,7 @@ fn resolve_rules(
         {
             rule.options.output =
                 Some(OutputMode::parse(&value).map_err(|_| {
-                    format!("invalid output mode in rule modifier @output({value})")
+                    format!("invalid output mode in rule attribute @output({value})")
                 })?);
         }
         if let Some(value) = parsed
@@ -775,7 +775,7 @@ fn resolve_rules(
             .map(|x| expand(x, vars, env_values))
         {
             if value.is_empty() {
-                return Err("depfile path is empty in rule modifier @depfile()".into());
+                return Err("depfile path is empty in rule attribute @depfile()".into());
             }
             ProjectPath::output(&value).map_err(|error| {
                 format!(
@@ -792,12 +792,12 @@ fn resolve_rules(
         {
             let jobs = value.parse().map_err(|_| {
                 format!(
-                    "invalid job count in rule modifier @jobs({value})\nhelp: use a positive integer"
+                    "invalid job count in rule attribute @jobs({value})\nhelp: use a positive integer"
                 )
             })?;
             if jobs == 0 {
                 return Err(format!(
-                    "invalid job count in rule modifier @jobs({value})\nhelp: use a positive integer"
+                    "invalid job count in rule attribute @jobs({value})\nhelp: use a positive integer"
                 ));
             }
             rule.options.jobs = Some(std::num::NonZeroUsize::new(jobs).unwrap());
@@ -1087,7 +1087,7 @@ mod tests {
     fn parses_variables_continuations_and_modifiers() {
         let root = temp_project("parse");
         let path = root.join("needfile");
-        fs::write(&path, "name = value\nout.txt: input.txt \\\n  config.txt\n    @output(grouped)\n    cp {{in[0]}} {{out}}\n").unwrap();
+        fs::write(&path, "name = value\n@output(grouped)\nout.txt: input.txt \\\n  config.txt\n    cp {{in[0]}} {{out}}\n").unwrap();
         let (vars, rules) = parse_needfile(&path).unwrap();
         assert_eq!(vars["name"], vec!["value"]);
         assert_eq!(
@@ -1308,7 +1308,7 @@ mod tests {
     fn changing_output_modifier_does_not_rebuild() {
         let root = temp_project("output-modifier-signature");
         fs::write(root.join("input.txt"), "input\n").unwrap();
-        let needfile = "out.txt: input.txt\n  @output(stream)\n  printf '%s\\n' run >> runs.txt\n  cp {{in}} {{out}}\n";
+        let needfile = "@output(stream)\nout.txt: input.txt\n  printf '%s\\n' run >> runs.txt\n  cp {{in}} {{out}}\n";
 
         let mut first = context(&root, needfile);
         build(&mut first, "out.txt", None).unwrap();
@@ -1316,7 +1316,7 @@ mod tests {
 
         let mut second = context(
             &root,
-            "out.txt: input.txt\n  @output(silent)\n  printf '%s\\n' run >> runs.txt\n  cp {{in}} {{out}}\n",
+            "@output(silent)\nout.txt: input.txt\n  printf '%s\\n' run >> runs.txt\n  cp {{in}} {{out}}\n",
         );
         second.session.state = load_state(&root).unwrap();
         build(&mut second, "out.txt", None).unwrap();
@@ -1372,7 +1372,7 @@ mod tests {
         let root = temp_project("static-depfile");
         fs::write(root.join("source.c"), "source\n").unwrap();
         fs::write(root.join("header.h"), "header\n").unwrap();
-        let needfile = "out.o: source.c\n  @depfile(out.d)\n  printf '%s\\n' '{{in}}' >> inputs.txt\n  printf out > {{out}}\n  printf 'out.o: source.c header.h\\n' > out.d\n";
+        let needfile = "@depfile(out.d)\nout.o: source.c\n  printf '%s\\n' '{{in}}' >> inputs.txt\n  printf out > {{out}}\n  printf 'out.o: source.c header.h\\n' > out.d\n";
 
         let mut first = context(&root, needfile);
         build(&mut first, "out.o", None).unwrap();
@@ -1404,7 +1404,7 @@ mod tests {
     #[test]
     fn missing_depfile_fails_after_recipe_with_actionable_error() {
         let root = temp_project("missing-depfile");
-        let needfile = "out.txt:\n  @depfile(missing.d)\n  printf out > {{out}}\n";
+        let needfile = "@depfile(missing.d)\nout.txt:\n  printf out > {{out}}\n";
         let mut ctx = context(&root, needfile);
         let error = build(&mut ctx, "out.txt", None).unwrap_err().to_string();
         assert!(error.contains("depfile missing.d"));
@@ -1415,7 +1415,7 @@ mod tests {
     #[test]
     fn malformed_depfile_fails_after_recipe_with_actionable_error() {
         let root = temp_project("malformed-depfile");
-        let needfile = "out.txt:\n  @depfile(malformed.d)\n  printf out > {{out}}\n  printf 'not a depfile\\n' > malformed.d\n";
+        let needfile = "@depfile(malformed.d)\nout.txt:\n  printf out > {{out}}\n  printf 'not a depfile\\n' > malformed.d\n";
         let mut ctx = context(&root, needfile);
         let error = build(&mut ctx, "out.txt", None).unwrap_err().to_string();
         assert!(error.contains("depfile malformed.d is malformed"));
@@ -1439,11 +1439,11 @@ mod tests {
     fn static_depfile_modifier_is_semantic() {
         let root = temp_project("depfile-signature");
         fs::write(root.join("input.txt"), "input\n").unwrap();
-        let first_needfile = "out.txt: input.txt\n  @depfile(first.d)\n  printf out > {{out}}\n  printf 'out.txt: input.txt\\n' > first.d\n";
+        let first_needfile = "@depfile(first.d)\nout.txt: input.txt\n  printf out > {{out}}\n  printf 'out.txt: input.txt\\n' > first.d\n";
         let mut first = context(&root, first_needfile);
         build(&mut first, "out.txt", None).unwrap();
         save_state(&root, &first.session.state).unwrap();
-        let second_needfile = "out.txt: input.txt\n  @depfile(second.d)\n  printf out > {{out}}\n  printf 'out.txt: input.txt\\n' > second.d\n";
+        let second_needfile = "@depfile(second.d)\nout.txt: input.txt\n  printf out > {{out}}\n  printf 'out.txt: input.txt\\n' > second.d\n";
         let mut second = context(&root, second_needfile);
         second.session.state = load_state(&root).unwrap();
         build(&mut second, "out.txt", None).unwrap();
@@ -1457,7 +1457,7 @@ mod tests {
         fs::create_dir_all(root.join("src")).unwrap();
         fs::write(root.join("src/foo.c"), "source\n").unwrap();
         fs::write(root.join("header.h"), "header\n").unwrap();
-        let needfile = "build/%.o: src/%.c\n  @depfile(build/{{stem}}.d)\n  printf out > {{out}}\n  printf 'build/{{stem}}.o: src/{{stem}}.c header.h\\n' > build/{{stem}}.d\n";
+        let needfile = "@depfile(build/{{stem}}.d)\nbuild/%.o: src/%.c\n  printf out > {{out}}\n  printf 'build/{{stem}}.o: src/{{stem}}.c header.h\\n' > build/{{stem}}.d\n";
         let mut first = context(&root, needfile);
         build(&mut first, "build/foo.o", None).unwrap();
         assert!(root.join("build/foo.d").is_file());
@@ -1477,11 +1477,12 @@ mod tests {
         let path = root.join("needfile");
         fs::write(
             &path,
-            "out: input\n  @depfile(one.d)\n  @depfile(two.d)\n  touch {{out}}\n",
+            "@depfile(one.d)\n@depfile(two.d)\nout: input\n  touch {{out}}\n",
         )
         .unwrap();
         let error = parse_needfile(&path).unwrap_err();
-        assert_eq!(error, "a rule may declare only one @depfile(...) modifier");
+        assert!(error.contains("needfile:2: invalid rule attribute @depfile(two.d)"));
+        assert!(error.contains("a rule may declare only one @depfile(...) attribute"));
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1509,7 +1510,7 @@ mod tests {
 
         fs::write(
             &path,
-            "out.txt: input.txt \\\n  config.txt\n    @output(grouped)\n    touch {{out}}\n",
+            "@output(grouped)\nout.txt: input.txt \\\n  config.txt\n    touch {{out}}\n",
         )
         .unwrap();
         let (_, rules) = parse_needfile(&path).unwrap();
@@ -1528,7 +1529,7 @@ mod tests {
         .unwrap();
         let error = parse_needfile(&path).unwrap_err();
         assert!(error.ends_with(
-            ":3: recipe or modifier must be indented deeper than dependency continuation\nhelp: indent this line farther than the dependency continuation above it"
+            ":3: recipe must be indented deeper than dependency continuation\nhelp: indent this line farther than the dependency continuation above it"
         ));
         fs::remove_dir_all(root).unwrap();
     }
@@ -1738,17 +1739,17 @@ mod tests {
         let path = root.join("needfile");
         fs::write(&path, "@unknown\nout.txt: input.txt\n  touch {{out}}\n").unwrap();
         let error = parse_needfile(&path).unwrap_err();
-        assert!(error.contains("unsupported rule modifier @unknown"));
+        assert!(error.contains("unsupported rule attribute @unknown"));
 
         fs::write(
             &path,
-            "out.txt: input.txt\n  @output(nope)\n  touch {{out}}\n",
+            "@output(nope)\nout.txt: input.txt\n  touch {{out}}\n",
         )
         .unwrap();
         let (raw_vars, rules) = parse_needfile(&path).unwrap();
         let vars = resolve_variables(&raw_vars, &HashMap::new()).unwrap();
         let error = resolve_rules(&rules, &vars, &HashMap::new(), &raw_vars).unwrap_err();
-        assert_eq!(error, "invalid output mode in rule modifier @output(nope)");
+        assert_eq!(error, "invalid output mode in rule attribute @output(nope)");
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1795,8 +1796,8 @@ out.txt: mode
         let root = temp_project("allow-missing");
         fs::write(root.join("mode"), "a\n").unwrap();
         let needfile = r#"@allow-missing
+@atomic
 a.txt b.txt: mode
-  @atomic
   if [ -e fail ]; then exit 7; fi
   if [ "$(cat mode)" = a ]; then printf a > {{out[0]}}; else printf b > {{out[1]}}; fi
   printf run >> runs
@@ -1901,7 +1902,7 @@ final: generated.txt generated/*
         let path = root.join("needfile");
         fs::write(
             &path,
-            "mode = grouped\nout.txt: input.txt\n  @output({{mode}})\n  touch {{out}}\n",
+            "mode = grouped\n@output({{mode}})\nout.txt: input.txt\n  touch {{out}}\n",
         )
         .unwrap();
         let (raw_vars, rules) = parse_needfile(&path).unwrap();
@@ -1917,7 +1918,7 @@ final: generated.txt generated/*
         .unwrap_err();
         assert_eq!(
             invalid,
-            "invalid output mode in rule modifier @output(nope)"
+            "invalid output mode in rule attribute @output(nope)"
         );
         fs::remove_dir_all(root).unwrap();
     }
@@ -2594,8 +2595,8 @@ final.txt: a.txt b.txt
         for name in ["a", "b", "c", "d", "e"] {
             fs::write(root.join(format!("input-{name}.txt")), name).unwrap();
         }
-        let needfile = r#"out-%.txt: input-%.txt
-  @jobs(1)
+        let needfile = r#"@jobs(1)
+out-%.txt: input-%.txt
   while ! mkdir .counter-lock 2>/dev/null; do sleep 0.001; done
   active=$(cat .active 2>/dev/null || echo 0)
   active=$((active + 1))
@@ -2624,13 +2625,13 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
     fn rejects_invalid_rule_job_limits() {
         let root = temp_project("rule-jobs");
         let path = root.join("needfile");
-        fs::write(&path, "out: input\n  @jobs(0)\n  touch {{out}}\n").unwrap();
+        fs::write(&path, "@jobs(0)\nout: input\n  touch {{out}}\n").unwrap();
         let (_, rules) = parse_needfile(&path).unwrap();
         let error =
             resolve_rules(&rules, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap_err();
         assert_eq!(
             error,
-            "invalid job count in rule modifier @jobs(0)\nhelp: use a positive integer"
+            "invalid job count in rule attribute @jobs(0)\nhelp: use a positive integer"
         );
         fs::remove_dir_all(root).unwrap();
     }

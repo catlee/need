@@ -165,11 +165,11 @@ built-in default
 
 ## 5. Per-Rule Overrides
 
-Rules MAY override the output mode using the rule-modifier mechanism:
+Rules MAY override the output mode with an attribute:
 
 ```make
+@output(log)
 build/generated.dat: source.dat
-  @output(log)
   noisy-generator {{in}} {{out}}
 ```
 
@@ -181,8 +181,8 @@ This fits existing directive syntax:
 @output(...)
 ```
 
-The `@output(...)` modifier is presentation-only: changing it does not make a
-current artifact stale. Other rule modifiers are semantic and contribute to
+The `@output(...)` attribute is presentation-only: changing it does not make a
+current artifact stale. Other rule attributes are semantic and contribute to
 the rule signature.
 
 Per-rule output configuration may be deferred from the first implementation.

@@ -37,7 +37,7 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
             continue;
         }
         if trimmed.starts_with('@') && !trimmed.contains(':') {
-            parse_rule_option(trimmed, &mut pending_options, true).map_err(|error| {
+            parse_rule_option(trimmed, &mut pending_options).map_err(|error| {
                 format!(
                     "{}:{}: invalid rule attribute {trimmed}: {error}\nhelp: use an attribute immediately before a rule",
                     display_path(path), i
@@ -154,7 +154,7 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
         if outputs.is_empty() {
             return Err("rule has no outputs".into());
         }
-        let mut body: Vec<String> = Vec::new();
+        let mut body: Vec<(usize, String)> = Vec::new();
         while i < lines.len() {
             let l = &lines[i];
             let line_indent = l.len() - l.trim_start().len();
@@ -166,27 +166,30 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
                 && continuation_indent.is_some_and(|level| line_indent <= level)
             {
                 return Err(format!(
-                    "{}:{}: recipe or modifier must be indented deeper than dependency continuation\nhelp: indent this line farther than the dependency continuation above it",
+                    "{}:{}: recipe must be indented deeper than dependency continuation\nhelp: indent this line farther than the dependency continuation above it",
                     display_path(path),
                     i + 1,
                 ));
             }
-            body.push(if l.len() >= indent {
-                l[indent..].to_owned()
-            } else {
-                String::new()
-            });
+            body.push((
+                i + 1,
+                if l.len() >= indent {
+                    l[indent..].to_owned()
+                } else {
+                    String::new()
+                },
+            ));
             i += 1
         }
         let base_indent = body
             .iter()
-            .filter(|line| !line.trim().is_empty())
-            .map(|line| line.len() - line.trim_start().len())
+            .filter(|(_, line)| !line.trim().is_empty())
+            .map(|(_, line)| line.len() - line.trim_start().len())
             .min()
             .unwrap_or(0);
         let mut recipe: Vec<String> = Vec::new();
-        let mut options = std::mem::take(&mut pending_options);
-        for l in body {
+        let options = std::mem::take(&mut pending_options);
+        for (line_number, l) in body {
             let l = if l.len() >= base_indent {
                 &l[base_indent..]
             } else {
@@ -194,7 +197,10 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
             };
             let syntax = strip_inline_comment(l).trim_end();
             if syntax.starts_with('@') {
-                parse_rule_option(syntax, &mut options, false)?;
+                return Err(format!(
+                    "{}:{line_number}: rule attribute {syntax} must appear immediately before its rule\nhelp: move the attribute above the rule header",
+                    display_path(path),
+                ));
             } else if !l.is_empty() && !l.starts_with('#') {
                 recipe.push(l.into())
             }
@@ -342,78 +348,73 @@ fn parse_dependency_template(raw: &str) -> Result<ParsedDependency> {
     }
 }
 
-pub(crate) fn parse_modifier_value(modifier: &str) -> Result<&str> {
+pub(crate) fn parse_attribute_value(attribute: &str) -> Result<&str> {
     for name in ["@output(", "@outputs-from(", "@depfile(", "@jobs("] {
-        if let Some(value) = modifier
+        if let Some(value) = attribute
             .strip_prefix(name)
             .and_then(|x| x.strip_suffix(')'))
         {
             return Ok(value);
         }
     }
-    if modifier == "@atomic" || modifier == "@allow-missing" {
+    if attribute == "@atomic" || attribute == "@allow-missing" {
         return Ok("");
     }
-    Err(format!("unsupported rule modifier {modifier}"))
+    Err(format!("unsupported rule attribute {attribute}"))
 }
 
-fn parse_rule_option(
-    modifier: &str,
-    options: &mut ParsedRuleOptions,
-    pre_rule: bool,
-) -> Result<()> {
-    if modifier == "@allow-missing" {
+fn parse_rule_option(attribute: &str, options: &mut ParsedRuleOptions) -> Result<()> {
+    if attribute == "@allow-missing" {
         if options.allow_missing {
-            return Err("duplicate @allow-missing modifier".into());
+            return Err("duplicate @allow-missing attribute".into());
         }
         options.allow_missing = true;
         return Ok(());
     }
-    if modifier == "@atomic" {
+    if attribute == "@atomic" {
         if options.atomic {
-            return Err("a rule may declare only one @atomic modifier".into());
+            return Err("a rule may declare only one @atomic attribute".into());
         }
         options.atomic = true;
         return Ok(());
     }
-    if modifier.starts_with("@outputs-from(") && !pre_rule {
-        return Err(format!("unsupported rule modifier {modifier}"));
-    }
-    let value = parse_modifier_value(modifier)?;
-    if let Some(value) = modifier
+    let value = parse_attribute_value(attribute)?;
+    if let Some(value) = attribute
         .strip_prefix("@output(")
         .and_then(|x| x.strip_suffix(')'))
     {
         if options.output.is_none() {
             options.output = Some(value.into());
         }
-    } else if modifier.starts_with("@jobs(") {
+    } else if attribute.starts_with("@jobs(") {
         if options.jobs.is_some() {
-            return Err("a rule may declare only one @jobs(...) modifier".into());
+            return Err("a rule may declare only one @jobs(...) attribute".into());
         }
         if value.is_empty() {
-            return Err("job count is empty in rule modifier @jobs()".into());
+            return Err("job count is empty in rule attribute @jobs()".into());
         }
         options.jobs = Some(value.into());
     } else if value.is_empty() {
-        let name = if modifier.starts_with("@depfile(") {
+        let name = if attribute.starts_with("@depfile(") {
             "depfile"
         } else {
             "output manifest"
         };
-        return Err(format!("{name} path is empty in rule modifier {modifier}"));
-    } else if modifier.starts_with("@depfile(") {
+        return Err(format!(
+            "{name} path is empty in rule attribute {attribute}"
+        ));
+    } else if attribute.starts_with("@depfile(") {
         if options.depfile.is_some() {
-            return Err("a rule may declare only one @depfile(...) modifier".into());
+            return Err("a rule may declare only one @depfile(...) attribute".into());
         }
         options.depfile = Some(value.into());
-    } else if modifier.starts_with("@outputs-from(") {
+    } else if attribute.starts_with("@outputs-from(") {
         if options.outputs.is_some() {
             return Err("a rule may declare only one @outputs-from(...) attribute".into());
         }
         options.outputs = Some(value.into());
     } else {
-        return Err(format!("unsupported rule modifier {modifier}"));
+        return Err(format!("unsupported rule attribute {attribute}"));
     }
     Ok(())
 }
@@ -986,10 +987,10 @@ mod tests {
     }
 
     #[test]
-    fn parses_pre_rule_attributes_and_legacy_indented_modifiers() {
+    fn parses_pre_rule_attributes() {
         let (_, rules) = parse_needfile_text(
             Path::new("needfile"),
-            "@atomic\n@allow-missing\n@jobs(2)\n@outputs-from(.need/outputs)\nout: input\n  @output(grouped)\n  touch {{out}}\n",
+            "@atomic\n@allow-missing\n@jobs(2)\n@output(grouped)\n@outputs-from(.need/outputs)\nout: input\n  touch {{out}}\n",
         )
         .unwrap();
 
@@ -1004,7 +1005,7 @@ mod tests {
             "@unknown\nout: input\n  touch {{out}}\n",
         )
         .unwrap_err();
-        assert!(error.contains("unsupported rule modifier @unknown"));
+        assert!(error.contains("unsupported rule attribute @unknown"));
     }
 
     #[test]
@@ -1016,6 +1017,15 @@ mod tests {
         let error =
             parse_needfile_text(Path::new("needfile"), "@jobs(2)\nname = value\n").unwrap_err();
         assert!(error.contains("needfile:1: rule attribute @jobs(2) is not followed by a rule"));
+
+        let error = parse_needfile_text(
+            Path::new("needfile"),
+            "out: input\n  @atomic\n  touch {{out}}\n",
+        )
+        .unwrap_err();
+        assert!(error.contains(
+            "needfile:2: rule attribute @atomic must appear immediately before its rule"
+        ));
     }
 
     #[test]

@@ -71,7 +71,7 @@ fn atomic_recipe_can_publish_a_symlink() {
     fs::write(root.join("target"), "target\n").unwrap();
     fs::write(
         root.join("needfile"),
-        "link: input\n  ln -s target {{out}}\n  @atomic\n",
+        "@atomic\nlink: input\n  ln -s target {{out}}\n",
     )
     .unwrap();
     let result = run(&root);
