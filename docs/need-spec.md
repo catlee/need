@@ -60,6 +60,7 @@ The current implementation includes the core artifact graph, including:
 - compiler depfiles through `@depfile(...)`, including persisted discovered
   dependencies and Make-style escaping/continuations
 - explicit command-output freshness probes through `command(...)`
+- per-rule concurrency limits through `@jobs(N)`
 - pre/post input-fingerprint validation around recipe execution
 - signal-aware recipe termination, interrupted logs, atomic state replacement,
   and startup cleanup of abandoned temporary artifacts
@@ -915,6 +916,27 @@ Use `{{needfile.dir}}` when a separate root needs a checked-in helper path.
 A successful recipe with `@depfile(...)` MUST produce a readable, well-formed
 depfile. Missing or malformed depfiles are errors naming the depfile path and
 including a `help:` hint. A rule may declare only one nonempty `@depfile(...)`.
+
+### `@jobs(N)`
+
+`@jobs(N)` limits the number of instances of one rule that `need` may execute
+concurrently when the invocation enables parallelism. `N` must be a positive
+integer. It is most useful on pattern rules whose instances are independent:
+
+```make
+thumbnails/%.jpg: images/%.jpg
+    @jobs(8)
+    make-thumbnail {{in}} {{out}}
+
+video-thumbnails/%.jpg: videos/%.mp4
+    @jobs(2)
+    ffmpeg -i {{in}} {{out}}
+```
+
+The command-line `-j`/`--jobs` value remains the overall ceiling. A rule limit
+does not reserve capacity or create a resource pool: instances of different
+rules may use the remaining slots. The modifier affects scheduling only and
+does not affect freshness signatures.
 
 ### Modifier Semantics
 

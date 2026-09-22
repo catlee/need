@@ -314,7 +314,7 @@ fn parse_dependency_template(raw: &str) -> Result<ParsedDependency> {
 }
 
 pub(crate) fn parse_modifier_value(modifier: &str) -> Result<&str> {
-    for name in ["@output(", "@outputs(", "@depfile("] {
+    for name in ["@output(", "@outputs(", "@depfile(", "@jobs("] {
         if let Some(value) = modifier
             .strip_prefix(name)
             .and_then(|x| x.strip_suffix(')'))
@@ -334,6 +334,14 @@ fn parse_rule_option(modifier: &str, options: &mut ParsedRuleOptions) -> Result<
         if options.output.is_none() {
             options.output = Some(value.into());
         }
+    } else if modifier.starts_with("@jobs(") {
+        if options.jobs.is_some() {
+            return Err("a rule may declare only one @jobs(...) modifier".into());
+        }
+        if value.is_empty() {
+            return Err("job count is empty in rule modifier @jobs()".into());
+        }
+        options.jobs = Some(value.into());
     } else if value.is_empty() {
         let name = if modifier.starts_with("@depfile(") {
             "depfile"

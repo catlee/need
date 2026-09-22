@@ -112,6 +112,46 @@ pub(crate) fn group_key(outputs: &[ProjectPath]) -> String {
         .join("\0")
 }
 
+fn rule_jobs(c: &BuildCtx, target: &str) -> Option<(usize, usize)> {
+    match select_rule(c, target).ok()? {
+        TargetMatch::Rule { id, .. } => c.project.rules[id.0]
+            .options
+            .jobs
+            .map(|limit| (id.0, limit.get())),
+        TargetMatch::Source => None,
+    }
+}
+
+fn parallel_batches<T: Clone>(
+    items: &[T],
+    jobs: Jobs,
+    rule_jobs: impl Fn(&T) -> Option<(usize, usize)>,
+) -> Vec<Vec<T>> {
+    let mut remaining = items.to_vec();
+    let mut batches = Vec::new();
+    while !remaining.is_empty() {
+        let mut batch = Vec::new();
+        let mut rest = Vec::new();
+        let mut counts = HashMap::new();
+        let limit = jobs.limit(remaining.len());
+        for item in remaining {
+            let rule = rule_jobs(&item);
+            let allowed = rule.is_none_or(|(id, max)| counts.get(&id).copied().unwrap_or(0) < max);
+            if batch.len() < limit && allowed {
+                if let Some((id, _)) = rule {
+                    *counts.entry(id).or_insert(0) += 1;
+                }
+                batch.push(item);
+            } else {
+                rest.push(item);
+            }
+        }
+        batches.push(batch);
+        remaining = rest;
+    }
+    batches
+}
+
 pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> BuildResult<()> {
     let target = ProjectPath::new(target)?;
     let force = c.options.force && c.session.stack.is_empty();
@@ -150,7 +190,9 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildR
             parallel_targets.push(target.clone());
         }
     }
-    for batch in parallel_targets.chunks(c.options.jobs.limit(parallel_targets.len())) {
+    for batch in parallel_batches(&parallel_targets, c.options.jobs, |target| {
+        rule_jobs(c, target.as_str())
+    }) {
         let base = c.clone();
         let results = std::thread::scope(|scope| {
             let mut handles = Vec::new();
@@ -298,7 +340,9 @@ pub(crate) fn build_inner(
                 parallel_deps.push(path.clone());
             }
         }
-        for batch in parallel_deps.chunks(c.options.jobs.limit(parallel_deps.len())) {
+        for batch in parallel_batches(&parallel_deps, c.options.jobs, |target| {
+            rule_jobs(c, target)
+        }) {
             let results = std::thread::scope(|scope| {
                 let mut handles = Vec::new();
                 for d in batch {

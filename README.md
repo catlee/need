@@ -322,6 +322,15 @@ need -j build/app          # unlimited parallelism
 need -j2 build/app build/lib # build independent requested targets in parallel
 ```
 
+Rules can cap their own concurrent instances with `@jobs(N)` while `-j`
+remains the overall ceiling:
+
+```make
+video-thumbnails/%.jpg: videos/%.mp4
+  @jobs(2)
+  ffmpeg -i {{in}} {{out}}
+```
+
 ## Cargo
 
 Call `need` from `build.rs` when Cargo owns the Rust build and `need` owns generated artifacts:

@@ -67,6 +67,10 @@ build/app: src/main.c
 build/%.o: src/%.c
   cc -c {{in}} -o {{out}}
 
+video-thumbnails/%.jpg: videos/%.mp4
+  @jobs(2)
+  ffmpeg -i {{in}} {{out}}
+
 font.fnt font_0.png: source.otf
   build-font {{in}} {{out[0]}} {{out[1]}}
 
@@ -179,3 +183,7 @@ artifacts still use the normal graph. The supported syntax includes a target
 and colon, whitespace-separated paths, escaped spaces/backslashes, and
 backslash-newline continuations. The modifier must be nonempty and appear only
 once per rule.
+
+Use `@jobs(N)` to limit concurrent instances of a rule to positive integer `N`.
+The global `-j`/`--jobs` setting remains the overall ceiling; the rule modifier
+only affects scheduling and does not change freshness signatures.

@@ -731,6 +731,7 @@ fn resolve_rules(
             .iter()
             .chain(parsed.options.outputs.iter())
             .chain(parsed.options.depfile.iter())
+            .chain(parsed.options.jobs.iter())
         {
             collect_env_refs(value, raw_vars, &mut rule.env_refs);
         }
@@ -782,6 +783,24 @@ fn resolve_rules(
                 )
             })?;
             rule.options.depfile = Some(value);
+        }
+        if let Some(value) = parsed
+            .options
+            .jobs
+            .as_deref()
+            .map(|x| expand(x, vars, env_values))
+        {
+            let jobs = value.parse().map_err(|_| {
+                format!(
+                    "invalid job count in rule modifier @jobs({value})\nhelp: use a positive integer"
+                )
+            })?;
+            if jobs == 0 {
+                return Err(format!(
+                    "invalid job count in rule modifier @jobs({value})\nhelp: use a positive integer"
+                ));
+            }
+            rule.options.jobs = Some(std::num::NonZeroUsize::new(jobs).unwrap());
         }
         if rule
             .outputs
@@ -2516,6 +2535,7 @@ final.txt: a.txt b.txt
             fs::write(root.join(format!("input-{name}.txt")), name).unwrap();
         }
         let needfile = r#"out-%.txt: input-%.txt
+  @jobs(1)
   while ! mkdir .counter-lock 2>/dev/null; do sleep 0.001; done
   active=$(cat .active 2>/dev/null || echo 0)
   active=$((active + 1))
@@ -2537,6 +2557,21 @@ all.txt: out-a.txt out-b.txt out-c.txt out-d.txt out-e.txt
         build(&mut ctx, "all.txt", None).unwrap();
         assert!(!root.join(".exceeded").exists());
         assert!(root.join("all.txt").is_file());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_invalid_rule_job_limits() {
+        let root = temp_project("rule-jobs");
+        let path = root.join("needfile");
+        fs::write(&path, "out: input\n  @jobs(0)\n  touch {{out}}\n").unwrap();
+        let (_, rules) = parse_needfile(&path).unwrap();
+        let error =
+            resolve_rules(&rules, &HashMap::new(), &HashMap::new(), &HashMap::new()).unwrap_err();
+        assert_eq!(
+            error,
+            "invalid job count in rule modifier @jobs(0)\nhelp: use a positive integer"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
