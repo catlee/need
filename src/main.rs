@@ -1339,6 +1339,14 @@ mod tests {
             "source.c\n"
         );
 
+        let mut current = context(&root, needfile);
+        current.session.state = load_state(&root).unwrap();
+        build(&mut current, "out.o", None).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("inputs.txt")).unwrap(),
+            "source.c\n"
+        );
+
         fs::write(root.join("header.h"), "changed\n").unwrap();
         let mut second = context(&root, needfile);
         second.session.state = load_state(&root).unwrap();

@@ -532,6 +532,10 @@ pub(crate) fn build_inner(
         )
         .into());
     }
+    let mut saved_deps = deps;
+    saved_deps.extend(discovered.iter().cloned().map(Dependency::File));
+    let saved_signature_deps = signature_dependencies(c, &saved_deps)?;
+    let saved_sig = input_signature(c, &rule, &recipe, &saved_signature_deps)?;
     for output in outputs.iter().chain(&dynamic) {
         outsig.insert(output.clone(), cached_file_hash(c, &abs(c, output))?);
     }
@@ -553,7 +557,7 @@ pub(crate) fn build_inner(
     c.session.state.rules.insert(
         key,
         SavedRule {
-            signature: sig,
+            signature: saved_sig,
             outputs: outsig,
             dynamic: dynamic.clone(),
             manifest: saved_manifest,
