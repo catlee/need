@@ -78,7 +78,7 @@ fn explain_reports_output_manifest_changes() {
     fs::write(root.join("input.txt"), "one\n").unwrap();
     fs::write(
         root.join("needfile"),
-        "output.txt: input.txt\n  @outputs(.need/manifest)\n  cp {{in}} {{out}}\n  touch extra.txt\n  printf 'extra.txt\\n' > .need/manifest\n",
+        "@outputs-from(.need/manifest)\noutput.txt: input.txt\n  cp {{in}} {{out}}\n  touch extra.txt\n  printf 'extra.txt\\n' > .need/manifest\n",
     )
     .unwrap();
     assert!(run(&root, &["output.txt"]).status.success());

@@ -764,7 +764,7 @@ fn resolve_rules(
             .map(|x| expand(x, vars, env_values))
         {
             if value.is_empty() {
-                return Err("output manifest path is empty in rule modifier @outputs()".into());
+                return Err("output manifest path is empty in @outputs-from()".into());
             }
             rule.options.outputs = Some(ProjectPath::output(&value)?);
         }
@@ -805,12 +805,12 @@ fn resolve_rules(
         rule.options.atomic = parsed.options.atomic;
         rule.options.allow_missing = parsed.options.allow_missing;
         if rule.options.allow_missing && rule.options.outputs.is_some() {
-            return Err("@allow-missing cannot be combined with @outputs(...)
+            return Err("@allow-missing cannot be combined with @outputs-from(...)
 help: use @allow-missing only with statically declared outputs"
                 .into());
         }
         if rule.options.atomic && rule.options.outputs.is_some() {
-            return Err("@atomic cannot be combined with @outputs(...)
+            return Err("@atomic cannot be combined with @outputs-from(...)
 help: atomic publication currently supports declared outputs only"
                 .into());
         }
@@ -1736,12 +1736,9 @@ mod tests {
     fn rejects_unsupported_rule_modifiers() {
         let root = temp_project("modifiers");
         let path = root.join("needfile");
-        fs::write(
-            &path,
-            "out.txt: input.txt\n  @outputs(.need/outputs)\n  touch {{out}}\n",
-        )
-        .unwrap();
-        assert!(parse_needfile(&path).is_ok());
+        fs::write(&path, "@unknown\nout.txt: input.txt\n  touch {{out}}\n").unwrap();
+        let error = parse_needfile(&path).unwrap_err();
+        assert!(error.contains("unsupported rule modifier @unknown"));
 
         fs::write(
             &path,
@@ -1760,8 +1757,8 @@ mod tests {
     fn tracks_dynamic_outputs_and_removes_obsolete_ones() {
         let root = temp_project("dynamic-outputs");
         fs::write(root.join("mode"), "both").unwrap();
-        let needfile = r#"out.txt: mode
-  @outputs(.need/outputs)
+        let needfile = r#"@outputs-from(.need/outputs)
+out.txt: mode
   cp {{in}} {{out}}
   touch a.txt
   if [ "$(cat mode)" = both ]; then touch b.txt; printf 'a.txt\nb.txt\n' > .need/outputs; else printf 'a.txt\n' > .need/outputs; fi
@@ -1848,8 +1845,8 @@ a.txt b.txt: mode
     fn reevaluates_glob_after_an_earlier_dynamic_output_rule() {
         let root = temp_project("glob-reevaluation-clean");
         fs::write(root.join("source"), "source\n").unwrap();
-        let needfile = r#"generated.txt: source
-  @outputs(.need/outputs)
+        let needfile = r#"@outputs-from(.need/outputs)
+generated.txt: source
   mkdir -p generated
   printf generated > generated/item
   printf 'generated/item\n' > .need/outputs
@@ -1872,8 +1869,8 @@ final: generated.txt generated/*
     fn reevaluated_glob_drops_removed_dynamic_outputs() {
         let root = temp_project("glob-reevaluation-removed");
         fs::write(root.join("mode"), "both\n").unwrap();
-        let needfile = r#"generated.txt: mode
-  @outputs(.need/outputs)
+        let needfile = r#"@outputs-from(.need/outputs)
+generated.txt: mode
   mkdir -p generated
   printf generated > generated/item
   if [ "$(cat mode)" = both ]; then printf extra > generated/extra; printf 'generated/item\ngenerated/extra\n' > .need/outputs; else printf 'generated/item\n' > .need/outputs; fi

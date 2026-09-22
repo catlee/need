@@ -176,7 +176,7 @@ build/generated.dat: source.dat
 This fits existing directive syntax:
 
 ```text
-@outputs(...)
+@outputs-from(...)
 @depfile(...)
 @output(...)
 ```

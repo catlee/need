@@ -70,7 +70,7 @@ font.fnt font.json: source.otf
 
 ### Dynamic outputs
 
-Use `@outputs(PATH)` when a recipe discovers additional output files. The recipe
+Use `@outputs-from(PATH)` immediately before the rule when a recipe discovers additional output files. The recipe
 must write a UTF-8 manifest containing one project-relative output path per line;
 blank lines and `#` comments are ignored. `need` validates and records every
 listed file, makes it directly buildable on later runs, and removes files omitted
@@ -83,7 +83,7 @@ tracked as build metadata, so deleting or changing it makes the rule stale. A
 dynamic output belongs to the rule that listed it, and cannot also belong to
 another output group.
 
-`@atomic` cannot be combined with `@outputs(...)`; atomic publication currently
+`@atomic` cannot be combined with `@outputs-from(...)`; atomic publication currently
 supports declared outputs only.
 
 ### Partial declared outputs
@@ -108,13 +108,13 @@ result. `--explain` reports recorded absent outputs explicitly.
 `@allow-missing` applies to all static outputs in the rule. It can be combined
 with `@atomic`; atomic publication validates and renames only the outputs that
 the recipe produced, while retaining rollback for omitted outputs on failure.
-It remains incompatible with dynamic `@outputs(...)` manifests.
+It remains incompatible with dynamic `@outputs-from(...)` manifests.
 
 For example:
 
 ```make
+@outputs-from(.need/generated.outputs)
 index.json: source
-  @outputs(.need/generated.outputs)
   generate {{in}} {{out}} .need/generated.outputs
 ```
 
@@ -406,13 +406,19 @@ selected project root.
 
 ## Rule modifiers
 
-A modifier is an indented line beginning with `@`. The `@output(MODE)` modifier changes how that rule’s recipe output is displayed:
+Rule attributes may be placed immediately before the rule they affect. The
+older indented modifier form remains supported. The `@output(MODE)` modifier
+changes how that rule’s recipe output is displayed:
 
 ```make
 build/app: src/main.c
   @output(grouped)
   cc {{in}} -o {{out}}
 ```
+
+Dynamic output manifests use `@outputs-from(PATH)` as a pre-rule attribute. An
+attribute not followed by a rule is an error with a path, line number, and
+placement hint.
 
 Available modes are:
 

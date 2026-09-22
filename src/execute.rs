@@ -828,7 +828,7 @@ fn input_signature(
         .options
         .outputs
         .as_ref()
-        .map(|path| format!("@outputs({path})"))
+        .map(|path| format!("@outputs-from({path})"))
         .unwrap_or_default();
     let mods = format!(
         "{mods}{}{}{}",

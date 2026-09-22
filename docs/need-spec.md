@@ -327,16 +327,16 @@ outputs omitted by the new subset are removed. A nonzero recipe exit never
 records a partial result. `@allow-missing` applies to all static outputs and
 may be combined with `@atomic`: only produced temporary outputs are published,
 and prior outputs are restored if the build fails. It cannot be combined with
-`@outputs(...)`; dynamic-output rules keep their manifest validation semantics.
+`@outputs-from(...)`; dynamic-output rules keep their manifest validation semantics.
 
 ### 8.1 Atomic publication
 
 A rule may opt into atomic publication for its declared file outputs with the
-`@atomic` modifier:
+`@atomic` attribute immediately before the rule:
 
 ```make
+@atomic
 thumbs/%.jpg: images/%.png
-  @atomic
   convert {{in}} {{out}}
 ```
 
@@ -351,7 +351,7 @@ the group is not one filesystem transaction. Symlink outputs are published by
 renaming the symlink itself. Atomic publication requires filesystem rename
 semantics that replace the destination; a cross-filesystem publication fails
 with a diagnostic. `@atomic` currently cannot be combined with
-`@outputs(...)`, because dynamic output paths are discovered after recipe
+`@outputs-from(...)`, because dynamic output paths are discovered after recipe
 execution rather than being available for temporary-path substitution.
 
 Temporary paths are removed after failed builds and stale temporary paths are
@@ -732,14 +732,16 @@ or slice forms.
 
 A rule body may contain `need` directives in addition to shell commands.
 
-Rule modifiers use an `@name(...)` syntax and appear at the same indentation level as recipe commands.
+Rule attributes use an `@name(...)` syntax and may appear immediately before
+the rule they affect. The other attributes are also accepted at the old
+indented body level for compatibility; `@outputs-from(PATH)` is pre-rule only.
 
 Example:
 
 ```make
+@outputs-from(.need/time-glyphs.outputs)
 source/TimeGlyphData.mc: assets/time-glyphs.svg \
   scripts/split_time_glyphs.mjs
-    @outputs(.need/time-glyphs.outputs)
     node scripts/split_time_glyphs.mjs \
       assets/time-glyphs.svg \
       {{out}} \
@@ -748,6 +750,9 @@ source/TimeGlyphData.mc: assets/time-glyphs.svg \
 ```
 
 The leading `@` distinguishes a `need` directive from shell text.
+
+`@outputs-from(PATH)` is the only dynamic-output declaration and must appear
+immediately before the rule.
 
 Rule modifiers affect dependency/output metadata; they are not executed as shell commands.
 
@@ -762,16 +767,16 @@ It is conservative by design: dynamic manifests cannot be combined with this
 modifier. With `@atomic`, only produced static outputs are published and prior
 outputs are restored if the recipe or validation fails.
 
-### `@outputs(path)`
+### `@outputs-from(path)`
 
-`@outputs(path)` declares that the recipe writes an output manifest containing dynamically discovered secondary outputs.
+`@outputs-from(path)` declares that the recipe writes an output manifest containing dynamically discovered secondary outputs.
 
 Example:
 
 ```make
+@outputs-from(.need/time-glyphs.outputs)
 source/TimeGlyphData.mc: assets/time-glyphs.svg \
   scripts/split_time_glyphs.mjs
-    @outputs(.need/time-glyphs.outputs)
     node scripts/split_time_glyphs.mjs \
       assets/time-glyphs.svg \
       {{out}} \
@@ -872,8 +877,8 @@ Dynamic outputs may appear in downstream globs even when they did not exist when
 Example:
 
 ```make
+@outputs-from(.need/time-glyphs.outputs)
 source/TimeGlyphData.mc: assets/time-glyphs.svg
-    @outputs(.need/time-glyphs.outputs)
     generate-time-glyphs ...
 
 bin/VimGlow.prg: source/*.mc \
@@ -885,7 +890,7 @@ On a clean checkout:
 
 1. `source/*.mc` includes the statically declared generated output `source/TimeGlyphData.mc`
 2. that causes the glyph rule to run
-3. `@outputs(...)` discovers the dynamic PNG outputs
+3. `@outputs-from(...)` discovers the dynamic PNG outputs
 4. ownership is recorded
 5. `resources/**` is re-evaluated
 6. the newly discovered PNG files become inputs to `bin/VimGlow.prg`
@@ -952,7 +957,7 @@ build/%.o: src/%.c
 
 After successful execution, `need` reads the depfile and records the discovered inputs as additional dependencies of the rule.
 
-The path is expanded like other rule modifier values. In a pattern rule,
+The path is expanded like other rule attribute values. In a pattern rule,
 `{{stem}}` is substituted after the target stem is selected. The recipe's
 `{{in}}` remains the declared input list; discovered dependencies are
 freshness-only inputs. On later invocations, persisted discovered file paths are
@@ -1002,6 +1007,10 @@ Rule modifiers:
 - are not included in `{{in}}`
 - are not shell commands
 - must be deterministic for a given resolved rule
+
+An attribute that is not followed by a rule is an error. The diagnostic names
+the needfile and attribute line and suggests placing it immediately before a
+rule header.
 
 ## 13. Shell-Safe Interpolation
 
@@ -1571,7 +1580,7 @@ variable to refer to the directory containing the selected needfile. This
 provides stable access to checked-in generators and helpers when `--root`
 points at a cache.
 
-Recipe-generated metadata named by `@outputs(...)` or `@depfile(...)` must
+Recipe-generated metadata named by `@outputs-from(...)` or `@depfile(...)` must
 also be a relative path beneath the selected project root.
 
 The needfile itself may remain outside the project root, which allows a
@@ -2260,9 +2269,9 @@ source/BitmapFontData.mc: scripts/bitmap_font/generate_data.mjs \
   resources/resource/fonts/*.fnt
     node {{in[0]}} {{out}} {{in[1:]}}
 
+@outputs-from(.need/time-glyphs.outputs)
 source/TimeGlyphData.mc: assets/time-glyphs.svg \
   scripts/split_time_glyphs.mjs
-    @outputs(.need/time-glyphs.outputs)
     node scripts/split_time_glyphs.mjs \
       assets/time-glyphs.svg \
       {{out}} \

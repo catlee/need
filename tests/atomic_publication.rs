@@ -32,7 +32,7 @@ fn failed_atomic_recipe_preserves_previous_output_and_cleans_temp() {
     fs::write(root.join("output"), "old\n").unwrap();
     fs::write(
         root.join("needfile"),
-        "output: input\n  @atomic\n  printf partial > {{out}}\n  exit 1\n",
+        "@atomic\noutput: input\n  printf partial > {{out}}\n  exit 1\n",
     )
     .unwrap();
     let result = run(&root);
@@ -54,7 +54,7 @@ fn atomic_multi_output_rule_publishes_each_output() {
     fs::write(root.join("input"), "new\n").unwrap();
     fs::write(
         root.join("needfile"),
-        "a b: input\n  printf one > {{out[0]}}\n  printf two > {{out[1]}}\n  @atomic\n",
+        "@atomic\na b: input\n  printf one > {{out[0]}}\n  printf two > {{out[1]}}\n",
     )
     .unwrap();
     let result = run(&root);

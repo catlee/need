@@ -21,7 +21,8 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
     let lines: Vec<String> = text.lines().map(str::to_owned).collect();
     let mut vars = HashMap::new();
     let mut rules = Vec::new();
-    let mut allow_missing = false;
+    let mut pending_options = ParsedRuleOptions::default();
+    let mut pending_attribute: Option<(String, usize)> = None;
     let mut i = 0;
     while i < lines.len() {
         let raw = &lines[i];
@@ -35,12 +36,26 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
         if trimmed.is_empty() {
             continue;
         }
-        if trimmed == "@allow-missing" {
-            if allow_missing {
-                return Err("duplicate @allow-missing modifier\nhelp: declare @allow-missing only once before a rule".into());
-            }
-            allow_missing = true;
+        if trimmed.starts_with('@') && !trimmed.contains(':') {
+            parse_rule_option(trimmed, &mut pending_options, true).map_err(|error| {
+                format!(
+                    "{}:{}: invalid rule attribute {trimmed}: {error}\nhelp: use an attribute immediately before a rule",
+                    display_path(path), i
+                )
+            })?;
+            pending_attribute.get_or_insert_with(|| (trimmed.to_owned(), i));
             continue;
+        }
+        if !trimmed.contains(':')
+            && let Some((attribute, line)) = pending_attribute.as_ref()
+        {
+            return Err(format!(
+                "{}:{line}: rule attribute {attribute} is not followed by a rule\nhelp: put attributes immediately before a rule header such as output: input",
+                display_path(path),
+            ));
+        }
+        if pending_attribute.is_some() {
+            pending_attribute = None;
         }
         let indent = raw.len() - raw.trim_start().len();
         if !raw.starts_with(char::is_whitespace)
@@ -170,11 +185,7 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
             .min()
             .unwrap_or(0);
         let mut recipe: Vec<String> = Vec::new();
-        let mut options = ParsedRuleOptions {
-            allow_missing,
-            ..Default::default()
-        };
-        allow_missing = false;
+        let mut options = std::mem::take(&mut pending_options);
         for l in body {
             let l = if l.len() >= base_indent {
                 &l[base_indent..]
@@ -183,7 +194,7 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
             };
             let syntax = strip_inline_comment(l).trim_end();
             if syntax.starts_with('@') {
-                parse_rule_option(syntax, &mut options)?;
+                parse_rule_option(syntax, &mut options, false)?;
             } else if !l.is_empty() && !l.starts_with('#') {
                 recipe.push(l.into())
             }
@@ -199,6 +210,12 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
             recipe: recipe.join("\n"),
             options,
         });
+    }
+    if let Some((attribute, line)) = pending_attribute {
+        return Err(format!(
+            "{}:{line}: rule attribute {attribute} is not followed by a rule\nhelp: put attributes immediately before a rule header such as output: input",
+            display_path(path),
+        ));
     }
     Ok((vars, rules))
 }
@@ -326,7 +343,7 @@ fn parse_dependency_template(raw: &str) -> Result<ParsedDependency> {
 }
 
 pub(crate) fn parse_modifier_value(modifier: &str) -> Result<&str> {
-    for name in ["@output(", "@outputs(", "@depfile(", "@jobs("] {
+    for name in ["@output(", "@outputs-from(", "@depfile(", "@jobs("] {
         if let Some(value) = modifier
             .strip_prefix(name)
             .and_then(|x| x.strip_suffix(')'))
@@ -340,7 +357,11 @@ pub(crate) fn parse_modifier_value(modifier: &str) -> Result<&str> {
     Err(format!("unsupported rule modifier {modifier}"))
 }
 
-fn parse_rule_option(modifier: &str, options: &mut ParsedRuleOptions) -> Result<()> {
+fn parse_rule_option(
+    modifier: &str,
+    options: &mut ParsedRuleOptions,
+    pre_rule: bool,
+) -> Result<()> {
     if modifier == "@allow-missing" {
         if options.allow_missing {
             return Err("duplicate @allow-missing modifier".into());
@@ -354,6 +375,9 @@ fn parse_rule_option(modifier: &str, options: &mut ParsedRuleOptions) -> Result<
         }
         options.atomic = true;
         return Ok(());
+    }
+    if modifier.starts_with("@outputs-from(") && !pre_rule {
+        return Err(format!("unsupported rule modifier {modifier}"));
     }
     let value = parse_modifier_value(modifier)?;
     if let Some(value) = modifier
@@ -383,10 +407,13 @@ fn parse_rule_option(modifier: &str, options: &mut ParsedRuleOptions) -> Result<
             return Err("a rule may declare only one @depfile(...) modifier".into());
         }
         options.depfile = Some(value.into());
-    } else if options.outputs.is_some() {
-        return Err("a rule may declare only one @outputs(...) modifier".into());
-    } else {
+    } else if modifier.starts_with("@outputs-from(") {
+        if options.outputs.is_some() {
+            return Err("a rule may declare only one @outputs-from(...) attribute".into());
+        }
         options.outputs = Some(value.into());
+    } else {
+        return Err(format!("unsupported rule modifier {modifier}"));
     }
     Ok(())
 }
@@ -948,14 +975,47 @@ mod tests {
     fn strips_inline_comments_from_needfile_syntax() {
         let (vars, rules) = parse_needfile_text(
             Path::new("needfile"),
-            "sources = a.c b.c # source list\noutput: input # rule header\n  @outputs(manifest) # modifier\n    printf '# recipe' > {{out}}\n",
+            "sources = a.c b.c # source list\n@outputs-from(manifest) # attribute\noutput: input # rule header\n  printf '# recipe' > {{out}}\n",
         )
         .unwrap();
 
         assert_eq!(vars["sources"], vec!["a.c", "b.c"]);
         assert_eq!(rules[0].deps, vec![ParsedDependency::File("input".into())]);
         assert_eq!(rules[0].options.outputs.as_deref(), Some("manifest"));
-        assert_eq!(rules[0].recipe, "  printf '# recipe' > {{out}}");
+        assert_eq!(rules[0].recipe, "printf '# recipe' > {{out}}");
+    }
+
+    #[test]
+    fn parses_pre_rule_attributes_and_legacy_indented_modifiers() {
+        let (_, rules) = parse_needfile_text(
+            Path::new("needfile"),
+            "@atomic\n@allow-missing\n@jobs(2)\n@outputs-from(.need/outputs)\nout: input\n  @output(grouped)\n  touch {{out}}\n",
+        )
+        .unwrap();
+
+        assert!(rules[0].options.atomic);
+        assert!(rules[0].options.allow_missing);
+        assert_eq!(rules[0].options.jobs.as_deref(), Some("2"));
+        assert_eq!(rules[0].options.outputs.as_deref(), Some(".need/outputs"));
+        assert_eq!(rules[0].options.output.as_deref(), Some("grouped"));
+
+        let error = parse_needfile_text(
+            Path::new("needfile"),
+            "@unknown\nout: input\n  touch {{out}}\n",
+        )
+        .unwrap_err();
+        assert!(error.contains("unsupported rule modifier @unknown"));
+    }
+
+    #[test]
+    fn reports_attributes_without_a_following_rule() {
+        let error = parse_needfile_text(Path::new("needfile"), "@atomic\n").unwrap_err();
+        assert!(error.contains("needfile:1: rule attribute @atomic is not followed by a rule"));
+        assert!(error.contains("help: put attributes immediately before a rule"));
+
+        let error =
+            parse_needfile_text(Path::new("needfile"), "@jobs(2)\nname = value\n").unwrap_err();
+        assert!(error.contains("needfile:1: rule attribute @jobs(2) is not followed by a rule"));
     }
 
     #[test]

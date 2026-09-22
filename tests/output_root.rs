@@ -94,14 +94,15 @@ fn rejects_declared_output_outside_selected_root() {
 
 #[test]
 fn rejects_recipe_metadata_outside_selected_root() {
-    for modifier in ["@outputs(../manifest)", "@depfile(../dependencies.d)"] {
+    for modifier in ["@outputs-from(../manifest)", "@depfile(../dependencies.d)"] {
         let project = temp_dir("metadata-project");
         let root = temp_dir("metadata-root");
-        fs::write(
-            project.join("needfile"),
-            format!("out:\n  {modifier}\n  touch {{out}}\n"),
-        )
-        .unwrap();
+        let needfile = if modifier.starts_with("@outputs-from") {
+            format!("{modifier}\nout:\n  touch {{out}}\n")
+        } else {
+            format!("out:\n  {modifier}\n  touch {{out}}\n")
+        };
+        fs::write(project.join("needfile"), needfile).unwrap();
 
         let output = run(
             &project,

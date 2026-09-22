@@ -74,10 +74,24 @@ video-thumbnails/%.jpg: videos/%.mp4
 font.fnt font_0.png: source.otf
   build-font {{in}} {{out[0]}} {{out[1]}}
 
+@outputs-from(.need/generated.outputs)
 index.json: source
-  @outputs(.need/generated.outputs)
   generate {{in}} {{out}} .need/generated.outputs
 ```
+
+Place rule attributes immediately before the rule they affect:
+
+```make
+@atomic
+@jobs(2)
+thumbnails/%.jpg: images/%.jpg
+  make-thumbnail {{in}} {{out}}
+```
+
+Supported attributes include `@atomic`, `@allow-missing`, `@jobs(N)`, and the
+preferred `@outputs-from(PATH)`. The older indented modifier form remains
+supported. An attribute must be followed by a rule; otherwise `need` reports
+its path, line, and a placement hint.
 
 Dependency expressions make freshness explicit:
 
@@ -135,7 +149,7 @@ partially written declared output. `need` substitutes same-directory
 temporary paths for `{{out}}`, validates them, and renames them into place
 only after the recipe succeeds. Existing outputs remain untouched on failure;
 multi-output rules publish each file separately, and `@atomic` cannot be used
-with dynamic `@outputs(...)` manifests.
+with dynamic `@outputs-from(...)` manifests.
 
 Build state and logs live under `.need/`. Successful recipes must produce every
 declared output. Dependency cycles are errors. `need` uses content signatures,
@@ -175,7 +189,7 @@ output rules, then shows the newest retained execution for that output group.
 It prints the status, log path, and captured stdout/stderr; it does not build or
 modify state. Logs are retained according to `need.log.keep`.
 
-For dynamic secondary outputs, `@outputs(PATH)` names a UTF-8 manifest written
+For dynamic secondary outputs, `@outputs-from(PATH)` names a UTF-8 manifest written
 by the recipe. List one project-relative path per line; `need` validates, tracks,
 and cleans up files omitted from a later successful manifest. `{{out}}` still
 contains only the rule's static outputs. Dependency globs are expanded in
@@ -189,7 +203,7 @@ the dependency fingerprint changes; a later successful subset change removes
 previously produced outputs that are omitted. It can be combined with
 `@atomic` for static groups; only produced outputs are published, while failed
 recipes retain rollback guarantees. It cannot be combined with dynamic
-`@outputs(...)` manifests.
+`@outputs-from(...)` manifests.
 
 For compiler-generated dependencies, `@depfile(PATH)` reads a Make-style
 depfile after a successful recipe. `PATH` supports variables and `{{stem}}` in

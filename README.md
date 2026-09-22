@@ -247,8 +247,8 @@ and `mtime(...)` retain their current semantics.
 Rules with generated secondary files can declare an output manifest:
 
 ```make
+@outputs-from(.need/generated.outputs)
 index.json: source
-  @outputs(.need/generated.outputs)
   generate {{in}} {{out}} .need/generated.outputs
 ```
 
@@ -260,7 +260,7 @@ For static multi-output rules whose successful result may be only a subset,
 put `@allow-missing` immediately before the rule. `need` records absent outputs
 as current for the dependency fingerprint, reports them with `--explain`, and
 removes previously produced outputs omitted by a later successful run. The
-modifier is deliberately incompatible with dynamic `@outputs(...)` manifests.
+modifier is deliberately incompatible with dynamic `@outputs-from(...)` manifests.
 It can be combined with `@atomic` for static groups; only produced outputs are
 published, with the same rollback guarantees as other atomic rules.
 
@@ -280,7 +280,7 @@ For recipes whose outputs must not be observed while they are being written,
 add the opt-in `@atomic` modifier. `need` substitutes same-directory temporary
 paths for `{{out}}`, validates them, and renames them into place after success;
 failed or interrupted recipes leave existing outputs untouched. This supports
-declared single and multi-output rules, but not dynamic `@outputs(...)`
+declared single and multi-output rules, but not dynamic `@outputs-from(...)`
 manifests.
 
 ## Useful options
@@ -344,6 +344,25 @@ remains the overall ceiling:
 video-thumbnails/%.jpg: videos/%.mp4
   @jobs(2)
   ffmpeg -i {{in}} {{out}}
+```
+
+Rule attributes may also be placed immediately before the rule they affect.
+This is the preferred form for `@atomic`, `@allow-missing`, `@jobs(N)`, and
+`@outputs-from(PATH)`; the older indented form remains supported for the other
+modifiers.
+
+For example, an Omarchy thumbnail pipeline can make each still safe to read
+while it is being generated, then let a discovery command feed concrete
+target/dependency declarations to `need` in parallel:
+
+```make
+@atomic
+thumbnails/still/%.jpg:
+  make-thumbnail {{in}} {{out}}
+```
+
+```sh
+discover-thumbnails | need get -j --from -
 ```
 
 ## Cargo
