@@ -182,6 +182,15 @@ contains only the rule's static outputs. Dependency globs are expanded in
 declared order after earlier dependencies finish, so newly created or removed
 dynamic outputs are reflected in later glob inputs.
 
+For static rules where a successful recipe may produce any subset of the
+declared outputs, put `@allow-missing` immediately before the rule. Need
+records the produced subset and treats recorded absent outputs as current until
+the dependency fingerprint changes; a later successful subset change removes
+previously produced outputs that are omitted. It can be combined with
+`@atomic` for static groups; only produced outputs are published, while failed
+recipes retain rollback guarantees. It cannot be combined with dynamic
+`@outputs(...)` manifests.
+
 For compiler-generated dependencies, `@depfile(PATH)` reads a Make-style
 depfile after a successful recipe. `PATH` supports variables and `{{stem}}` in
 pattern rules. Discovered file paths persist in `.need/state.json`, affect

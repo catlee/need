@@ -803,6 +803,12 @@ fn resolve_rules(
             rule.options.jobs = Some(std::num::NonZeroUsize::new(jobs).unwrap());
         }
         rule.options.atomic = parsed.options.atomic;
+        rule.options.allow_missing = parsed.options.allow_missing;
+        if rule.options.allow_missing && rule.options.outputs.is_some() {
+            return Err("@allow-missing cannot be combined with @outputs(...)
+help: use @allow-missing only with statically declared outputs"
+                .into());
+        }
         if rule.options.atomic && rule.options.outputs.is_some() {
             return Err("@atomic cannot be combined with @outputs(...)
 help: atomic publication currently supports declared outputs only"
@@ -1784,6 +1790,57 @@ mod tests {
             second.session.state.rules.values().next().unwrap().dynamic,
             vec![ProjectPath::new("a.txt").unwrap()]
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn allow_missing_with_atomic_records_and_reconciles_subset() {
+        let root = temp_project("allow-missing");
+        fs::write(root.join("mode"), "a\n").unwrap();
+        let needfile = r#"@allow-missing
+a.txt b.txt: mode
+  @atomic
+  if [ -e fail ]; then exit 7; fi
+  if [ "$(cat mode)" = a ]; then printf a > {{out[0]}}; else printf b > {{out[1]}}; fi
+  printf run >> runs
+"#;
+        let mut first = context(&root, needfile);
+        build(&mut first, "a.txt", None).unwrap();
+        assert_eq!(fs::read_to_string(root.join("runs")).unwrap(), "run");
+        assert!(root.join("a.txt").is_file());
+        assert!(!root.join("b.txt").exists());
+        assert!(!fs::read_dir(&root).unwrap().any(|entry| {
+            entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".need-tmp-")
+        }));
+        assert_eq!(
+            first.session.state.rules.values().next().unwrap().missing,
+            vec![ProjectPath::new("b.txt").unwrap()]
+        );
+
+        let mut second = context(&root, needfile);
+        second.session.state = first.session.state.clone();
+        second.options.explain = true;
+        build(&mut second, "b.txt", None).unwrap();
+        assert_eq!(fs::read_to_string(root.join("runs")).unwrap(), "run");
+
+        fs::write(root.join("mode"), "b\n").unwrap();
+        let mut third = context(&root, needfile);
+        third.session.state = second.session.state.clone();
+        fs::write(root.join("fail"), "\n").unwrap();
+        assert!(build(&mut third, "a.txt", None).is_err());
+        assert!(root.join("a.txt").is_file());
+        assert!(!root.join("b.txt").exists());
+
+        fs::remove_file(root.join("fail")).unwrap();
+        let mut fourth = context(&root, needfile);
+        fourth.session.state = third.session.state;
+        build(&mut fourth, "a.txt", None).unwrap();
+        assert!(!root.join("a.txt").exists());
+        assert!(root.join("b.txt").is_file());
         fs::remove_dir_all(root).unwrap();
     }
 

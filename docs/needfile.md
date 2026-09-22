@@ -21,7 +21,7 @@ The rule says that `build/app` is produced from `src/main.c`. To build it:
 need build/app
 ```
 
-The recipe runs only when the input or recipe has changed, or when the output is missing. Parent directories for declared outputs are created automatically. After a successful recipe, every declared output must exist.
+The recipe runs only when the input or recipe has changed, or when the output is missing. Parent directories for declared outputs are created automatically. After a successful recipe, every declared output must exist unless the rule uses `@allow-missing`.
 
 ## Rules
 
@@ -85,6 +85,30 @@ another output group.
 
 `@atomic` cannot be combined with `@outputs(...)`; atomic publication currently
 supports declared outputs only.
+
+### Partial declared outputs
+
+Put `@allow-missing` immediately before a rule (or as an indented rule
+modifier) when a successful recipe may produce any subset of its declared
+outputs:
+
+```make
+@allow-missing
+thumbs/%.jpg thumbs/%.jpg.failed: videos/%.mp4
+  make-thumbnail {{in}} {{out}}
+```
+
+The produced subset is recorded with the dependency fingerprint. An absent
+output recorded this way is current but absent; it does not cause a rebuild
+until a dependency, recipe, or other freshness input changes. If a later
+successful run produces a different subset, previously produced outputs that
+are now omitted are removed. A nonzero recipe exit never records a partial
+result. `--explain` reports recorded absent outputs explicitly.
+
+`@allow-missing` applies to all static outputs in the rule. It can be combined
+with `@atomic`; atomic publication validates and renames only the outputs that
+the recipe produced, while retaining rollback for omitted outputs on failure.
+It remains incompatible with dynamic `@outputs(...)` manifests.
 
 For example:
 
@@ -426,7 +450,8 @@ artifact.
 
 `need` stores build state and logs in `.need/`. A rule is rebuilt when:
 
-* a declared output is missing;
+* a declared output is missing, unless it is recorded as absent by
+  `@allow-missing`;
 * a declared output’s content differs from the recorded successful output;
 * a file, tree, environment, or string dependency changes;
 * a glob's membership changes, including after an upstream rule creates or removes a matching file;

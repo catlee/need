@@ -60,6 +60,8 @@ The current implementation includes the core artifact graph, including:
 - compiler depfiles through `@depfile(...)`, including persisted discovered
   dependencies and Make-style escaping/continuations
 - opt-in atomic publication for declared file outputs through `@atomic`
+- partial declared output sets through `@allow-missing`, including persisted
+  absent-output outcomes and subset cleanup
 - explicit command-output freshness probes through `command(...)`
 - per-rule concurrency limits through `@jobs(N)`
 - pre/post input-fingerprint validation around recipe execution
@@ -315,6 +317,17 @@ Semantics:
 - partial output groups are invalid
 - concurrent requests for different members of the same group coalesce to one recipe invocation
 - one concrete output path may belong to at most one rule/output group
+
+`@allow-missing` changes the last two output requirements for that rule. A
+successful recipe may produce any subset, including none, and the produced
+subset is recorded with the normal dependency fingerprint. Recorded absent
+outputs are current but absent; a dependency or recipe change reruns the rule.
+When a later successful run produces a different subset, previously recorded
+outputs omitted by the new subset are removed. A nonzero recipe exit never
+records a partial result. `@allow-missing` applies to all static outputs and
+may be combined with `@atomic`: only produced temporary outputs are published,
+and prior outputs are restored if the build fails. It cannot be combined with
+`@outputs(...)`; dynamic-output rules keep their manifest validation semantics.
 
 ### 8.1 Atomic publication
 
@@ -737,6 +750,17 @@ source/TimeGlyphData.mc: assets/time-glyphs.svg \
 The leading `@` distinguishes a `need` directive from shell text.
 
 Rule modifiers affect dependency/output metadata; they are not executed as shell commands.
+
+### `@allow-missing`
+
+`@allow-missing` may appear immediately before a rule or as an indented rule
+modifier. It permits a successful recipe to produce any subset of that rule's
+static outputs, records the present and absent subset, and lets an unchanged
+dependency fingerprint remain current even when an output is absent. A later
+successful subset change removes previously recorded outputs that are omitted.
+It is conservative by design: dynamic manifests cannot be combined with this
+modifier. With `@atomic`, only produced static outputs are published and prior
+outputs are restored if the recipe or validation fails.
 
 ### `@outputs(path)`
 
@@ -1748,9 +1772,10 @@ If multiple pattern rules match with equal precedence, `need` reports an ambigui
 
 ## 28. Output Validation
 
-After a recipe exits successfully, `need` MUST verify that every declared output exists.
+After a recipe exits successfully, `need` MUST verify that every declared output
+exists unless the rule uses `@allow-missing`.
 
-If any output is missing:
+If any output is missing from an ordinary rule:
 
 - the build fails
 - the output group is not recorded as current
@@ -1763,6 +1788,10 @@ foo.fnt foo_0.png: source.otf
 ```
 
 If the command exits zero but creates only `foo.fnt`, the rule fails.
+
+For `@allow-missing`, the present and absent declared outputs are recorded as
+the successful result. `need --explain` reports the absent portion as
+“current but absent”.
 
 ---
 

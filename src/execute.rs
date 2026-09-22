@@ -449,14 +449,24 @@ pub(crate) fn build_inner(
     let known_dynamic = saved.as_ref().map_or(&[][..], |saved| &saved.dynamic);
     for o in outputs.iter().chain(known_dynamic) {
         let p = abs(c, o);
-        if !p.is_file() {
-            reasons.push(format!("output missing: {o}"));
-        } else {
+        if p.is_file() {
             let h = cached_file_hash(c, &p)?;
-            if saved.is_some() && saved.as_ref().and_then(|x| x.outputs.get(o)) != Some(&h) {
+            if rule.options.allow_missing
+                && saved
+                    .as_ref()
+                    .is_some_and(|saved| saved.missing.contains(o))
+            {
+                reasons.push(format!("output appeared: {o}"));
+            } else if saved.is_some() && saved.as_ref().and_then(|x| x.outputs.get(o)) != Some(&h) {
                 reasons.push(format!("output changed: {o}"));
             }
             outsig.insert(o.clone(), h);
+        } else if !rule.options.allow_missing
+            || !saved
+                .as_ref()
+                .is_some_and(|saved| saved.missing.contains(o))
+        {
+            reasons.push(format!("output missing: {o}"));
         }
     }
     if let Some(path) = &manifest {
@@ -494,10 +504,25 @@ pub(crate) fn build_inner(
     let stale = !reasons.is_empty();
     if !stale {
         if c.options.explain {
+            let outcome = saved
+                .as_ref()
+                .filter(|saved| !saved.missing.is_empty())
+                .map(|saved| {
+                    format!(
+                        "\n  current but absent: {}",
+                        saved
+                            .missing
+                            .iter()
+                            .map(ProjectPath::as_str)
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    )
+                })
+                .unwrap_or_default();
             if c.options.cargo {
-                eprintln!("{key}\n  current");
+                eprintln!("{key}\n  current{outcome}");
             } else {
-                println!("{key}\n  current");
+                println!("{key}\n  current{outcome}");
             }
         }
         c.session.built.extend(outputs.iter().cloned());
@@ -529,6 +554,12 @@ pub(crate) fn build_inner(
             Vec::new()
         },
     );
+    let mut previous_outputs = if rule.options.allow_missing && !c.options.dry {
+        PreviousOutputs::new(c, saved.as_ref(), &outputs)?
+    } else {
+        PreviousOutputs::default()
+    };
+    let mut missing = Vec::new();
     let rendered = interpolate(
         &rule.recipe,
         &inputs,
@@ -562,7 +593,11 @@ pub(crate) fn build_inner(
     run_recipe(c, &key, &rendered, mode)?;
     for (output, recipe_output) in outputs.iter().zip(&recipe_outputs) {
         if !abs(c, recipe_output).is_file() {
-            return Err(format!("recipe did not produce {output}").into());
+            if rule.options.allow_missing {
+                missing.push(output.clone());
+            } else {
+                return Err(format!("recipe did not produce {output}").into());
+            }
         }
     }
     let dynamic = if let Some(path) = &manifest {
@@ -594,13 +629,22 @@ pub(crate) fn build_inner(
         .into());
     }
     if rule.options.atomic {
-        publish_outputs(c, &recipe_outputs, &outputs)?;
+        publish_outputs(c, &recipe_outputs, &outputs, rule.options.allow_missing)?;
     }
     let mut saved_deps = deps;
     saved_deps.extend(discovered.iter().cloned().map(Dependency::File));
     let saved_signature_deps = signature_dependencies(c, &saved_deps)?;
     let saved_sig = input_signature(c, &rule, &recipe, &saved_signature_deps)?;
-    for output in outputs.iter().chain(&dynamic) {
+    for output in &outputs {
+        if abs(c, output).is_file() {
+            outsig.insert(output.clone(), cached_file_hash(c, &abs(c, output))?);
+        } else if rule.options.allow_missing {
+            missing.push(output.clone());
+        }
+    }
+    missing.sort();
+    missing.dedup();
+    for output in &dynamic {
         outsig.insert(output.clone(), cached_file_hash(c, &abs(c, output))?);
     }
     for output in known_dynamic
@@ -623,11 +667,13 @@ pub(crate) fn build_inner(
         SavedRule {
             signature: saved_sig,
             outputs: outsig,
+            missing: missing.clone(),
             dynamic: dynamic.clone(),
             manifest: saved_manifest,
             discovered,
         },
     );
+    previous_outputs.commit()?;
     c.session.built.extend(outputs.iter().cloned());
     c.session.built.extend(dynamic);
     Ok(())
@@ -672,12 +718,78 @@ impl Drop for TemporaryOutputs {
     }
 }
 
+#[derive(Default)]
+struct PreviousOutputs {
+    backups: Vec<(PathBuf, PathBuf)>,
+    committed: bool,
+}
+
+impl PreviousOutputs {
+    fn new(c: &BuildCtx, saved: Option<&SavedRule>, outputs: &[ProjectPath]) -> Result<Self> {
+        let Some(saved) = saved else {
+            return Ok(Self::default());
+        };
+        let id = NEXT_PUBLICATION_ID.fetch_add(1, Ordering::Relaxed);
+        let mut backups = Vec::new();
+        for output in outputs {
+            if !saved.outputs.contains_key(output) {
+                continue;
+            }
+            let path = abs(c, output);
+            if fs::symlink_metadata(&path).is_err() {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .ok_or_else(|| format!("output has no file name: {output}"))?;
+            let backup = path.parent().unwrap_or_else(|| Path::new("")).join(format!(
+                ".need-tmp-{id}-previous-{}",
+                name.to_string_lossy()
+            ));
+            fs::rename(&path, &backup)
+                .map_err(|error| format!("could not prepare previous output {output}: {error}"))?;
+            backups.push((path, backup));
+        }
+        Ok(Self {
+            backups,
+            committed: false,
+        })
+    }
+
+    fn commit(&mut self) -> Result<()> {
+        for (_, backup) in &self.backups {
+            if fs::symlink_metadata(backup).is_ok() {
+                fs::remove_file(backup)
+                    .map_err(|error| format!("could not remove obsolete output backup: {error}"))?;
+            }
+        }
+        self.committed = true;
+        Ok(())
+    }
+}
+
+impl Drop for PreviousOutputs {
+    fn drop(&mut self) {
+        if self.committed {
+            return;
+        }
+        for (path, backup) in &self.backups {
+            let _ = fs::remove_file(path);
+            let _ = fs::rename(backup, path);
+        }
+    }
+}
+
 fn publish_outputs(
     c: &BuildCtx,
     temporary: &[ProjectPath],
     final_outputs: &[ProjectPath],
+    allow_missing: bool,
 ) -> Result<()> {
     for (temporary, final_output) in temporary.iter().zip(final_outputs) {
+        if allow_missing && !abs(c, temporary).is_file() {
+            continue;
+        }
         fs::rename(abs(c, temporary), abs(c, final_output)).map_err(|error| {
             format!(
                 "could not publish {final_output} from {temporary}: {error}\nhelp: atomic publication requires both paths to be on the same filesystem"
@@ -719,13 +831,18 @@ fn input_signature(
         .map(|path| format!("@outputs({path})"))
         .unwrap_or_default();
     let mods = format!(
-        "{mods}{}{}",
+        "{mods}{}{}{}",
         rule.options
             .depfile
             .as_ref()
             .map(|path| format!("@depfile({path})"))
             .unwrap_or_default(),
-        if rule.options.atomic { "@atomic" } else { "" }
+        if rule.options.atomic { "@atomic" } else { "" },
+        if rule.options.allow_missing {
+            "@allow-missing"
+        } else {
+            ""
+        }
     );
     Ok(hash_text(&format!(
         "recipe={recipe}\nmods={mods}\ndeps={dep_sig:?}\nenv={env_sig:?}"

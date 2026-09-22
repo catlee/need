@@ -256,6 +256,14 @@ The manifest lists one project-relative file per line. `need` tracks those
 files as part of the output group and removes ones omitted by a later successful
 build.
 
+For static multi-output rules whose successful result may be only a subset,
+put `@allow-missing` immediately before the rule. `need` records absent outputs
+as current for the dependency fingerprint, reports them with `--explain`, and
+removes previously produced outputs omitted by a later successful run. The
+modifier is deliberately incompatible with dynamic `@outputs(...)` manifests.
+It can be combined with `@atomic` for static groups; only produced outputs are
+published, with the same rollback guarantees as other atomic rules.
+
 Compiler recipes can persist header dependencies with a Make-style depfile:
 
 ```make

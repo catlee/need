@@ -89,6 +89,7 @@ pub(crate) struct ParsedRuleOptions {
     pub(crate) depfile: Option<String>,
     pub(crate) jobs: Option<String>,
     pub(crate) atomic: bool,
+    pub(crate) allow_missing: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -98,6 +99,7 @@ pub(crate) struct RuleOptions {
     pub(crate) depfile: Option<String>,
     pub(crate) jobs: Option<NonZeroUsize>,
     pub(crate) atomic: bool,
+    pub(crate) allow_missing: bool,
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -166,6 +168,8 @@ pub(crate) struct HashRecord {
 pub(crate) struct SavedRule {
     pub(crate) signature: String,
     pub(crate) outputs: BTreeMap<ProjectPath, String>,
+    #[serde(default)]
+    pub(crate) missing: Vec<ProjectPath>,
     #[serde(default)]
     pub(crate) dynamic: Vec<ProjectPath>,
     #[serde(default)]

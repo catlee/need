@@ -21,6 +21,7 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
     let lines: Vec<String> = text.lines().map(str::to_owned).collect();
     let mut vars = HashMap::new();
     let mut rules = Vec::new();
+    let mut allow_missing = false;
     let mut i = 0;
     while i < lines.len() {
         let raw = &lines[i];
@@ -32,6 +33,13 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
         let syntax = strip_inline_comment(raw).trim_end().to_owned();
         let trimmed = syntax.trim();
         if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed == "@allow-missing" {
+            if allow_missing {
+                return Err("duplicate @allow-missing modifier\nhelp: declare @allow-missing only once before a rule".into());
+            }
+            allow_missing = true;
             continue;
         }
         let indent = raw.len() - raw.trim_start().len();
@@ -162,7 +170,11 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
             .min()
             .unwrap_or(0);
         let mut recipe: Vec<String> = Vec::new();
-        let mut options = ParsedRuleOptions::default();
+        let mut options = ParsedRuleOptions {
+            allow_missing,
+            ..Default::default()
+        };
+        allow_missing = false;
         for l in body {
             let l = if l.len() >= base_indent {
                 &l[base_indent..]
@@ -322,13 +334,20 @@ pub(crate) fn parse_modifier_value(modifier: &str) -> Result<&str> {
             return Ok(value);
         }
     }
-    if modifier == "@atomic" {
+    if modifier == "@atomic" || modifier == "@allow-missing" {
         return Ok("");
     }
     Err(format!("unsupported rule modifier {modifier}"))
 }
 
 fn parse_rule_option(modifier: &str, options: &mut ParsedRuleOptions) -> Result<()> {
+    if modifier == "@allow-missing" {
+        if options.allow_missing {
+            return Err("duplicate @allow-missing modifier".into());
+        }
+        options.allow_missing = true;
+        return Ok(());
+    }
     if modifier == "@atomic" {
         if options.atomic {
             return Err("a rule may declare only one @atomic modifier".into());
