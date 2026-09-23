@@ -14,6 +14,8 @@ what; it rebuilds stale outputs using content signatures.
 Use `need` for generated files and `just` for workflows such as test, run,
 clean, and deploy.
 
+## Why do you need `need`?
+
 It keeps Make's useful `target: dependencies` model, without phony tasks,
 stamp files, tabs, or timestamp-only freshness. It is deliberately not a
 workflow runner or general-purpose build system.
