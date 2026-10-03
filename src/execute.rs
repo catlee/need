@@ -161,7 +161,13 @@ const MAX_DEPENDENCY_DEPTH: usize = 64;
 
 pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> BuildResult<()> {
     let target = ProjectPath::new(target)?;
-    let force = c.options.force && c.session.stack.is_empty();
+    let force = c.options.force
+        && (c.session.stack.is_empty()
+            || (c.session.stack.len() == 1
+                && matches!(select_rule(c, c.session.stack[0].as_str()),
+                    Ok(TargetMatch::Rule { id, outputs, .. })
+                    if c.project.rules[id.0].kind == OutputKind::Directory
+                        && outputs[0] == target)));
     if c.session.built.contains(&target) && !force {
         return Ok(());
     }
@@ -196,14 +202,7 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildR
             }
         }
     }
-    if !c.options.jobs.is_parallel() || targets.len() <= 1 {
-        for target in targets {
-            build(c, target.as_str(), None)?;
-        }
-        return Ok(());
-    }
-
-    let mut parallel_targets = Vec::new();
+    let mut group_targets = Vec::new();
     let mut groups = HashSet::new();
     for target in targets {
         let group = select_rule(c, target.as_str())
@@ -213,43 +212,60 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildR
             })
             .unwrap_or_else(|_| target.to_string());
         if groups.insert(group) {
-            parallel_targets.push(target.clone());
+            group_targets.push(target.clone());
         }
     }
-    for batch in parallel_batches(&parallel_targets, c.options.jobs, |target| {
-        rule_jobs(c, target.as_str())
-    }) {
-        let base = c.clone();
-        let results = std::thread::scope(|scope| {
-            let mut handles = Vec::new();
-            for target in batch {
-                let target = target.clone();
-                let mut child = base.clone();
-                child.options.jobs = Jobs::default();
-                handles.push(scope.spawn(move || {
-                    let result = build(&mut child, target.as_str(), None);
-                    (child, result)
-                }));
-            }
-            handles
-                .into_iter()
-                .map(|handle| {
-                    handle
-                        .join()
-                        .map_err(|_| BuildError::from("parallel build worker panicked"))
-                })
-                .collect::<BuildResult<Vec<_>>>()
-        })?;
-        for (child, result) in results {
-            result?;
-            for (key, saved) in child.session.state.rules {
-                if base.session.state.rules.get(&key) != Some(&saved) {
-                    c.session.state.rules.insert(key, saved);
+    if !c.options.jobs.is_parallel() || group_targets.len() <= 1 {
+        for target in &group_targets {
+            build(c, target.as_str(), None)?;
+        }
+    } else {
+        for batch in parallel_batches(&group_targets, c.options.jobs, |target| {
+            rule_jobs(c, target.as_str())
+        }) {
+            let base = c.clone();
+            let results = std::thread::scope(|scope| {
+                let mut handles = Vec::new();
+                for target in batch {
+                    let target = target.clone();
+                    let mut child = base.clone();
+                    child.options.jobs = Jobs::default();
+                    handles.push(scope.spawn(move || {
+                        let result = build(&mut child, target.as_str(), None);
+                        (child, result)
+                    }));
                 }
+                handles
+                    .into_iter()
+                    .map(|handle| {
+                        handle
+                            .join()
+                            .map_err(|_| BuildError::from("parallel build worker panicked"))
+                    })
+                    .collect::<BuildResult<Vec<_>>>()
+            })?;
+            for (child, result) in results {
+                result?;
+                for (key, saved) in child.session.state.rules {
+                    if base.session.state.rules.get(&key) != Some(&saved) {
+                        c.session.state.rules.insert(key, saved);
+                    }
+                }
+                c.session.built.extend(child.session.built);
+                c.session.cargo_deps.extend(child.session.cargo_deps);
+                c.session.cargo_env.extend(child.session.cargo_env);
             }
-            c.session.built.extend(child.session.built);
-            c.session.cargo_deps.extend(child.session.cargo_deps);
-            c.session.cargo_env.extend(child.session.cargo_env);
+        }
+    }
+    if !c.options.dry && !c.options.explain {
+        for target in targets {
+            if let TargetMatch::Rule { id, outputs, .. } = select_rule(c, target.as_str())?
+                && c.project.rules[id.0].kind == OutputKind::Directory
+                && outputs[0] != *target
+            {
+                crate::directory::validate_member(&c.project.root, &outputs[0], target.as_str())
+                    .map_err(|error| format!("{}: {error}", c.project.rules[id.0].source))?;
+            }
         }
     }
     Ok(())
@@ -268,6 +284,16 @@ pub(crate) fn build_inner(
         c.session.built.insert(ProjectPath::new(target)?);
         return Ok(());
     };
+    if c.project.rules[id.0].kind == OutputKind::Directory && outputs[0].as_str() != target {
+        let owner = &outputs[0];
+        build(c, owner.as_str(), None)?;
+        if !c.options.dry && !c.options.explain {
+            crate::directory::validate_member(&c.project.root, owner, target)
+                .map_err(|error| format!("{}: {error}", c.project.rules[id.0].source))?;
+        }
+        c.session.built.insert(ProjectPath::new(target)?);
+        return Ok(());
+    }
     if let Some(stem) = &stem {
         c.session.active_patterns.push((id, stem.len()));
     }
@@ -349,13 +375,6 @@ pub(crate) fn build_inner(
         }
     }
     let parallel = !has_glob && c.options.jobs.is_parallel() && parallel_candidates.len() > 1;
-    let parallel_targets: HashSet<String> = parallel_candidates
-        .iter()
-        .filter_map(|d| match d {
-            Dependency::File(path) => Some(path.clone()),
-            _ => None,
-        })
-        .collect();
     if parallel {
         let base = c.clone();
         let mut parallel_deps = Vec::new();
@@ -440,9 +459,7 @@ pub(crate) fn build_inner(
                     let generated = select_rule(c, path)
                         .map(|selection| matches!(selection, TargetMatch::Rule { .. }))
                         .unwrap_or(false);
-                    if !parallel || !parallel_targets.contains(path) {
-                        build(c, path, None).map_err(|e| required_by(e, target))?;
-                    }
+                    build(c, path, None).map_err(|e| required_by(e, target))?;
                     if !generated {
                         record_cargo_dependency(c, &dependency);
                     }
@@ -1568,6 +1585,27 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
             }
         }
     }
+    let ancestors: Vec<_> = Path::new(t).ancestors().skip(1).collect();
+    for ancestor in ancestors
+        .into_iter()
+        .rev()
+        .filter(|path| !path.as_os_str().is_empty())
+    {
+        let ancestor = ancestor.to_string_lossy();
+        if c.project.rules.iter().any(|rule| {
+            rule.kind == OutputKind::Directory
+                && rule.outputs.iter().any(|output| {
+                    if rule.pattern {
+                        PercentPattern::new(output.as_str())
+                            .is_some_and(|pattern| pattern.capture(&ancestor).is_some())
+                    } else {
+                        output.as_str() == ancestor
+                    }
+                })
+        }) {
+            return select_rule(c, &ancestor);
+        }
+    }
     let mut found = Vec::new();
     for (i, r) in c
         .project
@@ -1812,6 +1850,8 @@ pub(crate) fn dependency_signature(c: &mut BuildCtx, dependency: &Dependency) ->
     {
         return match fs::symlink_metadata(&q) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok("MISSING".into()),
+            Ok(metadata) if metadata.file_type().is_symlink() => hash_symlink(&q),
+            Ok(metadata) if metadata.is_file() => cached_file_hash(c, &q),
             _ => crate::hash::hash_directory(&q),
         };
     }

@@ -64,6 +64,7 @@ The current implementation includes the core artifact graph, including:
   dependencies and Make-style escaping/continuations
 - opt-in atomic publication for declared file outputs through `@atomic`
 - explicit trailing-slash directory artifacts with atomic whole-tree publication
+  and child requests resolved through concrete and pattern directory owners
 - partial declared output sets through `@allow-missing`, including persisted
   absent-output outcomes and subset cleanup
 - explicit command-output freshness probes through `command(...)`
@@ -392,11 +393,37 @@ outputs too. A directory rule MUST have exactly one output and `@atomic`, and
 MUST NOT use `@allow-missing` or `@outputs-from(...)`.
 
 The root is one whole-graph artifact. Plain dependencies on the root build its
-producer and fingerprint the tree; child paths do not implicitly build the root.
+producer and fingerprint the tree. Direct child requests and plain file
+dependencies MUST resolve a declared concrete or pattern directory owner, build
+that root once, then validate the requested member. Sibling requests and mixed
+child/root requests share one build even with `--force`, in either order; forcing
+a single child still forces its root. The child is a member of the
+root artifact, not a separate output or persisted output group. Exact declarations
+and remembered dynamic outputs retain precedence and existing overlap checks.
+Otherwise, directory owners take precedence over file patterns and existing source
+files. Resolve the shallowest matching ancestor; nested directory pattern matches
+cannot create a second owner inside its subtree. Ambiguous root rules remain errors.
+Ownership MUST NOT be inferred from an undeclared directory or obsolete saved root.
+
+A missing member MUST report the rule source, owning root, requested path, and a
+help hint even when the owner recipe succeeded. Successful owner state may remain
+recorded; the requested member and downstream dependent have not succeeded.
+File members fingerprint their contents; real directory members fingerprint their
+whole subtree, including empty directories. A symlink member fingerprints its raw
+target, even if broken, and does not follow its referent. Requests traversing a
+symlink inside the owner MUST fail, including links to other locations in the tree.
+Dry-run and explain resolve owners without requiring unbuilt members to exist.
+
+Dependency globs retain section 10 semantics: they do not infer missing children
+or instantiate directory patterns. A root or child dependency before a glob builds
+the owner before expansion. Existing glob members resolve their owners, but recipes
+that change glob membership still follow the normal fingerprint checks; use an
+explicit earlier dependency when generation can change membership.
+
 `tree(...)` stays freshness-only. Each root owns its entire subtree. Concrete
-declared, remembered, requested, and resolved outputs MUST NOT overlap a directory
-owner. Ancestors matching directory patterns count as owners, even before an
-instance has built. Parallel workers share concrete ownership checks. The project
+declared, remembered, and resolved outputs MUST NOT overlap a directory owner;
+requests for its members do not declare overlapping outputs. Ancestors matching
+directory patterns count as owners, even before an instance has built. Parallel workers share concrete ownership checks. The project
 root, `.need` output trees, symlinked parents, and existing file/symlink roots are
 rejected. An existing unrecorded real directory may be replaced.
 

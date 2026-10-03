@@ -198,3 +198,22 @@ pub(crate) fn publish(root: &Path, temporary: &ProjectPath, output: &ProjectPath
         ))
     }
 }
+
+pub(crate) fn validate_member(root: &Path, owner: &ProjectPath, member: &str) -> Result<()> {
+    let path = root.join(member);
+    for parent in path.ancestors().skip(1) {
+        if parent == root.join(owner.as_str()) {
+            break;
+        }
+        if fs::symlink_metadata(parent).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+            return Err(format!(
+                "directory member {member} traverses symlink {} in owner {owner}\nhelp: request the symlink itself or generate a real directory",
+                parent.display()
+            ));
+        }
+    }
+    fs::symlink_metadata(&path).map_err(|error| format!(
+        "directory owner {owner} did not produce requested member {member}: {error}\nhelp: update the recipe to generate this member or correct the requested path"
+    ))?;
+    Ok(())
+}

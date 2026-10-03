@@ -110,7 +110,7 @@ fn recovery_removes_abandoned_directories_without_following_links() {
 }
 
 #[test]
-fn directory_destination_and_parent_symlinks_and_child_requests_are_rejected() {
+fn directory_destination_and_parent_symlinks_are_rejected_and_members_are_validated() {
     let root = project(RULE);
     fs::write(root.join("input"), "safe").unwrap();
     fs::write(root.join("out"), "file").unwrap();
@@ -119,8 +119,14 @@ fn directory_destination_and_parent_symlinks_and_child_requests_are_rejected() {
     symlink("input", root.join("out")).unwrap();
     assert!(!run(&root, &[]).status.success());
     fs::remove_file(root.join("out")).unwrap();
-    assert!(!run(&root, &["out/child"]).status.success());
-    assert!(!root.join("out").exists());
+    let missing = run(&root, &["out/child"]);
+    assert!(!missing.status.success());
+    assert!(
+        String::from_utf8_lossy(&missing.stderr)
+            .contains("did not produce requested member out/child")
+    );
+    assert!(root.join("out").is_dir());
+    success(&root, &["out/item"]);
     fs::create_dir(root.join("real")).unwrap();
     symlink("real", root.join("parent")).unwrap();
     fs::write(

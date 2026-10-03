@@ -295,8 +295,18 @@ there is no fallback. Variables and patterns work. Exactly one output is allowed
 `@allow-missing` and `@outputs-from` are unsupported.
 
 `need previews` and `need previews/` select the same artifact. A plain root
-dependency builds and fingerprints the whole tree. Child requests do not build
-the parent; `tree(...)` remains freshness-only. Directory outputs exclusively
+dependency builds and fingerprints the whole tree. Child requests such as
+`need previews/icon.svg` and plain file dependencies resolve concrete or pattern
+directory owners, build the root once, and validate the member. Missing members
+report the owner and requested path. Sibling and mixed child/root requests build
+the owner once, including with `--force`; forcing a single child forces its root.
+`need logs previews/icon.svg` selects owner logs without building or validating
+the member. Files track contents; real directories track
+their subtree; symlink entries track raw targets, including broken links. Requests
+through symlinked directories fail. Globs do not infer absent members or instantiate
+directory patterns: put an explicit root or child dependency first, for example
+`archive.tar: previews/ previews/*.svg`, so generation precedes glob expansion.
+`tree(...)` remains freshness-only. Directory outputs exclusively
 own their subtree, including against directory pattern ancestors. Do not declare
 overlapping outputs, the project root, `.need` trees, or symlinked parents.
 Preexisting file/symlink roots are rejected; a real unrecorded directory may be
