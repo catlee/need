@@ -199,6 +199,14 @@ Use `--file PATH` to choose a needfile and `--root PATH` to put outputs, state,
 and logs under a separate project root. `{{needfile.dir}}` still refers to the
 checked-in needfile directory.
 
+## Demos
+
+The [pinned Helix grammar demo](demos/helix-grammars/README.md) builds Linux
+Tree-sitter libraries. Cargo compiles the Rust tools; Need handles content
+freshness, bounded concurrency and atomic file publication. The [measured results
+and integration ledger](demos/helix-grammars/RESULTS.md) account for added
+verification code and the limits of the subset.
+
 ## Agent skill
 
 This repository includes an agent skill for working with `need` and `needfile`:
