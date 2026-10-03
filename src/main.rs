@@ -665,6 +665,9 @@ fn expand_dependencies(
                         .map(|path| Dependency::Tree(path, *follow_symlinks, exclusions.clone())),
                 );
             }
+            ParsedDependency::Stat(value) => {
+                expand_typed(value, vars, env_values, Dependency::Stat, &mut expanded)?
+            }
             ParsedDependency::Mtime(value) => {
                 expand_typed(value, vars, env_values, Dependency::Mtime, &mut expanded)?
             }
@@ -680,6 +683,12 @@ fn expand_dependencies(
                 expanded.push(Dependency::Command(command));
             }
         }
+    }
+    if expanded
+        .iter()
+        .any(|dependency| matches!(dependency, Dependency::Stat(path) if path.is_empty()))
+    {
+        return Err("empty stat() path\nhelp: supply a nonempty filesystem entry path".into());
     }
     Ok(expanded)
 }
@@ -851,7 +860,9 @@ help: atomic publication currently supports declared outputs only"
                     path.matches('%').count() > 1
                         || exclusions.iter().any(|path| path.matches('%').count() > 1)
                 }
-                Dependency::File(path) | Dependency::Mtime(path) => path.matches('%').count() > 1,
+                Dependency::File(path) | Dependency::Mtime(path) | Dependency::Stat(path) => {
+                    path.matches('%').count() > 1
+                }
                 Dependency::Env(_) | Dependency::String(_) => false,
                 Dependency::Command(_) => false,
             })
@@ -1580,6 +1591,146 @@ mod tests {
             ":3: recipe must be indented deeper than dependency continuation\nhelp: indent this line farther than the dependency continuation above it"
         ));
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn stat_dependencies_parse_expand_and_resolve_paths() {
+        let root = temp_project("stat-expansion");
+        let path = root.join("needfile");
+        fs::write(&path, "paths = 'one path'\ndeps = 'stat(two)' 'stat(three path)'\nout/%: stat({{paths}}) {{deps}} stat(\"tools/%\")\n  touch {{out}}\n").unwrap();
+        let (vars, rules) = parse_needfile(&path).unwrap();
+        let expanded = expand_dependencies(&rules[0].deps, &vars, &HashMap::new()).unwrap();
+        assert_eq!(
+            expanded,
+            vec![
+                Dependency::Stat("one path".into()),
+                Dependency::Stat("two".into()),
+                Dependency::Stat("three path".into()),
+                Dependency::Stat("tools/%".into())
+            ]
+        );
+        assert_eq!(
+            resolve_dependency(&expanded[3], true, Some("nested/item")).unwrap(),
+            Dependency::Stat("tools/nested/item".into())
+        );
+        for expression in ["stat()", "stat(\"\")"] {
+            fs::write(&path, format!("out: {expression}\n  touch {{{{out}}}}\n")).unwrap();
+            let error = parse_needfile(&path).unwrap_err();
+            assert!(error.contains("needfile:1: empty stat() path"));
+            assert!(error.contains("help:"));
+        }
+        let vars = HashMap::from([("empty".into(), vec![String::new()])]);
+        assert!(
+            expand_dependencies(
+                &[ParsedDependency::Stat("{{empty}}".into())],
+                &vars,
+                &HashMap::new()
+            )
+            .unwrap_err()
+            .contains("empty stat() path")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stat_signatures_track_only_entry_kind_mode_and_raw_link_target() {
+        use std::os::unix::{
+            ffi::OsStringExt,
+            fs::{PermissionsExt, symlink},
+        };
+        let root = temp_project("stat-signature");
+        let path = root.join("entry");
+        let mut ctx = BuildCtx {
+            project: ProjectData {
+                root: root.clone(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let dependency = Dependency::Stat("entry".into());
+        let signature = |ctx: &mut BuildCtx| dependency_signature(ctx, &dependency).unwrap();
+        let missing = signature(&mut ctx);
+        assert_eq!(missing, signature(&mut ctx));
+        fs::write(&path, "one").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        let file = signature(&mut ctx);
+        assert_ne!(missing, file);
+        fs::write(&path, "different content and size").unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(std::time::UNIX_EPOCH))
+            .unwrap();
+        assert_eq!(file, signature(&mut ctx));
+        fs::hard_link(&path, root.join("alias")).unwrap();
+        assert_eq!(file, signature(&mut ctx));
+        fs::remove_file(&path).unwrap();
+        fs::write(&path, "replacement inode").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(file, signature(&mut ctx));
+        for mode in [0o755, 0o4755, 0o2755, 0o1755] {
+            fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
+            let changed = signature(&mut ctx);
+            assert_ne!(file, changed);
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+            if mode != 0o755 {
+                assert_ne!(signature(&mut ctx), changed);
+            }
+        }
+        let executable = signature(&mut ctx);
+        fs::remove_file(&path).unwrap();
+        assert_eq!(missing, signature(&mut ctx));
+        fs::create_dir(&path).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        let directory = signature(&mut ctx);
+        assert_ne!(executable, directory);
+        fs::write(path.join("child"), "child").unwrap();
+        fs::create_dir(path.join("subdirectory")).unwrap();
+        assert_eq!(directory, signature(&mut ctx));
+        fs::remove_dir_all(&path).unwrap();
+        symlink("referent", &path).unwrap();
+        let broken = signature(&mut ctx);
+        fs::write(root.join("referent"), "referent").unwrap();
+        fs::set_permissions(root.join("referent"), fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(broken, signature(&mut ctx));
+        fs::remove_file(&path).unwrap();
+        symlink("./referent", &path).unwrap();
+        assert_ne!(broken, signature(&mut ctx));
+        let mut raw_signatures = Vec::new();
+        for byte in [0xfe, 0xff] {
+            fs::remove_file(&path).unwrap();
+            symlink(std::ffi::OsString::from_vec(vec![byte]), &path).unwrap();
+            raw_signatures.push(signature(&mut ctx));
+        }
+        assert_ne!(raw_signatures[0], raw_signatures[1]);
+        assert!(ctx.session.state.hashes.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stat_dependency_errors_include_entry_source_and_help() {
+        let root = temp_project("stat-error");
+        fs::write(root.join("file"), "file").unwrap();
+        let mut ctx = context(&root, "out: stat(file/child)\n  touch {{out}}\n");
+        let error = build(&mut ctx, "out", None).unwrap_err().to_string();
+        assert!(error.contains("needfile:1:"));
+        assert!(error.contains("file/child"));
+        assert!(error.contains("help:"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(not(unix))]
+    #[test]
+    fn stat_is_unsupported_even_for_missing_entries() {
+        let mut ctx = BuildCtx::default();
+        let error =
+            dependency_signature(&mut ctx, &Dependency::Stat("missing".into())).unwrap_err();
+        assert!(error.contains("unsupported"));
+        assert!(error.contains("missing"));
+        assert!(error.contains("help:"));
     }
 
     #[test]

@@ -66,9 +66,17 @@ public/logo.png public/icon.png: {{assets}} env(BRAND_COLOR)
   render-assets {{in}} --color "{{env.BRAND_COLOR}}" --out {{out}}
 ```
 
-Use `file(path)`, `tree(path)`, `mtime(path)`, `env(NAME)`, `string(value)`,
-and `command(command)` when file-content freshness is not the right model.
+Use `file(path)`, `tree(path)`, `mtime(path)`, `stat(path)`, `env(NAME)`,
+`string(value)`, and `command(command)` when file-content freshness is not the right model.
 `tree(path)` does not follow symlinks unless given `follow-symlinks=true`.
+
+`stat(path)` tracks one entry without following symlinks: presence, file type,
+exact Unix mode bits (including special bits), and the raw symlink target.
+Contents, timestamps, size, directory children, ownership, inode/device, and
+link count do not affect it. Missing entries have a stable signature. It is
+freshness-only: it adds no graph edge or `{{in}}` argument. Non-Unix platforms
+reject it explicitly. Use `file(path) stat(path)` to track both content and
+metadata.
 
 Use `tree(src, exclude=.build, exclude=Tests)` to exclude exact files or
 subtrees relative to the tree root. Repeat `exclude=PATH` as needed and combine

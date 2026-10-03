@@ -414,7 +414,7 @@ pub(crate) fn build_inner(
             }
             let (path, should_build, should_input) = match &dependency {
                 Dependency::File(path) => (Some(path.as_str()), true, true),
-                Dependency::Tree(path, _, _) | Dependency::Mtime(path) => {
+                Dependency::Tree(path, _, _) | Dependency::Mtime(path) | Dependency::Stat(path) => {
                     (Some(path.as_str()), false, false)
                 }
                 Dependency::Env(_) | Dependency::String(_) => (None, false, false),
@@ -832,7 +832,8 @@ fn input_signature(
                         format!("Tree({path:?}, {follow:?})"),
                     _ => format!("{dependency:?}"),
                 },
-                dependency_signature(c, dependency)?
+                dependency_signature(c, dependency)
+                    .map_err(|error| format!("{}: {error}", rule.source))?
             ))
         })
         .collect::<Result<Vec<_>>>()?;
@@ -1252,7 +1253,10 @@ pub(crate) fn record_cargo_dependency(c: &mut BuildCtx, dependency: &Dependency)
         Dependency::Env(name) => {
             c.session.cargo_env.insert(name.clone());
         }
-        Dependency::File(path) | Dependency::Tree(path, _, _) | Dependency::Mtime(path) => {
+        Dependency::File(path)
+        | Dependency::Tree(path, _, _)
+        | Dependency::Mtime(path)
+        | Dependency::Stat(path) => {
             c.session.cargo_deps.insert(path.clone());
         }
         Dependency::String(_) | Dependency::Command(_) => {}
@@ -1365,6 +1369,7 @@ pub(crate) fn resolve_dependency(
                     .collect(),
             )?,
         )),
+        Dependency::Stat(path) => Ok(Dependency::Stat(resolve_pattern_path(path, pattern, stem)?)),
         Dependency::Mtime(path) => Ok(Dependency::Mtime(resolve_pattern_path(
             path, pattern, stem,
         )?)),
@@ -1725,6 +1730,7 @@ pub(crate) fn dependency_signature(c: &mut BuildCtx, dependency: &Dependency) ->
         Dependency::File(path) => path,
         Dependency::Tree(path, _, _) => path,
         Dependency::Mtime(path) => path,
+        Dependency::Stat(path) => return stat_signature(&abs(c, path)),
         Dependency::Env(name) => {
             let value = c.project.env_values.get(name).cloned().unwrap_or_default();
             return Ok(hash_text(&format!("{name}={value}")));
@@ -1784,6 +1790,40 @@ pub(crate) fn dependency_signature(c: &mut BuildCtx, dependency: &Dependency) ->
         return Ok(hash_text(&a.join("\n")));
     }
     cached_file_hash(c, &q)
+}
+
+#[cfg(unix)]
+fn stat_signature(path: &Path) -> Result<String> {
+    use std::os::unix::{ffi::OsStrExt, fs::MetadataExt};
+
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok("MISSING".into()),
+        Err(error) => {
+            return Err(format!(
+                "could not inspect stat dependency {}: {error}\nhelp: check access to the entry and its parent directories",
+                path.display()
+            ));
+        }
+    };
+    let mut signature = blake3::Hasher::new();
+    signature.update(&metadata.mode().to_le_bytes());
+    if metadata.file_type().is_symlink() {
+        let target = fs::read_link(path).map_err(|error| format!(
+            "could not read stat dependency symlink {}: {error}\nhelp: check access to the link and retry the build",
+            path.display()
+        ))?;
+        signature.update(target.as_os_str().as_bytes());
+    }
+    Ok(signature.finalize().to_hex().to_string())
+}
+
+#[cfg(not(unix))]
+fn stat_signature(path: &Path) -> Result<String> {
+    Err(format!(
+        "stat dependency {} is unsupported on this platform\nhelp: use a Unix platform to track exact filesystem mode bits",
+        path.display()
+    ))
 }
 
 fn command_signature(c: &mut BuildCtx, command: &str) -> Result<String> {

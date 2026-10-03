@@ -104,8 +104,8 @@ build/%.o: src/%.c
   cc -MMD -MF build/{{stem}}.d -c {{in}} -o {{out}}
 ```
 
-Use `file(path)`, `tree(path)`, `mtime(path)`, `env(NAME)`, `string(value)`, and
-`command(shell probe)` when the default file-content dependency is not the
+Use `file(path)`, `tree(path)`, `mtime(path)`, `stat(path)`, `env(NAME)`,
+`string(value)`, and `command(shell probe)` when the default file-content dependency is not the
 right semantics. `command(...)` runs from the project root and is
 freshness-only: expanded command text, complete stdout/stderr, and exit status
 are signed; nonzero status stops the build. It does not add a graph edge or
@@ -142,9 +142,13 @@ In `--cargo` mode, Cargo still watches the tree root to detect new members.
 Cargo may rerun the build script after excluded contents change; Need itself
 keeps the artifact current.
 
-`stat(path)` remains specified but is not implemented. Do not use it in a
-needfile; use the existing `file(...)`, `tree(...)`, or `mtime(...)` forms for
-filesystem metadata.
+`stat(path)` tracks one entry without following symlinks: presence, file type,
+exact Unix mode bits (including special bits), and the raw symlink target.
+Contents, timestamps, size, directory children, ownership, inode/device, and
+link count do not affect it. Missing entries have a stable signature. It is
+freshness-only: it adds no graph edge or `{{in}}` argument. Non-Unix platforms
+reject it explicitly. Use `file(path) stat(path)` to track both content and
+metadata.
 
 Syntax lines support inline `#` comments outside quotes and dependency
 expression parentheses. Recipe lines are passed to the shell unchanged; do not

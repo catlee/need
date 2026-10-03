@@ -38,7 +38,7 @@ The current implementation includes the core artifact graph, including:
 - token-list variables with `=`, `+=`, boundary-preserving splicing, and
   embedded cardinality validation, including indented multiline assignments
 - automatic output directories and multiple-output groups
-- file, tree, mtime, environment, and string dependency expressions
+- file, tree, mtime, stat, environment, and string dependency expressions
 - opt-in symlink traversal and repeated exact exclusions for `tree(...)` dependencies
 - opt-in dotenv loading with precedence, custom files, and freshness tracking
 - content-based freshness and persistent state under `.need/`
@@ -70,10 +70,6 @@ The current implementation includes the core artifact graph, including:
 - pre/post input-fingerprint validation around recipe execution
 - signal-aware recipe termination, interrupted logs, atomic state replacement,
   and startup cleanup of abandoned temporary artifacts
-
-The following dependency forms are specified but not yet implemented:
-
-- `stat(path)` for explicit, non-recursive filesystem metadata dependencies
 
 Metadata-assisted BLAKE3 caching is implemented for regular-file hashes. The
 cache is persisted in `.need/state.json` and uses file size plus nanosecond mtime
@@ -1250,7 +1246,7 @@ This is intentionally cheap and coarse.
 
 ### 16.3 Filesystem Metadata
 
-The planned form is:
+The form is:
 
 ```make
 foo: stat(script.sh)
@@ -1261,8 +1257,8 @@ walking a directory and without following a symlink. Its signature includes:
 
 - whether the entry is present
 - the entry type: regular file, directory, symlink, or other filesystem type
-- Unix permission and mode bits, including special mode bits where available
-- the textual symlink target when the entry is a symlink
+- exact Unix mode bits, including file type, permissions, and special bits
+- the raw symlink target bytes when the entry is a symlink
 
 The signature deliberately excludes file contents, directory membership,
 access/modification/status-change timestamps, file size, ownership, inode or
@@ -1276,16 +1272,19 @@ path has a stable missing signature, so creating or removing the entry makes
 the rule stale. A directory's mode can therefore be tracked without making
 its children inputs; use `tree(path)` for recursive membership and content.
 
-The dependency is freshness-only and does not add a path to `{{in}}`. It is
-separate from `file(path)`, which hashes content, and `mtime(path)`, which
+The dependency is freshness-only: it adds no graph edge and no path to `{{in}}`.
+It is separate from `file(path)`, which hashes content, and `mtime(path)`, which
 retains its existing coarse timestamp-and-size semantics. The initial
 implementation scope is Unix metadata. On platforms without Unix mode bits,
-an implementation may reject `stat(...)` with a clear unsupported dependency
-diagnostic rather than silently weakening the signature.
+the implementation rejects `stat(...)` with a clear unsupported dependency
+diagnostic, even for missing entries. Other I/O failures report the path and a
+help hint rather than being treated as missing.
 
-This form is intentionally not accepted by the current prototype. Until it is
-implemented, use the existing dependency kinds or an explicit wrapper
-artifact when a recipe depends on filesystem metadata.
+Paths support ordinary variables, quoted words, token-list splicing, and pattern
+stems using the existing dependency expansion rules. Empty paths are errors.
+Cargo mode records the path like other filesystem freshness dependencies.
+Pre/post recipe fingerprints include `stat(...)`, so a mode or symlink change
+during the recipe prevents successful state from being recorded.
 
 ### 16.4 Directory Tree Content
 
@@ -1379,6 +1378,7 @@ Dependency expressions such as:
 env(...)
 string(...)
 mtime(...)
+stat(...)
 ```
 
 do not automatically appear in `{{in}}`.
@@ -1638,7 +1638,7 @@ Expansion and dependency resolution follow a deterministic order:
 5. Bind % for a selected pattern rule
 6. Substitute the bound stem into dependency patterns
 7. Expand dependency globs
-8. Evaluate dependency expressions such as file(), tree(), mtime(), env(), and string()
+8. Evaluate dependency expressions such as file(), tree(), mtime(), stat(), env(), and string()
 9. Compute the pre-recipe dependency, recipe, and semantic attribute signature
 10. Decide freshness
 11. Interpolate recipe values

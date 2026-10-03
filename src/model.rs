@@ -122,6 +122,7 @@ pub(crate) enum Dependency {
     File(String),
     Tree(String, bool, Vec<String>),
     Mtime(String),
+    Stat(String),
     Env(String),
     String(String),
     Command(String),
@@ -133,6 +134,7 @@ pub(crate) enum ParsedDependency {
     File(String),
     Tree(String, bool, Vec<String>),
     Mtime(String),
+    Stat(String),
     Env(String),
     String(String),
     Command(String),
@@ -145,6 +147,7 @@ impl ParsedDependency {
             | Self::File(value)
             | Self::Tree(value, _, _)
             | Self::Mtime(value)
+            | Self::Stat(value)
             | Self::Env(value)
             | Self::String(value) => value,
             Self::Command(value) => value,

@@ -287,6 +287,10 @@ pub(crate) fn parse_dependency(raw: &str) -> Result<ParsedDependency> {
             ParsedDependency::File as fn(String) -> ParsedDependency,
         ),
         (
+            "stat(",
+            ParsedDependency::Stat as fn(String) -> ParsedDependency,
+        ),
+        (
             "mtime(",
             ParsedDependency::Mtime as fn(String) -> ParsedDependency,
         ),
@@ -304,7 +308,13 @@ pub(crate) fn parse_dependency(raw: &str) -> Result<ParsedDependency> {
         ),
     ] {
         if let Some(value) = raw.strip_prefix(prefix).and_then(|x| x.strip_suffix(')')) {
-            return Ok(constructor(unquote(value)));
+            let value = unquote(value);
+            if prefix == "stat(" && value.is_empty() {
+                return Err(
+                    "empty stat() path\nhelp: supply a nonempty filesystem entry path".into(),
+                );
+            }
+            return Ok(constructor(value));
         }
     }
     Ok(ParsedDependency::File(raw))
@@ -323,13 +333,20 @@ pub(crate) fn parse_expanded_dependency(raw: &str) -> Result<Dependency> {
     }
     for (prefix, constructor) in [
         ("file(", Dependency::File as fn(String) -> Dependency),
+        ("stat(", Dependency::Stat as fn(String) -> Dependency),
         ("mtime(", Dependency::Mtime as fn(String) -> Dependency),
         ("env(", Dependency::Env as fn(String) -> Dependency),
         ("string(", Dependency::String as fn(String) -> Dependency),
         ("command(", Dependency::Command as fn(String) -> Dependency),
     ] {
         if let Some(value) = raw.strip_prefix(prefix).and_then(|x| x.strip_suffix(')')) {
-            return Ok(constructor(unquote(value)));
+            let value = unquote(value);
+            if prefix == "stat(" && value.is_empty() {
+                return Err(
+                    "empty stat() path\nhelp: supply a nonempty filesystem entry path".into(),
+                );
+            }
+            return Ok(constructor(value));
         }
     }
     Ok(Dependency::File(raw))
