@@ -39,7 +39,7 @@ The current implementation includes the core artifact graph, including:
   embedded cardinality validation, including indented multiline assignments
 - automatic output directories and multiple-output groups
 - file, tree, mtime, environment, and string dependency expressions
-- opt-in symlink traversal for `tree(...)` dependencies
+- opt-in symlink traversal and repeated exact exclusions for `tree(...)` dependencies
 - opt-in dotenv loading with precedence, custom files, and freshness tracking
 - content-based freshness and persistent state under `.need/`
 - dry-run, explain, list, force, parallel jobs for dependencies and multiple
@@ -1315,6 +1315,32 @@ contents. Followed targets may be outside the original tree root. Directory
 cycles are detected by resolved directory identity and are not traversed a
 second time on the active recursion path. Broken symlinks remain leaf entries
 and are fingerprinted by their link targets.
+
+Use repeated exact exclusions to leave generated files or unrelated subtrees
+out of a tree dependency:
+
+```make
+app: tree(src, exclude=.build, exclude=Tests, follow-symlinks=true)
+```
+
+Each `exclude=PATH` names a file or directory relative to the tree root and
+excludes that entry and its descendants. Missing entries are ignored. Quote
+paths containing spaces or commas, for example `exclude="a,b c"`; unquoted
+commas separate arguments. Paths support variable expansion and `%` stems in
+pattern rules. Empty paths, absolute paths, the tree root, `..` components,
+and glob syntax (`*`, `?`, `[` or `]`) are errors. There are no ignore files
+or automatic exclusions.
+
+Exclusions match logical traversal paths before inspecting or following an
+entry. Excluding a symlink prevents traversal through it; excluding its real
+path does not exclude another alias. Exclusion order and duplicates do not
+affect freshness, but changing the exclusion set does, even for missing paths.
+Recipes may change excluded contents without failing the input-fingerprint
+check. Unfiltered trees keep their existing signatures.
+
+In `--cargo` mode, Cargo still watches the tree root to detect new members.
+Cargo may rerun the build script after excluded contents change; Need itself
+keeps the artifact current.
 
 This may be expensive for large trees and should be used intentionally.
 

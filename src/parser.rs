@@ -128,6 +128,7 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
                 i
             ));
         }
+        let source = format!("{}:{}", display_path(path), i);
         let mut header = trimmed.to_string();
         let mut continuation_indent = None;
         while header.trim_end().ends_with('\\') {
@@ -149,7 +150,9 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
         let outputs = split_words(o)?;
         let deps = split_words(d)?
             .into_iter()
-            .map(|dependency| parse_dependency_template(&dependency))
+            .map(|dependency| {
+                parse_dependency_template(&dependency).map_err(|error| format!("{source}: {error}"))
+            })
             .collect::<Result<Vec<_>>>()?;
         if outputs.is_empty() {
             return Err("rule has no outputs".into());
@@ -211,6 +214,7 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
             return Err("only one % is supported per pattern".into());
         }
         rules.push(ParsedRule {
+            source,
             outputs: outputs.into_iter().map(|x| unquote(&x)).collect(),
             deps,
             recipe: recipe.join("\n"),
@@ -274,8 +278,8 @@ fn display_path(path: &Path) -> String {
 pub(crate) fn parse_dependency(raw: &str) -> Result<ParsedDependency> {
     let raw = unquote(raw);
     if let Some(value) = raw.strip_prefix("tree(").and_then(|x| x.strip_suffix(')')) {
-        return parse_tree_options(unquote(value))
-            .map(|(path, follow)| ParsedDependency::Tree(path, follow));
+        return parse_tree_options(value)
+            .map(|(path, follow, exclusions)| ParsedDependency::Tree(path, follow, exclusions));
     }
     for (prefix, constructor) in [
         (
@@ -309,8 +313,13 @@ pub(crate) fn parse_dependency(raw: &str) -> Result<ParsedDependency> {
 pub(crate) fn parse_expanded_dependency(raw: &str) -> Result<Dependency> {
     let raw = unquote(raw);
     if let Some(value) = raw.strip_prefix("tree(").and_then(|x| x.strip_suffix(')')) {
-        return parse_tree_options(unquote(value))
-            .map(|(path, follow)| Dependency::Tree(path, follow));
+        return parse_tree_options(value).and_then(|(path, follow, exclusions)| {
+            Ok(Dependency::Tree(
+                path,
+                follow,
+                canonical_exclusions(exclusions)?,
+            ))
+        });
     }
     for (prefix, constructor) in [
         ("file(", Dependency::File as fn(String) -> Dependency),
@@ -326,22 +335,90 @@ pub(crate) fn parse_expanded_dependency(raw: &str) -> Result<Dependency> {
     Ok(Dependency::File(raw))
 }
 
-fn parse_tree_options(value: String) -> Result<(String, bool)> {
-    let Some((path, options)) = value.split_once(',') else {
-        return Ok((unquote(&value), false));
-    };
-    let option = options.trim();
-    if option != "follow-symlinks=true" {
-        return Err(format!(
-            "invalid tree() option {option:?}\nhelp: use `follow-symlinks=true`"
-        ));
+fn parse_tree_options(value: &str) -> Result<(String, bool, Vec<String>)> {
+    let mut quote = None;
+    let mut start = 0;
+    let mut arguments = Vec::new();
+    let mut escaped = false;
+    let mut characters = value.char_indices().peekable();
+    while let Some((index, character)) = characters.next() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match character {
+            '\\' => {
+                escaped = characters.peek().is_some_and(|(_, next)| {
+                    next.is_whitespace() || *next == '\\' || matches!(*next, '\'' | '"')
+                })
+            }
+            '\'' | '"' if quote == Some(character) => quote = None,
+            '\'' | '"' if quote.is_none() => quote = Some(character),
+            ',' if quote.is_none() => {
+                arguments.push(&value[start..index]);
+                start = index + 1;
+            }
+            _ => {}
+        }
     }
-    Ok((unquote(path.trim()), true))
+    arguments.push(&value[start..]);
+    let path = unquote(arguments[0].trim());
+    let mut follow = false;
+    let mut exclusions = Vec::new();
+    for argument in &arguments[1..] {
+        let option = argument.trim();
+        if option == "follow-symlinks=true" && !follow {
+            follow = true;
+        } else if let Some(value) = option.strip_prefix("exclude=") {
+            exclusions.push(unquote(value.trim()));
+        } else {
+            return Err(format!(
+                "invalid tree() option {option:?}\nhelp: use `follow-symlinks=true` or repeated `exclude=PATH` arguments"
+            ));
+        }
+    }
+    Ok((path, follow, exclusions))
+}
+
+pub(crate) fn canonical_exclusions(values: Vec<String>) -> Result<Vec<String>> {
+    let mut exclusions = Vec::new();
+    for value in values {
+        let path = Path::new(&value);
+        if value.is_empty()
+            || path.is_absolute()
+            || path
+                .components()
+                .any(|part| matches!(part, std::path::Component::ParentDir))
+            || value.contains(['*', '?', '[', ']'])
+        {
+            return Err(format!(
+                "invalid tree() exclusion {value:?}\nhelp: use an exact nonempty path relative to the tree root, without `..` or glob syntax"
+            ));
+        }
+        let normalized = path
+            .components()
+            .filter_map(|part| match part {
+                std::path::Component::Normal(part) => Some(part),
+                _ => None,
+            })
+            .collect::<std::path::PathBuf>();
+        if normalized.as_os_str().is_empty() {
+            return Err(format!(
+                "invalid tree() exclusion {value:?}: names the tree root\nhelp: exclude a file or subtree below the tree root"
+            ));
+        }
+        exclusions.push(normalized.to_string_lossy().into_owned());
+    }
+    exclusions.sort();
+    exclusions.dedup();
+    Ok(exclusions)
 }
 
 fn parse_dependency_template(raw: &str) -> Result<ParsedDependency> {
     let raw = unquote(raw);
-    if raw.contains("{{") {
+    if raw.starts_with("tree(") {
+        parse_dependency(&raw)
+    } else if raw.contains("{{") {
         Ok(ParsedDependency::Deferred(raw))
     } else {
         parse_dependency(&raw)
@@ -534,14 +611,27 @@ pub(crate) fn split_words(s: &str) -> Result<Vec<String>> {
                     || quote.is_some_and(|matching| next == matching)
                     || (quote.is_none() && matches!(next, '\'' | '"'));
                 if escapable {
+                    if cur.starts_with("tree(") {
+                        cur.push(c);
+                    }
                     cur.push(next);
                     chars.next();
                 } else {
                     cur.push(c);
                 }
             }
-            '\'' | '"' if quote == Some(c) => quote = None,
-            '\'' | '"' if quote.is_none() => quote = Some(c),
+            '\'' | '"' if quote == Some(c) => {
+                if cur.starts_with("tree(") {
+                    cur.push(c);
+                }
+                quote = None;
+            }
+            '\'' | '"' if quote.is_none() => {
+                if cur.starts_with("tree(") {
+                    cur.push(c);
+                }
+                quote = Some(c);
+            }
             '(' if quote.is_none() => {
                 depth += 1;
                 cur.push(c)

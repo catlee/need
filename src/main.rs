@@ -649,11 +649,20 @@ fn expand_dependencies(
             ParsedDependency::File(value) => {
                 expand_typed(value, vars, env_values, Dependency::File, &mut expanded)?
             }
-            ParsedDependency::Tree(value, follow_symlinks) => {
+            ParsedDependency::Tree(value, follow_symlinks, exclusions) => {
+                let mut expanded_exclusions = Vec::new();
+                for exclusion in exclusions {
+                    let values = expand_words(exclusion, vars, env_values)?;
+                    if values.is_empty() {
+                        return Err("empty tree() exclusion expansion\nhelp: supply a nonempty exact path relative to the tree root".into());
+                    }
+                    expanded_exclusions.extend(values);
+                }
+                let exclusions = canonical_exclusions(expanded_exclusions)?;
                 expanded.extend(
                     expand_words(value, vars, env_values)?
                         .into_iter()
-                        .map(|path| Dependency::Tree(path, *follow_symlinks)),
+                        .map(|path| Dependency::Tree(path, *follow_symlinks, exclusions.clone())),
                 );
             }
             ParsedDependency::Mtime(value) => {
@@ -722,12 +731,14 @@ fn resolve_rules(
     let mut rules = Vec::new();
     for parsed in parsed_rules {
         let mut rule = Rule {
+            source: parsed.source.clone(),
             outputs: parsed
                 .outputs
                 .iter()
                 .map(|output| ProjectPath::output(output))
                 .collect::<Result<Vec<_>>>()?,
-            deps: expand_dependencies(&parsed.deps, vars, env_values)?,
+            deps: expand_dependencies(&parsed.deps, vars, env_values)
+                .map_err(|error| format!("{}: {error}", parsed.source))?,
             recipe: parsed.recipe.clone(),
             options: RuleOptions::default(),
             pattern: false,
@@ -749,6 +760,11 @@ fn resolve_rules(
         }
         for dependency in &parsed.deps {
             collect_env_refs(dependency.template(), raw_vars, &mut rule.env_refs);
+            if let ParsedDependency::Tree(_, _, exclusions) = dependency {
+                for exclusion in exclusions {
+                    collect_env_refs(exclusion, raw_vars, &mut rule.env_refs);
+                }
+            }
         }
         let mut output_words = Vec::new();
         for output in &parsed.outputs {
@@ -831,9 +847,11 @@ help: atomic publication currently supports declared outputs only"
             .iter()
             .any(|value| value.as_str().matches('%').count() > 1)
             || rule.deps.iter().any(|dependency| match dependency {
-                Dependency::File(path) | Dependency::Tree(path, _) | Dependency::Mtime(path) => {
+                Dependency::Tree(path, _, exclusions) => {
                     path.matches('%').count() > 1
+                        || exclusions.iter().any(|path| path.matches('%').count() > 1)
                 }
+                Dependency::File(path) | Dependency::Mtime(path) => path.matches('%').count() > 1,
                 Dependency::Env(_) | Dependency::String(_) => false,
                 Dependency::Command(_) => false,
             })
@@ -1172,7 +1190,7 @@ mod tests {
             expand_dependencies(&rules[0].deps, &vars, &HashMap::new()).unwrap(),
             vec![
                 Dependency::File("toolchain".into()),
-                Dependency::Tree("resources".into(), false)
+                Dependency::Tree("resources".into(), false, vec![])
             ]
         );
         fs::remove_dir_all(root).unwrap();
@@ -1578,7 +1596,7 @@ mod tests {
             rules[0].deps,
             vec![
                 ParsedDependency::File("input".into()),
-                ParsedDependency::Tree("resources".into(), false),
+                ParsedDependency::Tree("resources".into(), false, vec![]),
                 ParsedDependency::Mtime("tool".into()),
                 ParsedDependency::Env("MODE".into()),
                 ParsedDependency::String("v3".into()),
@@ -1589,10 +1607,91 @@ mod tests {
     }
 
     #[test]
+    fn tree_exclusions_expand_without_losing_quoted_commas_or_stems() {
+        let parsed = parse_needfile_text(Path::new("needfile"),
+            "skip = \"a,b c\"\nexpr = tree(src/%, exclude=\"a,b c\", exclude=generated/%, follow-symlinks=true)\nout/%: tree(src/%, exclude={{skip}}, exclude=generated/%) {{expr}}\n  touch {{out}}\n").unwrap();
+        let (raw, rules) = parsed;
+        let vars = resolve_variables(&raw, &HashMap::new()).unwrap();
+        let rules = resolve_rules(&rules, &vars, &HashMap::new(), &raw).unwrap();
+        for dependency in &rules[0].deps {
+            let resolved = resolve_dependency(dependency, true, Some("one")).unwrap();
+            let Dependency::Tree(path, _, exclusions) = resolved else {
+                panic!()
+            };
+            assert_eq!(path, "src/one");
+            assert_eq!(exclusions, vec!["a,b c", "generated/one"]);
+        }
+        assert!(parse_expanded_dependency("tree(src, exclude=a,b)").is_err());
+    }
+
+    #[test]
+    fn tree_exclusions_validate_expanded_values_and_canonicalize() {
+        for value in [
+            "", "/tmp", ".", "./", "a/../b", "../b", "*.rs", "a?", "[ab]",
+        ] {
+            let dependency = ParsedDependency::Tree("src".into(), false, vec!["{{skip}}".into()]);
+            let vars = HashMap::from([("skip".into(), vec![value.into()])]);
+            let error = expand_dependencies(&[dependency], &vars, &HashMap::new()).unwrap_err();
+            assert!(error.contains("help:"), "{error}");
+        }
+        assert_eq!(
+            parse_expanded_dependency("tree(src, exclude=z/, exclude=./a, exclude=z)").unwrap(),
+            Dependency::Tree("src".into(), false, vec!["a".into(), "z".into()])
+        );
+        let dependency = Dependency::Tree("src".into(), false, vec!["%".into()]);
+        assert!(
+            resolve_dependency(&dependency, true, Some("../bad"))
+                .unwrap_err()
+                .contains("help:")
+        );
+    }
+
+    #[test]
+    fn tree_exclusions_prune_logical_paths_and_sign_missing_exclusions() {
+        let root = temp_project("tree-exclusions");
+        fs::create_dir_all(root.join("src/skip/sub")).unwrap();
+        fs::write(root.join("src/keep"), "one").unwrap();
+        fs::write(root.join("src/skip/sub/input"), "one").unwrap();
+        let mut ctx = BuildCtx {
+            project: ProjectData {
+                root: root.clone(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let dependency =
+            Dependency::Tree("src".into(), true, vec!["skip".into(), "missing".into()]);
+        let before = dependency_signature(&mut ctx, &dependency).unwrap();
+        fs::write(root.join("src/skip/sub/input"), "changed").unwrap();
+        fs::write(root.join("src/missing"), "new").unwrap();
+        assert_eq!(before, dependency_signature(&mut ctx, &dependency).unwrap());
+        let other = Dependency::Tree(
+            "src".into(),
+            true,
+            vec!["skip".into(), "missing".into(), "absent".into()],
+        );
+        assert_ne!(before, dependency_signature(&mut ctx, &other).unwrap());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            symlink("skip", root.join("src/alias")).unwrap();
+            symlink("does-not-exist", root.join("src/broken")).unwrap();
+            let entries = walk(&root.join("src"), true, &["skip".into(), "broken".into()]).unwrap();
+            assert!(entries.contains(&root.join("src/alias/sub/input")));
+            assert!(!entries.contains(&root.join("src/skip/sub/input")));
+            assert!(!entries.contains(&root.join("src/broken")));
+            let entries = walk(&root.join("src"), true, &["alias".into()]).unwrap();
+            assert!(!entries.contains(&root.join("src/alias")));
+            assert!(entries.contains(&root.join("src/skip/sub/input")));
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn parses_opt_in_tree_symlink_traversal() {
         assert_eq!(
             parse_expanded_dependency("tree(themes, follow-symlinks=true)").unwrap(),
-            Dependency::Tree("themes".into(), true)
+            Dependency::Tree("themes".into(), true, vec![])
         );
         assert!(
             parse_expanded_dependency("tree(themes, follow-symlinks=false)")
@@ -1607,12 +1706,20 @@ mod tests {
         assert_eq!(
             vec![
                 resolve_dependency(&Dependency::File("src/%.yml".into()), true, stem),
-                resolve_dependency(&Dependency::Tree("resources/%".into(), false), true, stem),
+                resolve_dependency(
+                    &Dependency::Tree("resources/%".into(), false, vec![]),
+                    true,
+                    stem
+                ),
                 resolve_dependency(&Dependency::Mtime("tools/%".into()), true, stem),
             ],
             vec![
                 Ok(Dependency::File("src/icons/logo.yml".into())),
-                Ok(Dependency::Tree("resources/icons/logo".into(), false)),
+                Ok(Dependency::Tree(
+                    "resources/icons/logo".into(),
+                    false,
+                    vec![]
+                )),
                 Ok(Dependency::Mtime("tools/icons/logo".into())),
             ]
         );
@@ -1634,8 +1741,11 @@ mod tests {
         let file =
             dependency_signature(&mut ctx, &Dependency::File("resources/input".into())).unwrap();
         assert_eq!(ctx.session.state.hashes.len(), 1);
-        let tree =
-            dependency_signature(&mut ctx, &Dependency::Tree("resources".into(), false)).unwrap();
+        let tree = dependency_signature(
+            &mut ctx,
+            &Dependency::Tree("resources".into(), false, vec![]),
+        )
+        .unwrap();
         let mtime = dependency_signature(&mut ctx, &Dependency::Mtime("tool".into())).unwrap();
         fs::write(root.join("resources/other"), "other").unwrap();
         assert_eq!(
@@ -1644,7 +1754,11 @@ mod tests {
         );
         assert_ne!(
             tree,
-            dependency_signature(&mut ctx, &Dependency::Tree("resources".into(), false)).unwrap()
+            dependency_signature(
+                &mut ctx,
+                &Dependency::Tree("resources".into(), false, vec![])
+            )
+            .unwrap()
         );
         assert_eq!(
             mtime,
@@ -1671,15 +1785,21 @@ mod tests {
             ..Default::default()
         };
 
-        let first =
-            dependency_signature(&mut ctx, &Dependency::Tree("resources".into(), false)).unwrap();
-        let second =
-            dependency_signature(&mut ctx, &Dependency::Tree("resources".into(), false)).unwrap();
+        let first = dependency_signature(
+            &mut ctx,
+            &Dependency::Tree("resources".into(), false, vec![]),
+        )
+        .unwrap();
+        let second = dependency_signature(
+            &mut ctx,
+            &Dependency::Tree("resources".into(), false, vec![]),
+        )
+        .unwrap();
 
         assert_eq!(first, second);
         assert_eq!(ctx.session.state.hashes.len(), 1);
         assert_eq!(
-            walk(&tree, false).unwrap(),
+            walk(&tree, false, &[]).unwrap(),
             vec![tree.join("input"), tree.join("self")]
         );
         fs::remove_dir_all(root).unwrap();
@@ -1706,15 +1826,21 @@ mod tests {
             ..Default::default()
         };
 
-        let followed =
-            dependency_signature(&mut ctx, &Dependency::Tree("resources".into(), true)).unwrap();
+        let followed = dependency_signature(
+            &mut ctx,
+            &Dependency::Tree("resources".into(), true, vec![]),
+        )
+        .unwrap();
         fs::write(external.join("nested/input"), "two").unwrap();
-        let changed =
-            dependency_signature(&mut ctx, &Dependency::Tree("resources".into(), true)).unwrap();
+        let changed = dependency_signature(
+            &mut ctx,
+            &Dependency::Tree("resources".into(), true, vec![]),
+        )
+        .unwrap();
 
         assert_ne!(followed, changed);
         assert!(
-            walk(&root.join("resources"), true)
+            walk(&root.join("resources"), true, &[])
                 .unwrap()
                 .iter()
                 .any(|path| path.ends_with("nested/input"))

@@ -7,17 +7,19 @@ use std::{
 
 use crate::Result;
 
-pub(crate) fn walk(p: &Path, follow_symlinks: bool) -> Result<Vec<PathBuf>> {
+pub(crate) fn walk(p: &Path, follow_symlinks: bool, exclusions: &[String]) -> Result<Vec<PathBuf>> {
     let mut v = Vec::new();
     let mut ancestors = HashSet::new();
-    walk_into(p, follow_symlinks, &mut ancestors, &mut v)?;
+    walk_into(p, p, follow_symlinks, exclusions, &mut ancestors, &mut v)?;
     v.sort();
     Ok(v)
 }
 
 fn walk_into(
     p: &Path,
+    root: &Path,
     follow_symlinks: bool,
+    exclusions: &[String],
     ancestors: &mut HashSet<PathBuf>,
     paths: &mut Vec<PathBuf>,
 ) -> Result<()> {
@@ -28,9 +30,15 @@ fn walk_into(
     for entry in fs::read_dir(p).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
+        if exclusions
+            .iter()
+            .any(|excluded| path.strip_prefix(root).unwrap().starts_with(excluded))
+        {
+            continue;
+        }
         let file_type = entry.file_type().map_err(|e| e.to_string())?;
         if file_type.is_dir() {
-            walk_into(&path, follow_symlinks, ancestors, paths)?;
+            walk_into(&path, root, follow_symlinks, exclusions, ancestors, paths)?;
         } else {
             paths.push(path.clone());
             if follow_symlinks && file_type.is_symlink() {
@@ -38,7 +46,7 @@ fn walk_into(
                     continue;
                 };
                 if target.is_dir() {
-                    walk_into(&path, true, ancestors, paths)?;
+                    walk_into(&path, root, true, exclusions, ancestors, paths)?;
                 }
             }
         }

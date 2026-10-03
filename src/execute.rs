@@ -24,7 +24,7 @@ use crate::{
         BuildCtx, Dependency, Jobs, OutputMode, ProjectPath, RuleId, SavedManifest, SavedRule,
         TargetMatch,
     },
-    parser::norm_rel,
+    parser::{canonical_exclusions, norm_rel},
 };
 
 #[derive(Debug)]
@@ -265,7 +265,8 @@ pub(crate) fn build_inner(
     let mut resolved_deps = Vec::new();
     let mut has_glob = false;
     for dependency in &rule.deps {
-        let d = resolve_dependency(dependency, rule.pattern, stem.as_deref())?;
+        let d = resolve_dependency(dependency, rule.pattern, stem.as_deref())
+            .map_err(|error| format!("{}: {error}", rule.source))?;
         if let Dependency::File(path) = &d {
             has_glob |= is_glob(path);
         }
@@ -413,7 +414,7 @@ pub(crate) fn build_inner(
             }
             let (path, should_build, should_input) = match &dependency {
                 Dependency::File(path) => (Some(path.as_str()), true, true),
-                Dependency::Tree(path, _) | Dependency::Mtime(path) => {
+                Dependency::Tree(path, _, _) | Dependency::Mtime(path) => {
                     (Some(path.as_str()), false, false)
                 }
                 Dependency::Env(_) | Dependency::String(_) => (None, false, false),
@@ -825,7 +826,12 @@ fn input_signature(
         .iter()
         .map(|dependency| {
             Ok(format!(
-                "{dependency:?}={}",
+                "{}={}",
+                match dependency {
+                    Dependency::Tree(path, follow, exclusions) if exclusions.is_empty() =>
+                        format!("Tree({path:?}, {follow:?})"),
+                    _ => format!("{dependency:?}"),
+                },
                 dependency_signature(c, dependency)?
             ))
         })
@@ -1246,7 +1252,7 @@ pub(crate) fn record_cargo_dependency(c: &mut BuildCtx, dependency: &Dependency)
         Dependency::Env(name) => {
             c.session.cargo_env.insert(name.clone());
         }
-        Dependency::File(path) | Dependency::Tree(path, _) | Dependency::Mtime(path) => {
+        Dependency::File(path) | Dependency::Tree(path, _, _) | Dependency::Mtime(path) => {
             c.session.cargo_deps.insert(path.clone());
         }
         Dependency::String(_) | Dependency::Command(_) => {}
@@ -1343,9 +1349,21 @@ pub(crate) fn resolve_dependency(
 ) -> Result<Dependency> {
     match dependency {
         Dependency::File(path) => Ok(Dependency::File(resolve_pattern_path(path, pattern, stem)?)),
-        Dependency::Tree(path, follow_symlinks) => Ok(Dependency::Tree(
+        Dependency::Tree(path, follow_symlinks, exclusions) => Ok(Dependency::Tree(
             resolve_pattern_path(path, pattern, stem)?,
             *follow_symlinks,
+            canonical_exclusions(
+                exclusions
+                    .iter()
+                    .map(|value| {
+                        if pattern {
+                            value.replace('%', stem.unwrap_or(""))
+                        } else {
+                            value.clone()
+                        }
+                    })
+                    .collect(),
+            )?,
         )),
         Dependency::Mtime(path) => Ok(Dependency::Mtime(resolve_pattern_path(
             path, pattern, stem,
@@ -1705,7 +1723,7 @@ fn automatic_interpolation(
 pub(crate) fn dependency_signature(c: &mut BuildCtx, dependency: &Dependency) -> Result<String> {
     let path = match dependency {
         Dependency::File(path) => path,
-        Dependency::Tree(path, _) => path,
+        Dependency::Tree(path, _, _) => path,
         Dependency::Mtime(path) => path,
         Dependency::Env(name) => {
             let value = c.project.env_values.get(name).cloned().unwrap_or_default();
@@ -1733,9 +1751,9 @@ pub(crate) fn dependency_signature(c: &mut BuildCtx, dependency: &Dependency) ->
             ));
         }
     }
-    if let Dependency::Tree(_, follow_symlinks) = dependency {
+    if let Dependency::Tree(_, follow_symlinks, exclusions) = dependency {
         let mut a = Vec::new();
-        for e in walk(&q, *follow_symlinks)? {
+        for e in walk(&q, *follow_symlinks, exclusions)? {
             let hash = if fs::symlink_metadata(&e)
                 .map_err(|error| error.to_string())?
                 .file_type()
@@ -1759,6 +1777,9 @@ pub(crate) fn dependency_signature(c: &mut BuildCtx, dependency: &Dependency) ->
                 e.strip_prefix(&q).unwrap().to_string_lossy(),
                 hash
             ))
+        }
+        if !exclusions.is_empty() {
+            a.push(format!("exclusions:{exclusions:?}"));
         }
         return Ok(hash_text(&a.join("\n")));
     }

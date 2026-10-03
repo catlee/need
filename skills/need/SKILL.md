@@ -116,6 +116,32 @@ appear in `{{in}}`, and automatic variables are not allowed in probes.
 symlink targets remain part of the fingerprint, external targets are allowed,
 and directory cycles terminate safely.
 
+Use repeated exact exclusions to leave generated files or unrelated subtrees
+out of a tree dependency:
+
+```make
+app: tree(src, exclude=.build, exclude=Tests, follow-symlinks=true)
+```
+
+Each `exclude=PATH` names a file or directory relative to the tree root and
+excludes that entry and its descendants. Missing entries are ignored. Quote
+paths containing spaces or commas, for example `exclude="a,b c"`; unquoted
+commas separate arguments. Paths support variable expansion and `%` stems in
+pattern rules. Empty paths, absolute paths, the tree root, `..` components,
+and glob syntax (`*`, `?`, `[` or `]`) are errors. There are no ignore files
+or automatic exclusions.
+
+Exclusions match logical traversal paths before inspecting or following an
+entry. Excluding a symlink prevents traversal through it; excluding its real
+path does not exclude another alias. Exclusion order and duplicates do not
+affect freshness, but changing the exclusion set does, even for missing paths.
+Recipes may change excluded contents without failing the input-fingerprint
+check. Unfiltered trees keep their existing signatures.
+
+In `--cargo` mode, Cargo still watches the tree root to detect new members.
+Cargo may rerun the build script after excluded contents change; Need itself
+keeps the artifact current.
+
 `stat(path)` remains specified but is not implemented. Do not use it in a
 needfile; use the existing `file(...)`, `tree(...)`, or `mtime(...)` forms for
 filesystem metadata.

@@ -66,6 +66,7 @@ impl AsRef<str> for ProjectPath {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Rule {
+    pub(crate) source: String,
     pub(crate) outputs: Vec<ProjectPath>,
     pub(crate) deps: Vec<Dependency>,
     pub(crate) recipe: String,
@@ -76,6 +77,7 @@ pub(crate) struct Rule {
 
 #[derive(Clone, Debug)]
 pub(crate) struct ParsedRule {
+    pub(crate) source: String,
     pub(crate) outputs: Vec<String>,
     pub(crate) deps: Vec<ParsedDependency>,
     pub(crate) recipe: String,
@@ -118,7 +120,7 @@ pub(crate) enum TargetMatch {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(crate) enum Dependency {
     File(String),
-    Tree(String, bool),
+    Tree(String, bool, Vec<String>),
     Mtime(String),
     Env(String),
     String(String),
@@ -129,7 +131,7 @@ pub(crate) enum Dependency {
 pub(crate) enum ParsedDependency {
     Deferred(String),
     File(String),
-    Tree(String, bool),
+    Tree(String, bool, Vec<String>),
     Mtime(String),
     Env(String),
     String(String),
@@ -141,7 +143,7 @@ impl ParsedDependency {
         match self {
             Self::Deferred(value)
             | Self::File(value)
-            | Self::Tree(value, _)
+            | Self::Tree(value, _, _)
             | Self::Mtime(value)
             | Self::Env(value)
             | Self::String(value) => value,

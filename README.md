@@ -70,6 +70,19 @@ Use `file(path)`, `tree(path)`, `mtime(path)`, `env(NAME)`, `string(value)`,
 and `command(command)` when file-content freshness is not the right model.
 `tree(path)` does not follow symlinks unless given `follow-symlinks=true`.
 
+Use `tree(src, exclude=.build, exclude=Tests)` to exclude exact files or
+subtrees relative to the tree root. Repeat `exclude=PATH` as needed and combine
+it with `follow-symlinks=true`. Quote spaces or commas (`exclude="a,b c"`).
+Variables and `%` stems work as usual. Missing exclusions are ignored; empty,
+absolute, root-equal, parent-traversing, and glob paths are errors. Exclusion
+order and duplicates do not affect freshness. Excluded contents can change
+during a recipe without failing the input check.
+
+Exclusions match logical paths before following symlinks. Excluding one path
+does not hide another alias. There are no ignore files or automatic exclusions.
+Cargo still watches the tree root for membership changes, so excluded changes
+may rerun the build script while Need keeps the artifact current.
+
 Rules can have attributes immediately before their headers:
 
 ```make
