@@ -975,6 +975,225 @@ mod tests {
     }
 
     #[test]
+    fn directory_member_selection_uses_declared_owners_and_rejects_ambiguity() {
+        let root = temp_project("directory-member-selection");
+        let ctx = context(&root, "@atomic\nout/%/:\n  true\n");
+        let TargetMatch::Rule { stem, outputs, .. } =
+            select_rule(&ctx, "out/pkg/nested/item").unwrap()
+        else {
+            panic!("member must resolve its owner")
+        };
+        assert_eq!(stem.as_deref(), Some("pkg"));
+        assert_eq!(outputs, vec![ProjectPath::new("out/pkg").unwrap()]);
+        let ctx = context(&root, "@atomic\nout/pkg/:\n  true\nout/%.txt:\n  true\n");
+        let TargetMatch::Rule { outputs, .. } = select_rule(&ctx, "out/pkg/item.txt").unwrap()
+        else {
+            panic!("directory owner must precede file patterns")
+        };
+        assert_eq!(outputs, vec![ProjectPath::new("out/pkg").unwrap()]);
+        let ctx = context(
+            &root,
+            "@atomic\nout/%/:\n  true\n@atomic\nout/p%/:\n  true\n",
+        );
+        assert!(
+            select_rule(&ctx, "out/pkg/item")
+                .unwrap_err()
+                .contains("ambiguous pattern rules")
+        );
+        let ctx = context(&root, "result:\n  touch {{out}}\n");
+        fs::create_dir_all(root.join("unknown")).unwrap();
+        assert!(
+            select_rule(&ctx, "unknown/item")
+                .unwrap_err()
+                .contains("no rule to produce")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_children_build_concrete_and_pattern_owners_once() {
+        for output in ["generated/pkg/", "generated/%/"] {
+            let root = temp_project("directory-children");
+            let text = format!(
+                "@atomic\n{output}:\n  echo run >> runs\n  mkdir {{{{out}}}}/nested\n  echo first > {{{{out}}}}/a\n  echo second > {{{{out}}}}/nested/b\nresult: generated/pkg/a generated/pkg/nested/b\n  cat {{{{in}}}} > {{{{out}}}}\n"
+            );
+            let mut ctx = context(&root, &text);
+            ctx.options.jobs = Jobs::Limited(2.try_into().unwrap());
+            build_targets(
+                &mut ctx,
+                &[
+                    ProjectPath::new("generated/pkg/a").unwrap(),
+                    ProjectPath::new("generated/pkg/nested/b").unwrap(),
+                ],
+            )
+            .unwrap();
+            build(&mut ctx, "result", None).unwrap();
+            assert_eq!(fs::read_to_string(root.join("runs")).unwrap(), "run\n");
+            assert_eq!(
+                fs::read_to_string(root.join("result")).unwrap(),
+                "first\nsecond\n"
+            );
+            assert_eq!(ctx.session.state.rules.len(), 2);
+            ctx.options.force = true;
+            build(&mut ctx, "generated/pkg/a", None).unwrap();
+            assert_eq!(fs::read_to_string(root.join("runs")).unwrap(), "run\nrun\n");
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn forced_directory_siblings_and_root_build_owner_once_in_either_order() {
+        for parallel in [false, true] {
+            for requests in [
+                vec!["out/a", "out/b"],
+                vec!["out/a", "out"],
+                vec!["out", "out/a"],
+                vec!["out/a"],
+            ] {
+                let root = temp_project("directory-forced-members");
+                let text = "@atomic\nout/:\n  echo run >> runs\n  touch {{out}}/a {{out}}/b\n";
+                let mut initial = context(&root, text);
+                build(&mut initial, "out", None).unwrap();
+                let mut ctx = context(&root, text);
+                ctx.session.state = initial.session.state;
+                ctx.options.force = true;
+                if parallel {
+                    ctx.options.jobs = Jobs::Limited(2.try_into().unwrap());
+                }
+                build_targets(
+                    &mut ctx,
+                    &requests
+                        .into_iter()
+                        .map(|t| ProjectPath::new(t).unwrap())
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap();
+                assert_eq!(fs::read_to_string(root.join("runs")).unwrap(), "run\nrun\n");
+                assert_eq!(ctx.session.state.rules.len(), 1);
+                fs::remove_dir_all(root).unwrap();
+            }
+        }
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_children_validate_every_parallel_request_and_dependency() {
+        let root = temp_project("directory-missing-member");
+        let text = "@atomic\nout/:\n  touch {{out}}/present\nresult: out/present out/missing\n  touch {{out}}\n";
+        for parallel in [false, true] {
+            for downstream in [false, true] {
+                let mut ctx = context(&root, text);
+                if parallel {
+                    ctx.options.jobs = Jobs::Limited(2.try_into().unwrap());
+                }
+                let targets = if downstream {
+                    vec!["result"]
+                } else {
+                    vec!["out/present", "out/missing"]
+                };
+                let error = build_targets(
+                    &mut ctx,
+                    &targets
+                        .into_iter()
+                        .map(|t| ProjectPath::new(t).unwrap())
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap_err()
+                .to_string();
+                assert!(
+                    error.contains("needfile:2")
+                        && error.contains("out/missing")
+                        && error.contains("owner out")
+                        && error.contains("help:"),
+                    "{error}"
+                );
+                assert!(!root.join("result").exists());
+            }
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_child_dependencies_build_on_clean_checkout_and_track_member_contents() {
+        let root = temp_project("directory-member-freshness");
+        fs::write(root.join("input"), "first").unwrap();
+        let text = "@atomic\nout/%/: input\n  mkdir {{out}}/nested\n  cp {{in}} {{out}}/nested/item\nresult: out/pkg/nested/item\n  cat {{in}} > {{out}}\n";
+        let mut ctx = context(&root, text);
+        build(&mut ctx, "result", None).unwrap();
+        assert_eq!(fs::read_to_string(root.join("result")).unwrap(), "first");
+        fs::write(root.join("input"), "second").unwrap();
+        let mut next = context(&root, text);
+        next.session.state = ctx.session.state;
+        build(&mut next, "result", None).unwrap();
+        assert_eq!(fs::read_to_string(root.join("result")).unwrap(), "second");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_members_include_subtrees_and_symlink_entries_without_traversal() {
+        let root = temp_project("directory-member-kinds");
+        let text = "@atomic\nout/:\n  mkdir {{out}}/nested\n  echo content > {{out}}/nested/item\n  ln -s missing {{out}}/broken\n  ln -s nested {{out}}/alias\nresult: out/nested out/broken\n  cat {{in[0]}}/item > {{out}}\n";
+        let mut ctx = context(&root, text);
+        build(&mut ctx, "result", None).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("result")).unwrap(),
+            "content\n"
+        );
+        let subtree =
+            dependency_signature(&mut ctx, &Dependency::File("out/nested".into())).unwrap();
+        fs::write(root.join("out/nested/item"), "changed").unwrap();
+        assert_ne!(
+            subtree,
+            dependency_signature(&mut ctx, &Dependency::File("out/nested".into())).unwrap()
+        );
+        let error = build(&mut ctx, "out/alias/item", None)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("traverses symlink") && error.contains("help:"),
+            "{error}"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_children_preserve_cycles_glob_order_and_unknown_owner_errors() {
+        let root = temp_project("directory-member-graph");
+        let mut cycle = context(&root, "@atomic\nout/: out/item\n  touch {{out}}/item\n");
+        assert!(
+            build(&mut cycle, "out/item", None)
+                .unwrap_err()
+                .to_string()
+                .contains("cycle")
+        );
+        let text = "@atomic\nout/:\n  echo value > {{out}}/item\nresult: out/item out/*\n  cat {{in}} > {{out}}\n";
+        let mut ctx = context(&root, text);
+        assert!(execute::expand_glob(&ctx, "out/*").unwrap().is_empty());
+        build(&mut ctx, "result", None).unwrap();
+        assert_eq!(fs::read_to_string(root.join("result")).unwrap(), "value\n");
+        assert_eq!(
+            execute::expand_glob(&ctx, "out/*").unwrap(),
+            vec!["out/item"]
+        );
+        assert!(
+            build(&mut ctx, "unknown/item", None)
+                .unwrap_err()
+                .to_string()
+                .contains("no rule to produce unknown/item")
+        );
+        let mut dry = context(&root, "@atomic\nnew/:\n  touch {{out}}/item\n");
+        dry.options.dry = true;
+        build(&mut dry, "new/item", None).unwrap();
+        assert!(!root.join("new").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn directory_state_defaults_to_file_and_cleanup_protects_root() {
         let legacy: SavedRule =
             serde_json::from_str(r#"{"signature":"old","outputs":{"out":"hash"}}"#).unwrap();
@@ -1114,12 +1333,17 @@ mod tests {
     #[test]
     fn directory_patterns_reject_owned_ancestors_and_shared_worker_overlap() {
         let root = temp_project("directory-owners");
-        let mut ctx = context(&root, "@atomic\nout/%/:\n  true\n");
+        let ctx = context(&root, "@atomic\nout/%/:\n  true\n");
         assert!(
-            build(&mut ctx, "out/a/b", None)
-                .unwrap_err()
-                .to_string()
-                .contains("overlaps")
+            directory::register_outputs(
+                &ctx,
+                "out/a/b",
+                &[ProjectPath::output("out/a/b").unwrap()],
+                OutputKind::Directory
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("overlaps")
         );
         let ctx = context(&root, "@atomic\na%/:\n  true\n@atomic\n%/child/:\n  true\n");
         directory::register_outputs(

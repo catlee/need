@@ -357,7 +357,10 @@ exit status: 1
 In `stream` mode, output may already have appeared live and need not be repeated in full.
 
 Directory output groups use the normalized root path in status lines and log
-lookup, so `previews` and `previews/` share logs. Recipes receive the sibling
+lookup, so `previews` and `previews/` share logs. Child requests such as
+`previews/icon.svg` resolve the same owner and share its execution logs.
+A missing-member diagnostic follows owner execution and does not imply that the
+owner recipe failed. Recipes receive the sibling
 staging directory through `{{out}}`. Validation, input-change, publication, or
 old-tree cleanup failures report the affected path and a `help:` hint and do not
 commit successful build state. Recipe logs describe child process execution;
@@ -495,7 +498,8 @@ The command accepts one declared artifact target and an optional `--file PATH`.
 It resolves exact, pattern-rule, and remembered dynamic outputs using the normal
 target rules, then selects the lexicographically newest valid execution in the
 target's hashed `.need/logs/` directory. Since execution names begin with the
-millisecond timestamp, this is the newest retained execution. It prints the
+millisecond timestamp, this is the newest retained execution. Directory member
+paths select the owner's logs without building or validating the member. It prints the
 target, output group, execution path, status (`success`, `failure`, or
 `interrupted`), and the captured `stdout` and `stderr` sections. It is
 read-only: it does not build the target or update state.

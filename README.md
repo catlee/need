@@ -163,7 +163,16 @@ validation and an input recheck, `need` publishes the whole tree atomically.
 Existing trees survive failed or interrupted recipes, and stale children disappear
 on replacement. `need previews` and `need previews/` select the same artifact.
 A plain dependency on the declared root builds it and fingerprints its complete
-tree. Child requests do not build the parent, and `tree(...)` remains freshness-only.
+tree. `need previews/icon.svg` and downstream file dependencies on that path
+build the declared owner, then check that the member exists. Concrete and pattern
+directory rules work on a clean checkout. Missing members report the owner and
+requested path. Sibling and mixed child/root requests build the owner once,
+including with `--force`. `need logs previews/icon.svg` shows the owner's logs.
+File members track contents; directory members track their subtree.
+Symlink members track the link itself, including broken links; requests through
+symlinked directories fail. `tree(...)` remains freshness-only. Globs do not infer
+missing children: put a root or child dependency before a glob to generate its
+members first, for example `archive.tar: previews/ previews/*.svg`.
 
 Directory rules support variables and patterns, require exactly one output, and
 cannot use `@allow-missing` or `@outputs-from`. Each tree owns its subtree;
