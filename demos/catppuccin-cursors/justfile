@@ -1,0 +1,20 @@
+set positional-arguments
+
+revision := trim(read('upstream.lock'))
+need := '../../target/debug/need'
+
+# Fetch only the pinned sources. Install the tools described in README.md first.
+setup:
+  git init upstream
+  git -C upstream fetch --depth=1 https://github.com/catppuccin/cursors.git {{revision}}
+  git -C upstream checkout --detach FETCH_HEAD
+  test "$(git -C upstream rev-parse HEAD)" = '{{revision}}'
+
+build *targets='theme/':
+  {{need}} -j2 "$@"
+
+verify:
+  python verify.py
+
+clean:
+  {{need}} clean --remove-outputs

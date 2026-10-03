@@ -1,0 +1,274 @@
+{
+  "upstream_clean": {
+    "recipes": 1,
+    "seconds": 2.7062
+  },
+  "upstream_current": {
+    "recipes": 1,
+    "seconds": 2.8036
+  },
+  "need_clean": {
+    "recipes": 4,
+    "seconds": 2.6508,
+    "maximum_active": 2
+  },
+  "equivalence": {
+    "entries": 407,
+    "formats": [
+      "cursors",
+      "cursors_scalable",
+      "hyprcursors"
+    ],
+    "comparison": "file SHA256, symlink targets, directory inventory, decompressed archive entries"
+  },
+  "need_current": {
+    "recipes": 0,
+    "seconds": 0.38,
+    "maximum_active": 0
+  },
+  "touch_without_byte_change": {
+    "recipes": 0,
+    "seconds": 0.3746,
+    "maximum_active": 0
+  },
+  "older_mtime_edit": {
+    "recipes": 2,
+    "seconds": 2.6188,
+    "maximum_active": 1
+  },
+  "upstream_edit": {
+    "recipes": 1,
+    "seconds": 3.4464
+  },
+  "restore_edit": {
+    "recipes": 2,
+    "seconds": 2.7517,
+    "maximum_active": 1
+  },
+  "need_narrow_clean": {
+    "recipes": 1,
+    "seconds": 0.3924,
+    "maximum_active": 1
+  },
+  "need_narrow_current": {
+    "recipes": 0,
+    "seconds": 0.2379,
+    "maximum_active": 0
+  },
+  "upstream_narrow": {
+    "recipes": 1,
+    "seconds": 2.8145
+  },
+  "complete_after_narrow": {
+    "recipes": 3,
+    "seconds": 3.7126,
+    "maximum_active": 1
+  },
+  "env_unchanged": {
+    "recipes": 0,
+    "seconds": 0.3818,
+    "maximum_active": 0
+  },
+  "env_changed": {
+    "recipes": 1,
+    "seconds": 2.6096,
+    "maximum_active": 1
+  },
+  "env_changed_current": {
+    "recipes": 0,
+    "seconds": 0.3908,
+    "maximum_active": 0
+  },
+  "restore_env": {
+    "recipes": 1,
+    "seconds": 2.5724,
+    "maximum_active": 1
+  },
+  "invalid_frame_time_preserved": true,
+  "atomic_failure": {
+    "seconds": 2.1581,
+    "preserved": true,
+    "staging_removed": true,
+    "retained_failure_log": true
+  },
+  "failure_restored_inputs_current": {
+    "recipes": 0,
+    "seconds": 0.3831,
+    "maximum_active": 0
+  },
+  "failure_recovery": {
+    "recipes": 1,
+    "seconds": 2.529,
+    "maximum_active": 1
+  },
+  "recovery_current": {
+    "recipes": 0,
+    "seconds": 0.3869,
+    "maximum_active": 0
+  },
+  "alias_deletion": {
+    "recipes": 1,
+    "seconds": 2.6127,
+    "maximum_active": 1
+  },
+  "upstream_alias_deletion": {
+    "recipes": 1,
+    "seconds": 2.8495
+  },
+  "restore_alias": {
+    "recipes": 1,
+    "seconds": 2.6226,
+    "maximum_active": 1
+  },
+  "source_deletion": {
+    "recipes": 2,
+    "seconds": 2.6697,
+    "maximum_active": 1
+  },
+  "upstream_source_deletion_clean": {
+    "recipes": 1,
+    "seconds": 2.9091
+  },
+  "restore_source": {
+    "recipes": 2,
+    "seconds": 2.6783,
+    "maximum_active": 1
+  },
+  "input_adapter.py": {
+    "recipes": 4,
+    "seconds": 2.754,
+    "maximum_active": 2
+  },
+  "restore_adapter.py": {
+    "recipes": 4,
+    "seconds": 2.645,
+    "maximum_active": 2
+  },
+  "input_upstream.lock": {
+    "recipes": 4,
+    "seconds": 2.7504,
+    "maximum_active": 2
+  },
+  "restore_upstream.lock": {
+    "recipes": 4,
+    "seconds": 2.7067,
+    "maximum_active": 2
+  },
+  "input_requirements.txt": {
+    "recipes": 1,
+    "seconds": 2.623,
+    "maximum_active": 1
+  },
+  "restore_requirements.txt": {
+    "recipes": 1,
+    "seconds": 2.8786,
+    "maximum_active": 1
+  },
+  "input_upstream/flake.lock": {
+    "recipes": 1,
+    "seconds": 2.6127,
+    "maximum_active": 1
+  },
+  "restore_upstream/flake.lock": {
+    "recipes": 1,
+    "seconds": 2.6488,
+    "maximum_active": 1
+  },
+  "tool_identical_bytes_current": {
+    "recipes": 0,
+    "seconds": 0.4015,
+    "maximum_active": 0
+  },
+  "tool_bytes_changed": {
+    "recipes": 4,
+    "seconds": 3.0274,
+    "maximum_active": 2
+  },
+  "tool_changed_current": {
+    "recipes": 0,
+    "seconds": 0.3963,
+    "maximum_active": 0
+  },
+  "restore_tool": {
+    "recipes": 4,
+    "seconds": 2.7329,
+    "maximum_active": 2
+  },
+  "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+  "tools": {
+    "inkscape": "Inkscape 1.4.4 (dcaf3e7d9e, 2026-05-05)",
+    "whiskers": "catppuccin-whiskers 2.9.0",
+    "xcursorgen": "xcursorgen version 1.0.9",
+    "python_qt": "3.12.13 (main, Jun  2 2026, 22:27:15) [Clang 22.1.3 ] 6.10.2\nd713474fd44339f8bd8150edc7b324d0be494dbf2998a1de04a7b0ecdbc1c2ed\nf99f8ac9abfe9b2dae10da24853a167ba3e0729b8c62afe153006263da5c312f\n05a36866bd920af3b058856cf2b92fdd220da4c4ffbdf8a438b5efd1d14e11c7\n84c8b9244f3cf6b3adcf06a6cb823ab0dbd32fa7e92ca314efb63ee7ad048877\nbe24759f286ac68971e8e7eb891b3c8af6a7b6dbcee6e7631c826743b6fc5f0f\n9035fa6b01355878a33d50e1a900b0768c7675ae96dbecbd4007fd4f4a4a2cb9\n575e03ac834b739349a4484de481abcd06a6f7193cefc795260a32a1943f20a5"
+  },
+  "lines": {
+    "upstream_files": {
+      "justfile": {
+        "total": 19,
+        "nonblank_noncomment": 10
+      },
+      "build": {
+        "total": 70,
+        "nonblank_noncomment": 53
+      },
+      "scripts/build-cursors": {
+        "total": 97,
+        "nonblank_noncomment": 72
+      },
+      "scripts/generate-metadata": {
+        "total": 120,
+        "nonblank_noncomment": 96
+      }
+    },
+    "new_files": {
+      "justfile": {
+        "total": 20,
+        "nonblank_noncomment": 14
+      },
+      "needfile": {
+        "total": 14,
+        "nonblank_noncomment": 11
+      },
+      "adapter.py": {
+        "total": 119,
+        "nonblank_noncomment": 108
+      },
+      "verify.py": {
+        "total": 364,
+        "nonblank_noncomment": 334
+      },
+      "upstream.lock": {
+        "total": 1,
+        "nonblank_noncomment": 1
+      },
+      "requirements.txt": {
+        "total": 1,
+        "nonblank_noncomment": 1
+      }
+    },
+    "retained_upstream_files": {
+      "scripts/build-cursors": {
+        "total": 97,
+        "nonblank_noncomment": 72
+      },
+      "scripts/generate-metadata": {
+        "total": 120,
+        "nonblank_noncomment": 96
+      }
+    },
+    "baseline_recipe": [
+      "build f a=accents:",
+      "  ./build -f {{f}} -a '{{a}}'"
+    ],
+    "equivalent_scope": {
+      "before": {
+        "total": 675,
+        "nonblank_noncomment": 573
+      },
+      "after": {
+        "total": 736,
+        "nonblank_noncomment": 637
+      }
+    }
+  }
+}

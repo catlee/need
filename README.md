@@ -175,6 +175,12 @@ without following links. `need clean --outputs-only` recursively removes recorde
 directory roots. Atomic directory publication currently requires Linux GNU and
 filesystem support for `renameat2` exchange/no-replace; there is no fallback.
 
+## Real pipeline demo
+
+The [Catppuccin cursors demo](demos/catppuccin-cursors/README.md) builds a pinned
+Linux theme with upstream's batched Inkscape renderer, explicit directory-root
+dependencies, and measured freshness, publication, and output-equivalence checks.
+
 ## Commands
 
 ```sh

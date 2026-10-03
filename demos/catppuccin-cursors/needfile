@@ -1,0 +1,14 @@
+need.output = grouped
+
+@atomic
+theme/: generated/svgs/ generated/index.theme/ generated/manifest.hl/ tree(upstream/scripts) upstream/src/cursorList upstream/AUTHORS upstream/LICENSE upstream/flake.lock upstream.lock requirements.txt adapter.py env(CURSOR_FRAME_TIME) command(inkscape --version) command(xcursorgen -V) command(zip -v) command(python adapter.py tools)
+  python adapter.py theme {{out}}
+
+@atomic
+generated/svgs/: tree(upstream/src/svgs) upstream/src/templates/svgs.tera upstream.lock adapter.py command(whiskers --version) command(python adapter.py tools)
+  python adapter.py svgs {{out}}
+
+@atomic
+@jobs(2)
+generated/%/: upstream/src/templates/%.tera upstream.lock adapter.py command(whiskers --version) command(python adapter.py tools)
+  python adapter.py {{stem}} {{out}}

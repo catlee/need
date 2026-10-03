@@ -1,0 +1,7 @@
+/upstream/
+/.need/
+/generated/
+/theme/
+/evidence.json
+/__pycache__/
+/.venv/
