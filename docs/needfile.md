@@ -300,17 +300,20 @@ build/app: mtime(toolchain/)
 
 This is cheaper for large paths, but intentionally coarse. Use a content dependency when the contents matter.
 
-The planned `stat(path)` form will track one filesystem entry's type, Unix mode
-bits, and symlink target without following symlinks or recursively inspecting
-directories:
+`stat(path)` tracks one filesystem entry's presence, type, exact Unix mode bits
+(including special bits), and raw symlink target without following symlinks or
+recursively inspecting directories:
 
 ```make
 build/app: file(script.sh) stat(script.sh)
 ```
 
-It will not track content, timestamps, size, ownership, or directory children,
-and it will not add the path to `{{in}}`. `stat(...)` is specified for a future
-implementation and is not a supported dependency expression.
+Contents, timestamps, size, directory children, ownership, inode/device, and
+link count do not affect it. Missing entries have a stable signature; creating
+or removing the entry makes the target stale. Other I/O errors are reported
+with a path and help hint. This dependency is freshness-only: it adds no graph
+edge or `{{in}}` argument. Non-Unix platforms reject it explicitly, even for
+missing entries.
 
 ### Environment values
 
@@ -457,7 +460,7 @@ artifact.
 * a declared output is missing, unless it is recorded as absent by
   `@allow-missing`;
 * a declared output’s content differs from the recorded successful output;
-* a file, tree, environment, or string dependency changes;
+* a file, tree, mtime, stat, environment, string, or command dependency changes;
 * a glob's membership changes, including after an upstream rule creates or removes a matching file;
 * a dynamic output, output manifest, or depfile is missing or changed;
 * the resolved recipe, variables, or semantic attributes change;
