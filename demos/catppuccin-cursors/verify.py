@@ -1,11 +1,12 @@
 """Exercise real upstream tools in disposable copies; write measured evidence."""
 
 import hashlib
+import io
 import json
 import os
 import shutil
 import subprocess
-import sys
+import tarfile
 import tempfile
 import time
 import zipfile
@@ -39,6 +40,8 @@ def inventory(root):
 
 def run(root, label, targets=("theme/",), expected=0, env=ENV):
     start = time.perf_counter()
+    event_file = root / ".verification-events.jsonl"
+    event_file.unlink(missing_ok=True)
     process = subprocess.run(
         check=False,
         args=[str(NEED), "-j2", *targets],
@@ -47,11 +50,11 @@ def run(root, label, targets=("theme/",), expected=0, env=ENV):
         text=True,
         capture_output=True,
     )
-    events = [
-        json.loads(line)
-        for line in process.stdout.splitlines()
-        if line.startswith('{"stage":')
-    ]
+    events = (
+        [json.loads(line) for line in event_file.read_text().splitlines()]
+        if event_file.exists()
+        else []
+    )
     count = sum(event["event"] == "start" for event in events)
     assert count == expected, (label, count, process.stdout, process.stderr)
     assert process.returncode == 0, (label, process.stdout, process.stderr)
@@ -85,17 +88,6 @@ def baseline(root, label):
     return inventory(root / "dist" / THEME)
 
 
-def lines(path):
-    contents = path.read_text().splitlines()
-    return {
-        "total": len(contents),
-        "nonblank_noncomment": sum(
-            bool(line.strip()) and not line.lstrip().startswith("#")
-            for line in contents
-        ),
-    }
-
-
 def verify(root, upstream):
     pristine = baseline(upstream, "upstream_clean")
     assert baseline(upstream, "upstream_current") == pristine
@@ -111,7 +103,7 @@ def verify(root, upstream):
         "comparison": "file SHA256, symlink targets, directory inventory, decompressed archive entries",
     }
     run(root, "need_current")
-    source = root / "upstream/src/svgs/default.svg"
+    source = root / "src/svgs/default.svg"
     original = source.read_bytes()
     os.utime(source, None)
     run(root, "touch_without_byte_change")
@@ -170,7 +162,7 @@ def verify(root, upstream):
     RESULTS["invalid_frame_time_preserved"] = True
 
     # Fail the real metadata generator after rendering and writing a staged cursor.
-    generator = root / "upstream/scripts/generate-metadata"
+    generator = root / "scripts/generate-metadata"
     original_generator = generator.read_bytes()
     generator.write_bytes(
         original_generator.replace(
@@ -213,7 +205,7 @@ def verify(root, upstream):
     run(root, "recovery_current")
 
     # Deleting an unused alias exercises inventory removal in every relevant format.
-    aliases = root / "upstream/src/cursorList"
+    aliases = root / "src/cursorList"
     original_aliases = aliases.read_bytes()
     removed, remaining = original_aliases.split(b"\n", 1)
     alias = removed.decode().split()[0]
@@ -228,9 +220,9 @@ def verify(root, upstream):
     run(root, "restore_alias", expected=1)
 
     # Remove one SVG and its template matrix entry; preserve the alias fallback.
-    template = root / "upstream/src/templates/svgs.tera"
+    template = root / "src/templates/svgs.tera"
     original_template = template.read_bytes()
-    removed_svg = root / "upstream/src/svgs/zoom-out.svg"
+    removed_svg = root / "src/svgs/zoom-out.svg"
     original_svg = removed_svg.read_bytes()
     template.write_bytes(original_template.replace(b", 'zoom-out'", b""))
     removed_svg.unlink()
@@ -250,10 +242,10 @@ def verify(root, upstream):
     assert inventory(published) == pristine
 
     for filename, expected in [
-        ("adapter.py", 4),
-        ("upstream.lock", 4),
-        ("requirements.txt", 1),
-        ("upstream/flake.lock", 1),
+        ("scripts/need-build", 4),
+        ("source.lock", 4),
+        ("requirements-need.txt", 1),
+        ("flake.lock", 1),
     ]:
         path = root / filename
         content = path.read_bytes()
@@ -270,95 +262,334 @@ def verify(root, upstream):
     run(root, "tool_identical_bytes_current", env=tool_env)
     with whiskers.open("ab") as executable:
         executable.write(b"\nneed demo tool fingerprint verification\n")
-    run(root, "tool_bytes_changed", expected=4, env=tool_env)
+    events = run(root, "tool_bytes_changed", expected=3, env=tool_env)
+    assert {event["stage"] for event in events if event["event"] == "start"} == {
+        "svgs",
+        "index.theme",
+        "manifest.hl",
+    }
+    RESULTS["whiskers_skips_theme_on_identical_bytes"] = True
     assert inventory(published) == pristine
     run(root, "tool_changed_current", env=tool_env)
-    run(root, "restore_tool", expected=4)
-    # Exercise the checked replacement anchor rather than silently accepting drift.
-    builder = root / "upstream/scripts/build-cursors"
-    builder.write_text(builder.read_text().replace("FRAME_TIME=30", "FRAME_TIME=31"))
-    failed = subprocess.run(
-        check=False,
-        args=[str(NEED), "theme/"],
-        cwd=root,
-        env=ENV,
-        capture_output=True,
-        text=True,
-    )
-    assert failed.returncode != 0 and "expected one" in failed.stderr
+    run(root, "restore_tool", expected=3)
+    zip_tool = tool_dir / "zip"
+    shutil.copy2(shutil.which("zip"), zip_tool)
+    with zip_tool.open("ab") as executable:
+        executable.write(b"\nneed theme-only tool fingerprint verification\n")
+    # The changed Whiskers is no longer selected: restore it before isolating zip.
+    shutil.copy2(shutil.which("whiskers"), whiskers)
+    events = run(root, "theme_tool_bytes_changed", expected=1, env=tool_env)
+    assert [event["stage"] for event in events if event["event"] == "start"] == [
+        "theme"
+    ]
     assert inventory(published) == pristine
+    run(root, "theme_tool_changed_current", env=tool_env)
+    run(root, "restore_theme_tool", expected=1)
+
+
+def instrument(root):
+    observer = root / ".verification/observe.py"
+    observer.parent.mkdir()
+    observer.write_text("""import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+root = Path(__file__).resolve().parents[1]
+
+def event(kind):
+    data = json.dumps({"stage": sys.argv[2], "event": kind, "time": time.monotonic_ns()}) + "\\n"
+    fd = os.open(root / ".verification-events.jsonl", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    try:
+        os.write(fd, data.encode())
+    finally:
+        os.close(fd)
+
+event("start")
+result = subprocess.run(sys.argv[1:], check=False)
+event("end")
+sys.exit(result.returncode)
+""")
+    needfile = root / "needfile"
+    needfile.write_text(
+        needfile.read_text().replace(
+            "  scripts/need-build ",
+            "  python3 .verification/observe.py scripts/need-build ",
+        )
+    )
+
+
+def counted(contents):
+    return {
+        "total": len(contents),
+        "nonblank_noncomment": sum(
+            bool(line.strip()) and not line.lstrip().startswith("#")
+            for line in contents
+        ),
+    }
+
+
+def ledger(before, after):
+    # Count every tracked UTF-8 source/configuration file, including SVG markup.
+    historical = {
+        str(p.relative_to(before))
+        for p in before.rglob("*")
+        if p.is_file()
+        and p.name not in {"README.md", "CHANGELOG.md", "AUTHORS", "LICENSE"}
+        and p.suffix != ".webp"
+    }
+    changes = {}
+    filename = None
+    for line in (DEMO / "upstream.patch").read_text().splitlines():
+        if line.startswith("diff --git "):
+            filename = line.split(" b/", 1)[1]
+            changes[filename] = {"deleted": [], "added": []}
+        elif filename and line.startswith("-") and not line.startswith("---"):
+            changes[filename]["deleted"].append(line[1:])
+        elif filename and line.startswith("+") and not line.startswith("+++"):
+            changes[filename]["added"].append(line[1:])
+    rows = []
+    pipeline = {
+        "justfile",
+        "build",
+        "scripts/build-cursors",
+        "scripts/generate-metadata",
+    } | changes.keys()
+    for filename in sorted(historical | changes.keys()):
+        old = (
+            (before / filename).read_text().splitlines()
+            if (before / filename).exists()
+            else []
+        )
+        new = (after / filename).read_text().splitlines()
+        change = changes.get(filename, {"deleted": [], "added": []})
+        row = {
+            "file": filename,
+            "category": "production",
+            "scope": filename in pipeline,
+            "before": counted(old),
+            "after": counted(new),
+            "deleted": counted(change["deleted"]),
+            "added": counted(change["added"]),
+        }
+        for metric in ("total", "nonblank_noncomment"):
+            assert (
+                row["after"][metric]
+                == row["before"][metric] - row["deleted"][metric] + row["added"][metric]
+            )
+        if filename in changes:
+            difference = subprocess.run(
+                [
+                    "git",
+                    "diff",
+                    "--no-index",
+                    "--numstat",
+                    "--",
+                    str(before / filename) if old else "/dev/null",
+                    str(after / filename),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert difference.returncode == 1
+            added, deleted, _ = difference.stdout.split("\t", 2)
+            assert (
+                int(added) == row["added"]["total"]
+                and int(deleted) == row["deleted"]["total"]
+            ), filename
+        rows.append(row)
+    # These delivered helpers are outside the upstream tree and never existed before.
+    for filename, category in [
+        (".gitignore", "production"),
+        ("justfile", "production"),
+        ("upstream.lock", "production"),
+        ("verify.py", "verification"),
+    ]:
+        new = counted((DEMO / filename).read_text().splitlines())
+        rows.append(
+            {
+                "file": "demo/" + filename,
+                "category": category,
+                "scope": True,
+                "before": counted([]),
+                "after": new,
+                "deleted": counted([]),
+                "added": new,
+            }
+        )
+    summaries = {}
+    for scope in ("project", "converted_pipeline"):
+        summaries[scope] = {}
+        selected = [r for r in rows if scope == "project" or r["scope"]]
+        for category in ("production", "verification", "combined"):
+            members = [
+                r
+                for r in selected
+                if category == "combined" or r["category"] == category
+            ]
+            totals = {
+                field: {
+                    metric: sum(r[field][metric] for r in members)
+                    for metric in ("total", "nonblank_noncomment")
+                }
+                for field in ("before", "after", "deleted", "added")
+            }
+            totals["net_code_removed"] = {
+                metric: totals["deleted"][metric] - totals["added"][metric]
+                for metric in ("total", "nonblank_noncomment")
+            }
+            summaries[scope][category] = totals
+    return {
+        "counting_rule": "UTF-8 source/configuration including SVG; exclude README.md, CHANGELOG.md, AUTHORS, LICENSE and .webp. Nonblank/noncomment excludes blank and leading-# lines; docstrings/inline/XML comments count. Patch is transport: count applied source once, plus delivered demo helpers separately.",
+        "ledger": rows,
+        "summary": summaries,
+        "removable_files_or_tasks": [],
+        "excluded_delivered_files": {
+            "documentation": ["README.md", "RESULTS.md", "repository README demo link"],
+            "measurement_data": ["measured-results.json", "evidence.json"],
+            "patch_transport": ["upstream.patch (its applied source is counted)"],
+            "ignored_generated_or_installed": [
+                "upstream/",
+                ".need/",
+                "generated/",
+                "theme/",
+                ".venv/",
+                "__pycache__/",
+            ],
+        },
+        "partial_conversion": True,
+        "project_wide_savings_proven": False,
+    }
 
 
 if __name__ == "__main__":
     revision = (DEMO / "upstream.lock").read_text().strip()
-    actual = subprocess.check_output(
-        ["git", "-C", str(DEMO / "upstream"), "rev-parse", "HEAD"], text=True
-    ).strip()
-    assert actual == revision
-    assert not subprocess.check_output(
-        ["git", "-C", str(DEMO / "upstream"), "status", "--porcelain"]
+    checkout = DEMO / "upstream"
+    assert (
+        subprocess.check_output(
+            ["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True
+        ).strip()
+        == revision
     )
+    archive = subprocess.check_output(["git", "-C", str(checkout), "archive", revision])
+    patch = DEMO / "upstream.patch"
     with tempfile.TemporaryDirectory(prefix="need-cursors-verification-") as temporary:
-        root = Path(temporary) / "demo with spaces"
-        root.mkdir()
-        for name in ("needfile", "adapter.py", "upstream.lock", "requirements.txt"):
-            shutil.copyfile(DEMO / name, root / name)
-        shutil.copytree(
-            DEMO / "upstream", root / "upstream", ignore=shutil.ignore_patterns(".git")
+        temporary = Path(temporary)
+        before = temporary / "historical"
+        before.mkdir()
+        with tarfile.open(fileobj=io.BytesIO(archive)) as source:
+            source.extractall(before, filter="data")
+        root = temporary / "integration with spaces"
+        shutil.copytree(before, root)
+        subprocess.run(["git", "apply", "--check", str(patch)], cwd=root, check=True)
+        subprocess.run(["git", "apply", str(patch)], cwd=root, check=True)
+        first = ledger(before, root)
+        repeated = temporary / "second integration"
+        shutil.copytree(before, repeated)
+        subprocess.run(["git", "apply", str(patch)], cwd=repeated, check=True)
+        assert inventory(root) == inventory(repeated)
+        assert first == ledger(before, repeated), "freshly reapplied ledger must agree"
+        drift = temporary / "upstream drift"
+        shutil.copytree(before, drift)
+        helper = drift / "scripts/build-cursors"
+        helper.write_text(helper.read_text().replace("FRAME_TIME=30", "FRAME_TIME=31"))
+        rejected = subprocess.run(
+            ["git", "apply", "--check", str(patch)],
+            cwd=drift,
+            capture_output=True,
+            text=True,
+            check=False,
         )
-        upstream = Path(temporary) / "baseline"
-        shutil.copytree(root / "upstream", upstream)
-        verify(root, upstream)
+        assert rejected.returncode != 0 and "scripts/build-cursors" in rejected.stderr
+        RESULTS["code_removal"] = first
+        RESULTS["integration_patch"] = {
+            "revision": revision,
+            "sha256": hashlib.sha256(patch.read_bytes()).hexdigest(),
+            "applied_to_pristine": True,
+            "ledger_reproduced": True,
+            "git_numstat_verified": True,
+            "patch_drift_rejected": True,
+        }
+        # Validate the uninstrumented production build before adding test-only events.
+        built = subprocess.run(
+            [str(NEED), "-j2", "theme/"],
+            cwd=root,
+            env=ENV,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert '{"stage":' not in built.stdout
+        tools = temporary / "tools"
+        tools.mkdir()
+        (tools / "need").symlink_to(NEED)
+        argument_env = dict(ENV, PATH=str(tools) + os.pathsep + ENV["PATH"])
+        argument = subprocess.run(
+            ["just", "need-build", "missing target with spaces"],
+            cwd=root,
+            env=argument_env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert (
+            argument.returncode != 0 and "missing target with spaces" in argument.stderr
+        )
+        RESULTS["integration_patch"]["just_preserves_argument_boundaries"] = True
+        scratch = temporary / "temporary files with spaces"
+        scratch.mkdir()
+        subprocess.run(
+            [str(NEED), "--force", "theme/"],
+            cwd=root,
+            env=dict(ENV, TMPDIR=str(scratch)),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        RESULTS["integration_patch"]["scratch_paths_with_spaces"] = True
+        baseline_root = temporary / "baseline"
+        shutil.copytree(before, baseline_root)
+        pristine = baseline(baseline_root, "integration_baseline")
+        assert inventory(root / "theme") == pristine
+        RESULTS["integration_patch"]["uninstrumented_equivalence"] = True
+        # Existing general build/all/clean/zip definitions stay intact.
+        assert (root / "build").read_bytes() == (before / "build").read_bytes()
+        assert (
+            (root / "justfile")
+            .read_bytes()
+            .removeprefix(b"set positional-arguments\n\n")
+            .startswith((before / "justfile").read_bytes())
+        )
+        assert (root / "scripts/generate-metadata").read_bytes() == (
+            before / "scripts/generate-metadata"
+        ).read_bytes()
+        general = temporary / "general-workflow"
+        shutil.copytree(before, general)
+        subprocess.run(["git", "apply", str(patch)], cwd=general, check=True)
+        assert baseline(general, "retained_general_build") == pristine
+        RESULTS["integration_patch"]["general_workflow_equivalence"] = True
+        subprocess.run(
+            [str(NEED), "clean", "--remove-outputs"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+        )
+        instrument(root)
+        # A separate pristine baseline makes clean/current observations meaningful.
+        shutil.rmtree(baseline_root)
+        shutil.copytree(before, baseline_root)
+        verify(root, baseline_root)
     RESULTS["revision"] = revision
     RESULTS["tools"] = {}
     for name, command in {
         "inkscape": ["inkscape", "--version"],
         "whiskers": ["whiskers", "--version"],
         "xcursorgen": ["xcursorgen", "-V"],
-        "python_qt": [sys.executable, "adapter.py", "tools"],
+        "python": ["python3", "--version"],
     }.items():
-        RESULTS["tools"][name] = subprocess.check_output(
-            command, cwd=DEMO, text=True
-        ).strip()
-    before = ["justfile", "build", "scripts/build-cursors", "scripts/generate-metadata"]
-    after = [
-        "justfile",
-        "needfile",
-        "adapter.py",
-        "verify.py",
-        "upstream.lock",
-        "requirements.txt",
-    ]
-    RESULTS["lines"] = {
-        "upstream_files": {name: lines(DEMO / "upstream" / name) for name in before},
-        "new_files": {name: lines(DEMO / name) for name in after},
-        "retained_upstream_files": {
-            name: lines(DEMO / "upstream" / name) for name in before[2:]
-        },
-    }
-    common = [
-        lines(DEMO / name)
-        for name in ("justfile", "verify.py", "upstream.lock", "requirements.txt")
-    ]
-    common += [lines(DEMO / "upstream" / name) for name in before[2:]]
-    # Both columns include the complete new setup/measurement workflow and helpers.
-    # Only the upstream build recipe is in scope, not its unrelated all/zip tasks.
-    original_just = (DEMO / "upstream/justfile").read_text().splitlines()
-    index = next(
-        i for i, line in enumerate(original_just) if line.startswith("build f ")
-    )
-    workflow = original_just[index : index + 2]
-    baseline_recipe = {"total": 2, "nonblank_noncomment": 2}
-    RESULTS["lines"]["baseline_recipe"] = workflow
-    RESULTS["lines"]["equivalent_scope"] = {
-        column: {
-            metric: sum(count[metric] for count in counts)
-            for metric in ("total", "nonblank_noncomment")
-        }
-        for column, counts in {
-            "before": common + [baseline_recipe, lines(DEMO / "upstream/build")],
-            "after": common + [lines(DEMO / "needfile"), lines(DEMO / "adapter.py")],
-        }.items()
-    }
+        RESULTS["tools"][name] = subprocess.check_output(command, text=True).strip()
     (DEMO / "evidence.json").write_text(json.dumps(RESULTS, indent=2) + "\n")
     print("All real-tool assertions passed; evidence.json contains this run.")

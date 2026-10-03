@@ -1,0 +1,232 @@
+diff --git a/.gitignore b/.gitignore
+index d29387e..2b4b386 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -4,3 +4,8 @@ releases/
+ result
+ hl/
+ /svgs/
++
++# Need prototype outputs and state
++/generated/
++/theme/
++/.need/
+diff --git a/justfile b/justfile
+index e939e5a..fa3d723 100644
+--- a/justfile
++++ b/justfile
+@@ -1,3 +1,5 @@
++set positional-arguments
++
+ _default:
+   @just --list
+
+@@ -17,3 +19,7 @@ build f a=accents:
+
+ # Generate all flavors with their accents
+ all: clean (build "latte") (build "frappe") (build "macchiato") (build "mocha")
++
++# Linux mocha/mauve prototype; keep the general upstream workflows above.
++need-build *targets='theme/':
++  need -j2 "$@"
+diff --git a/needfile b/needfile
+new file mode 100644
+index 0000000..ba47675
+--- /dev/null
++++ b/needfile
+@@ -0,0 +1,14 @@
++need.output = grouped
++
++@atomic
++theme/: generated/svgs/ generated/index.theme/ generated/manifest.hl/ scripts/build-cursors scripts/generate-metadata scripts/need-build scripts/tool-identity.py src/cursorList AUTHORS LICENSE flake.lock requirements-need.txt source.lock env(CURSOR_FRAME_TIME) command(python3 scripts/tool-identity.py bash inkscape xcursorgen zip python3 QtSvg)
++  scripts/need-build theme {{out}}
++
++@atomic
++generated/svgs/: tree(src/svgs) src/templates/svgs.tera scripts/need-build scripts/tool-identity.py source.lock command(python3 scripts/tool-identity.py bash whiskers)
++  scripts/need-build svgs {{out}}
++
++@atomic
++@jobs(2)
++generated/%/: src/templates/%.tera scripts/need-build scripts/tool-identity.py source.lock command(python3 scripts/tool-identity.py bash whiskers)
++  scripts/need-build {{stem}} {{out}}
+diff --git a/requirements-need.txt b/requirements-need.txt
+new file mode 100644
+index 0000000..51d461b
+--- /dev/null
++++ b/requirements-need.txt
+@@ -0,0 +1 @@
++PySide6==6.10.2
+diff --git a/scripts/build-cursors b/scripts/build-cursors
+index eab5d68..804412e 100755
+--- a/scripts/build-cursors
++++ b/scripts/build-cursors
+@@ -2,8 +2,8 @@
+
+ set -euo pipefail
+
+-BIN_DIR="$(dirname "${BASH_SOURCE[0]}")"
+-SRC_DIR="src"
++BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++SRC_DIR="$BIN_DIR/../src"
+ HL_DIR="$3"
+ BUILD_DIR="$2"
+ RAWSVG_DIR="$1"
+@@ -11,7 +11,12 @@ ALIASES="$SRC_DIR/cursorList"
+
+ NOMINAL_SIZE=24
+ REAL_SIZE=32
+-FRAME_TIME=30
++FRAME_TIME="${CURSOR_FRAME_TIME:-30}"
++if [[ ! "$FRAME_TIME" =~ ^[1-9][0-9]*$ ]]; then
++  echo "error: $0: CURSOR_FRAME_TIME must be a positive integer" >&2
++  echo "help: set CURSOR_FRAME_TIME=30 for the upstream default" >&2
++  exit 1
++fi
+ SCALES="50 75 100 125 150 175 200 225 250 275 300"
+
+ # Make folders
+@@ -22,7 +27,7 @@ mkdir -p "$BUILD_DIR/config"
+
+ # Generate pixmaps
+ genPixmaps=""
+-for RAWSVG in ${RAWSVG_DIR}/*.svg; do
++for RAWSVG in "${RAWSVG_DIR}"/*.svg; do
+   BASENAME=${RAWSVG##*/}
+   BASENAME=${BASENAME%.*}
+   genPixmaps+="file-open:${RAWSVG};"
+@@ -37,7 +42,7 @@ for RAWSVG in ${RAWSVG_DIR}/*.svg; do
+
+ done
+
+-inkscape --shell <<<${genPixmaps} &>/dev/null
++inkscape --shell <<<"${genPixmaps}" &>/dev/null
+
+ # Generate cursor theme
+ OUTPUT=$4
+@@ -45,10 +50,10 @@ rm -rf "$OUTPUT"
+ mkdir -p "$OUTPUT/cursors"
+ mkdir -p "$OUTPUT/cursors_scalable"
+ mkdir -p "$HL_DIR"
+-$BIN_DIR/generate-metadata ${RAWSVG_DIR} "$BUILD_DIR" "$OUTPUT/cursors" "$OUTPUT/cursors_scalable" "$HL_DIR" ${NOMINAL_SIZE} ${REAL_SIZE} ${FRAME_TIME} ${SCALES}
++"$BIN_DIR/generate-metadata" "${RAWSVG_DIR}" "$BUILD_DIR" "$OUTPUT/cursors" "$OUTPUT/cursors_scalable" "$HL_DIR" "${NOMINAL_SIZE}" "${REAL_SIZE}" "${FRAME_TIME}" ${SCALES}
+
+ # Generate shortcuts
+-while read ALIAS; do
++while read -r ALIAS; do
+   FROM=${ALIAS% *}
+   TO=${ALIAS#* }
+
+@@ -57,9 +62,9 @@ while read ALIAS; do
+   fi
+
+   ln -s "$TO" "$OUTPUT/cursors/$FROM"
+-done <$ALIASES
++done <"$ALIASES"
+
+-while read ALIAS; do
++while read -r ALIAS; do
+   FROM=${ALIAS% *}
+   TO=${ALIAS#* }
+
+@@ -68,9 +73,9 @@ while read ALIAS; do
+   fi
+
+   ln -s "$TO" "$OUTPUT/cursors_scalable/$FROM"
+-done <$ALIASES
++done <"$ALIASES"
+
+-while read ALIAS; do
++while read -r ALIAS; do
+   FROM=${ALIAS% *}
+   TO=${ALIAS#* }
+
+@@ -79,19 +84,19 @@ while read ALIAS; do
+   fi
+
+   if [ -f "$HL_DIR/$TO/meta.hl" ]; then # need to ensure $TO is not a mapping itself
+-    echo -ne "\ndefine_override = $FROM" >>$HL_DIR/$TO/meta.hl
++    echo -ne "\ndefine_override = $FROM" >>"$HL_DIR/$TO/meta.hl"
+   else
+-    grep=$(grep -m 1 "^$TO " $ALIASES)
++    grep=$(grep -m 1 "^$TO " "$ALIASES")
+     TO=${grep#* }
+-    echo -ne "\ndefine_override = $FROM" >>$HL_DIR/$TO/meta.hl
++    echo -ne "\ndefine_override = $FROM" >>"$HL_DIR/$TO/meta.hl"
+   fi
+-done <$ALIASES
++done <"$ALIASES"
+
+ #zip up hyprcursor
+ mkdir -p "$OUTPUT/hyprcursors"
+-for dir in $HL_DIR/*; do
++for dir in "$HL_DIR"/*; do
+   if [ -d "$dir" ]; then
+-    dir_name=$(basename "$dir")
++    dir_name=$(basename -- "$dir")
+     zip -qr "$OUTPUT/hyprcursors/$dir_name.hlc" -j "$dir/"
+   fi
+ done
+diff --git a/scripts/need-build b/scripts/need-build
+new file mode 100755
+index 0000000..e936d97
+--- /dev/null
++++ b/scripts/need-build
+@@ -0,0 +1,26 @@
++#!/usr/bin/env bash
++set -euo pipefail
++root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
++kind="$1"
++destination="$(realpath "$2")"
++work="$(mktemp -d)"
++trap 'rm -rf "$work"' EXIT
++case "$kind" in
++  theme)
++    "$root/scripts/build-cursors" "$root/generated/svgs" "$work/pngs" "$work/hl" "$destination"
++    cp "$root/AUTHORS" "$root/LICENSE" "$destination/"
++    cp "$root/generated/index.theme/index.theme" "$destination/"
++    cp "$root/generated/manifest.hl/manifest.hl" "$destination/"
++    ;;
++  svgs|index.theme|manifest.hl)
++    (cd "$work"; whiskers "$root/src/templates/$kind.tera" -f mocha --overrides '{"accent":["mauve"]}')
++    source=svgs
++    if [[ "$kind" == manifest.hl ]]; then source=hl; fi
++    cp -a "$work/$source/catppuccin-mocha-mauve-cursors/." "$destination/"
++    ;;
++  *)
++    echo "error: $0: unknown product '$kind'" >&2
++    echo "help: use theme, svgs, index.theme, or manifest.hl" >&2
++    exit 1
++    ;;
++esac
+diff --git a/scripts/tool-identity.py b/scripts/tool-identity.py
+new file mode 100644
+index 0000000..f7e4a2d
+--- /dev/null
++++ b/scripts/tool-identity.py
+@@ -0,0 +1,19 @@
++"""Fingerprint only the executables and Qt extension requested by a rule."""
++
++import hashlib
++import shutil
++import sys
++from pathlib import Path
++
++for name in sys.argv[1:]:
++    if name == "QtSvg":
++        from PySide6 import QtSvg
++
++        filename = QtSvg.__file__
++    else:
++        filename = shutil.which(name)
++    if filename is None:
++        sys.exit(
++            f"error: {__file__}: tool {name!r} is missing\nhelp: install it and add it to PATH"
++        )
++    print(name, hashlib.sha256(Path(filename).read_bytes()).hexdigest())
+diff --git a/source.lock b/source.lock
+new file mode 100644
+index 0000000..c23e373
+--- /dev/null
++++ b/source.lock
+@@ -0,0 +1 @@
++a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4
