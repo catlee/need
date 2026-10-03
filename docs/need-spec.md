@@ -54,7 +54,8 @@ The current implementation includes the core artifact graph, including:
 - `-n` as an alias for `--dry-run` and `--file PATH` for explicit needfile selection
 - `--root PATH` for selecting a project/output root independently of the needfile
 - Cargo metadata mode with transitive source and environment dependencies
-- dependency-cycle detection
+- dependency-cycle detection and a bounded dependency depth to reject unbounded
+  pattern expansion before exhausting the stack
 - cross-process advisory locking for build state and output groups
 - dynamic output manifests, including validation, ownership, freshness, and
   cleanup of files removed from a manifest
@@ -1775,6 +1776,20 @@ When resolving a concrete file target:
 
 If multiple pattern rules match with equal precedence, `need` reports an ambiguity rather than guessing.
 
+A pattern already active in the dependency chain may also match its own source
+files. When the candidate stem is at least as long as an active stem for that
+same rule, an existing file whose output group is neither requested nor recorded
+is treated as a source instead of reapplying the pattern. For example,
+`%: src/%` building `map` stops at an existing unrecorded `src/map`, rather
+than looking for `src/src/map`.
+
+This fallback does not override exact rules, requested groups, or recorded output
+groups. Requested pattern targets still use their recipe even if the target
+already exists. Shrinking pattern chains, such as `%.gz: %`, keep their normal rule precedence,
+including for existing intermediate outputs without saved state. An existing
+unrecorded intermediate in a growing chain is a source; declare an exact rule
+or build it explicitly first when it must be treated as generated.
+
 ---
 
 ## 28. Output Validation
@@ -2427,6 +2442,12 @@ normal needfile and uses the streamed dependencies as that target's inputs.
 ## 47. Cycles
 
 Dependency cycles are errors.
+
+Dependency chains are limited to 64 targets, including sources. Exceeding this
+limit fails with the offending path and a `help:` hint, including when pattern
+expansion visits a different path each time and ordinary cycle detection cannot
+catch it. This limit applies to serial builds and parallel workers. No successful
+state is recorded for a failed chain.
 
 Example:
 

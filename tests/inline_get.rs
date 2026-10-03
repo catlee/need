@@ -231,3 +231,70 @@ fn inline_reads_nul_inputs_and_preserves_multiline_shell_text() {
     );
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn catch_all_inline_pattern_stops_at_existing_source_and_still_rebuilds_target() {
+    let root = project();
+    fs::create_dir(root.join("src")).unwrap();
+    fs::write(root.join("src/map"), "first").unwrap();
+    fs::write(root.join("map"), "preexisting target").unwrap();
+    let args = ["get", "-c", "cp {{in}} {{out}}", "%: src/%", "src/map"];
+    success(run(&root, &args));
+    assert_eq!(fs::read_to_string(root.join("map")).unwrap(), "first");
+    fs::write(root.join("src/map"), "second").unwrap();
+    success(run(&root, &args));
+    assert_eq!(fs::read_to_string(root.join("map")).unwrap(), "second");
+    success(run(&root, &args));
+    assert!(!root.join("src/src").exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn unbounded_inline_patterns_fail_normally_in_serial_and_parallel_workers() {
+    for jobs in ["-j1", "-j2"] {
+        let root = project();
+        let output = run(
+            &root,
+            &[
+                "get",
+                jobs,
+                "-c",
+                "cp {{in}} {{out}}",
+                "%: src/%",
+                "src/a",
+                "src/b",
+            ],
+        );
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        let error = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            error.contains("dependency depth limit (64) exceeded"),
+            "{error}"
+        );
+        assert!(error.contains("help:"), "{error}");
+        assert!(!root.join(".need/state.json").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn requested_unrecorded_intermediate_is_built_before_its_consumer() {
+    let root = project();
+    fs::create_dir_all(root.join("src/src")).unwrap();
+    fs::write(root.join("src/src/map"), "new").unwrap();
+    fs::write(root.join("src/map"), "old generated output").unwrap();
+    success(run(
+        &root,
+        &[
+            "get",
+            "-c",
+            "cp {{in}} {{out}}",
+            "%: src/%",
+            "src/map",
+            "src/src/map",
+        ],
+    ));
+    assert_eq!(fs::read_to_string(root.join("map")).unwrap(), "new");
+    assert_eq!(fs::read_to_string(root.join("src/map")).unwrap(), "new");
+    fs::remove_dir_all(root).unwrap();
+}

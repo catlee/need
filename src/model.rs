@@ -233,9 +233,11 @@ impl Jobs {
 pub(crate) struct BuildSession {
     pub(crate) state: State,
     pub(crate) built: HashSet<ProjectPath>,
+    pub(crate) requested: HashSet<ProjectPath>,
     pub(crate) cargo_deps: BTreeSet<String>,
     pub(crate) cargo_env: BTreeSet<String>,
     pub(crate) stack: Vec<ProjectPath>,
+    pub(crate) active_patterns: Vec<(RuleId, usize)>,
     pub(crate) command_probes: Arc<Mutex<HashMap<String, std::result::Result<String, String>>>>,
 }
 

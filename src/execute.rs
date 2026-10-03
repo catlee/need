@@ -31,6 +31,7 @@ use crate::{
 pub(crate) enum BuildError {
     Message(String),
     DependencyCycle(Vec<ProjectPath>),
+    DependencyDepth(ProjectPath),
     RequiredBy { error: Box<Self>, target: String },
 }
 
@@ -46,6 +47,10 @@ impl std::fmt::Display for BuildError {
                     .map(ProjectPath::as_str)
                     .collect::<Vec<_>>()
                     .join(" -> ")
+            ),
+            Self::DependencyDepth(target) => write!(
+                f,
+                "dependency depth limit ({MAX_DEPENDENCY_DEPTH}) exceeded while resolving {target}\nhelp: shorten the dependency chain or narrow recursive pattern rules so they terminate at source files"
             ),
             Self::RequiredBy { error, target } => write!(f, "{error}\nrequired by {target}"),
         }
@@ -152,6 +157,8 @@ fn parallel_batches<T: Clone>(
     batches
 }
 
+const MAX_DEPENDENCY_DEPTH: usize = 64;
+
 pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> BuildResult<()> {
     let target = ProjectPath::new(target)?;
     let force = c.options.force && c.session.stack.is_empty();
@@ -163,13 +170,19 @@ pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> Bui
         cycle.push(target.clone());
         return Err(BuildError::DependencyCycle(cycle));
     }
+    if c.session.stack.len() >= MAX_DEPENDENCY_DEPTH {
+        return Err(BuildError::DependencyDepth(target));
+    }
+    let active_patterns_len = c.session.active_patterns.len();
     c.session.stack.push(target.clone());
     let result = build_inner(c, target.as_str(), parent, force);
     c.session.stack.pop();
+    c.session.active_patterns.truncate(active_patterns_len);
     result
 }
 
 pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildResult<()> {
+    c.session.requested.extend(targets.iter().cloned());
     if !c.options.jobs.is_parallel() || targets.len() <= 1 {
         for target in targets {
             build(c, target.as_str(), None)?;
@@ -242,6 +255,9 @@ pub(crate) fn build_inner(
         c.session.built.insert(ProjectPath::new(target)?);
         return Ok(());
     };
+    if let Some(stem) = &stem {
+        c.session.active_patterns.push((id, stem.len()));
+    }
     let ri = id.0;
     let rule = c.project.rules[ri].clone();
     c.session.cargo_env.extend(rule.env_refs.iter().cloned());
@@ -1039,7 +1055,10 @@ fn validate_dynamic_outputs(
 }
 
 pub(crate) fn required_by(error: BuildError, target: &str) -> BuildError {
-    if matches!(error, BuildError::DependencyCycle(_)) {
+    if matches!(
+        error,
+        BuildError::DependencyCycle(_) | BuildError::DependencyDepth(_)
+    ) {
         error
     } else {
         BuildError::RequiredBy {
@@ -1503,6 +1522,16 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
             .iter()
             .map(|x| ProjectPath::output(&x.as_str().replace('%', &s)))
             .collect::<Result<Vec<_>>>()?;
+        if c.session
+            .active_patterns
+            .iter()
+            .any(|(id, length)| *id == RuleId(i) && s.len() >= *length)
+            && !o.iter().any(|output| c.session.requested.contains(output))
+            && !c.session.state.rules.contains_key(&group_key(&o))
+            && abs(c, t).is_file()
+        {
+            return Ok(TargetMatch::Source);
+        }
         return Ok(TargetMatch::Rule {
             id: RuleId(i),
             stem: Some(s),

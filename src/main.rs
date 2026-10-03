@@ -2277,6 +2277,76 @@ final: generated.txt generated/*
     }
 
     #[test]
+    fn expanding_pattern_stops_at_source_and_rebuilds_recorded_outputs() {
+        let root = temp_project("expanding-pattern");
+        fs::create_dir_all(root.join("src/src")).unwrap();
+        fs::write(root.join("src/src/map"), "first").unwrap();
+        let mut ctx = context(&root, "%: src/%\n  cp {{in}} {{out}}\n");
+        build(&mut ctx, "src/map", None).unwrap();
+        ctx.session.built.clear();
+        build(&mut ctx, "map", None).unwrap();
+        assert_eq!(fs::read_to_string(root.join("map")).unwrap(), "first");
+        fs::write(root.join("src/src/map"), "second").unwrap();
+        ctx.session.built.clear();
+        build(&mut ctx, "map", None).unwrap();
+        assert_eq!(fs::read_to_string(root.join("src/map")).unwrap(), "second");
+        assert_eq!(fs::read_to_string(root.join("map")).unwrap(), "second");
+        assert!(ctx.session.stack.is_empty());
+        assert!(ctx.session.active_patterns.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn expanding_pattern_preserves_exact_producer_for_existing_dependency() {
+        let root = temp_project("expanding-exact");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(root.join("src/map"), "old generated output").unwrap();
+        fs::write(root.join("seed"), "new").unwrap();
+        let mut ctx = context(
+            &root,
+            "%: src/%\n  cp {{in}} {{out}}\nsrc/map: seed\n  cp {{in}} {{out}}\n",
+        );
+        build(&mut ctx, "map", None).unwrap();
+        assert_eq!(fs::read_to_string(root.join("map")).unwrap(), "new");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn shrinking_pattern_rebuilds_existing_unrecorded_intermediate() {
+        let root = temp_project("shrinking-pattern");
+        fs::write(root.join("input"), "new").unwrap();
+        fs::write(root.join("input.copy"), "old").unwrap();
+        let mut ctx = context(&root, "%.copy: %\n  cp {{in}} {{out}}\n");
+        build(&mut ctx, "input.copy.copy", None).unwrap();
+        assert_eq!(fs::read_to_string(root.join("input.copy")).unwrap(), "new");
+        assert_eq!(
+            fs::read_to_string(root.join("input.copy.copy")).unwrap(),
+            "new"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn unbounded_pattern_expansion_reports_depth_and_cleans_active_stack() {
+        let root = temp_project("unbounded-pattern");
+        let mut ctx = context(&root, "%: src/%\n  cp {{in}} {{out}}\n");
+        let error = build(&mut ctx, "missing", None).unwrap_err().to_string();
+        assert!(
+            error.contains("dependency depth limit (64) exceeded"),
+            "{error}"
+        );
+        assert!(error.contains("src/src/"), "{error}");
+        assert!(error.contains("help:"), "{error}");
+        assert!(ctx.session.stack.is_empty());
+        assert!(ctx.session.active_patterns.is_empty());
+        assert!(ctx.session.state.rules.is_empty());
+        fs::create_dir(root.join("src")).unwrap();
+        fs::write(root.join("src/existing"), "source").unwrap();
+        build(&mut ctx, "existing", None).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn reports_dependency_cycles() {
         let root = temp_project("cycle");
         let mut ctx = context(

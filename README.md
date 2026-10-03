@@ -117,6 +117,13 @@ use that root. Normal build options, parallelism, parent-directory creation,
 output validation, and pre/post input fingerprints apply. Successful builds
 persist normally; changes to the recipe or mapping make the outputs stale.
 
+A catch-all mapping such as `%: src/%` stops at existing, unrecorded source
+files when reapplying the same pattern would keep or grow its stem. Exact rules,
+requested output groups, recorded generated outputs, and shrinking pattern chains
+retain rule precedence. Existing requested targets still rebuild when stale.
+Dependency chains deeper
+than 64 targets fail with a diagnostic instead of exhausting the stack.
+
 ## Commands
 
 ```sh
