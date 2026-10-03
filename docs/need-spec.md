@@ -49,6 +49,8 @@ The current implementation includes the core artifact graph, including:
   cleanup modes for removing state and/or those outputs, and `need logs TARGET`
   for inspecting the latest retained execution log for a declared artifact target
 - `need map` for `%`-pattern filename transformation with newline or NUL output
+- `need get` for mapping and building, streamed declarations, and inline
+  recipes through `-c COMMAND` with persistent freshness and no needfile
 - `-n` as an alias for `--dry-run` and `--file PATH` for explicit needfile selection
 - `--root PATH` for selecting a project/output root independently of the needfile
 - Cargo metadata mode with transitive source and environment dependencies
@@ -2393,6 +2395,27 @@ the mapped targets with the supplied build options. It is equivalent to
 `need [OPTIONS] $(need map <RULE> -- <INPUT>...)` without shell word splitting.
 `--from` reads newline-delimited inputs from a file, or standard input when its
 value is `-`; `-0` selects NUL-delimited input instead.
+
+For a small transform, provide one inline shell recipe without a needfile:
+
+```sh
+need get -j -c 'magick {{in}} -thumbnail 200x200 {{out}}' 'thumbs/%: %' -- *.jpg
+```
+
+`-c COMMAND` accepts exactly one nonempty string, including multiline shell
+text. It requires a mapping rule with one target pattern and one file input
+pattern; recipes and attributes in the mapping are rejected. The command is
+stored as shell text and supports normal `{{in}}`, `{{out}}`, and `{{stem}}`
+interpolation and shell escaping. Options precede the mapping rule; filenames
+after the rule (with an optional `--`) are literal arguments. Use `--` before
+a mapping rule that begins with `-`.
+
+Inline mode ignores local and ancestor needfiles and rejects explicit `--file`.
+The invocation directory is the default root; `--root PATH` overrides it.
+Relative inputs, outputs, recipe working directory, `.need/` state, and logs
+use that root. Normal build options, parallelism, parent-directory creation,
+output validation, and pre/post input fingerprints apply. Successful builds
+persist normally; changes to the recipe or mapping make the outputs stale.
 
 Without `RULE`, `--from` reads a Needfile fragment containing concrete
 single-output declarations with file dependencies and no recipes or attributes.

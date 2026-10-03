@@ -60,6 +60,9 @@ impl PatternMap {
             || rule.options.output.is_some()
             || rule.options.outputs.is_some()
             || rule.options.depfile.is_some()
+            || rule.options.jobs.is_some()
+            || rule.options.atomic
+            || rule.options.allow_missing
         {
             return Err("map rule must not contain a recipe or attributes".into());
         }

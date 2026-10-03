@@ -37,12 +37,14 @@ fn run() -> Result<()> {
 }
 
 pub(crate) fn run_args(args: Vec<String>) -> Result<()> {
-    run_args_with_deps(args, HashMap::new())
+    run_build(args, HashMap::new(), None, None)
 }
 
-pub(crate) fn run_args_with_deps(
+pub(crate) fn run_build(
     mut args: Vec<String>,
     concrete_deps: HashMap<ProjectPath, Vec<Dependency>>,
+    inline_rule: Option<model::ParsedRule>,
+    mapped_targets: Option<Vec<String>>,
 ) -> Result<()> {
     let literal_targets = args.first().is_some_and(|arg| arg == "--");
     if literal_targets {
@@ -167,20 +169,29 @@ pub(crate) fn run_args_with_deps(
     };
     if !literal_targets && args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--root PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need outputs [-0] [--file PATH] [--root PATH]\n       need clean [--outputs-only|--remove-outputs] [--file PATH] [--root PATH]\n       need logs [--file PATH] [--root PATH] TARGET\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] <RULE> [--] <INPUT>...\n       need get [OPTIONS] [-0] --from <PATH|-> <RULE>\n       need get [OPTIONS] --from <PATH|->"
+            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--root PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need outputs [-0] [--file PATH] [--root PATH]\n       need clean [--outputs-only|--remove-outputs] [--file PATH] [--root PATH]\n       need logs [--file PATH] [--root PATH] TARGET\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] [-c COMMAND] <RULE> [--] <INPUT>...\n       need get [OPTIONS] [-0] --from <PATH|-> <RULE>\n       need get [OPTIONS] --from <PATH|->"
         );
         return Ok(());
     }
-    let file = select_needfile(
-        env::current_dir().map_err(|e| e.to_string())?,
-        explicit_file,
-    )?;
-    let root = select_root(
-        env::current_dir().map_err(|e| e.to_string())?,
-        explicit_root,
-        &file,
-    );
-    let (vars, parsed_rules) = parse_needfile(&file)?;
+    let invocation_dir = env::current_dir().map_err(|e| e.to_string())?;
+    let (file, vars, parsed_rules) = if let Some(rule) = inline_rule {
+        if explicit_file.is_some() {
+            return Err(
+                "get -c cannot be combined with --file\nhelp: omit --file for an inline recipe"
+                    .into(),
+            );
+        }
+        (
+            invocation_dir.join("<inline recipe>"),
+            HashMap::new(),
+            vec![rule],
+        )
+    } else {
+        let file = select_needfile(invocation_dir.clone(), explicit_file)?;
+        let (vars, rules) = parse_needfile(&file)?;
+        (file, vars, rules)
+    };
+    let root = select_root(invocation_dir, explicit_root, &file);
     let dotenv = load_dotenv(&vars, &root)?;
     let mut resolved_vars = resolve_variables(&vars, &dotenv.values)?;
     resolved_vars.insert(
@@ -241,6 +252,7 @@ pub(crate) fn run_args_with_deps(
     cleanup_recovery_files(&ctx.project.root)?;
     install_signal_handlers()?;
     ctx.session.state = load_state(&ctx.project.root)?;
+    let args = mapped_targets.unwrap_or(args);
     let targets = if args.is_empty() {
         let default_target = ctx
             .project
@@ -844,6 +856,24 @@ mod tests {
         path::{Path, PathBuf},
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    fn get_inline_cli_errors_have_help() {
+        for args in [
+            vec!["get", "-c"],
+            vec!["get", "-c", ""],
+            vec!["get", "-c", "true", "-c", "true"],
+            vec!["get", "-c", "true"],
+            vec![
+                "get", "--file", "missing", "-c", "true", "out/%: %", "input",
+            ],
+            vec!["get", "-c", "true", "@atomic\nout/%: %", "input"],
+            vec!["get", "-c", "true", "@jobs(1)\nout/%: %", "input"],
+        ] {
+            let error = run_args(args.into_iter().map(str::to_owned).collect()).unwrap_err();
+            assert!(error.contains("help:"), "{error}");
+        }
+    }
 
     fn temp_project(name: &str) -> PathBuf {
         let suffix = SystemTime::now()

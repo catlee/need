@@ -2,7 +2,6 @@ use std::io::Read;
 
 use crate::{
     Result,
-    cli::{take_flag, take_value},
     map::map_inputs,
     model::{Dependency, ParsedDependency, ProjectPath},
     parser::parse_needfile_text,
@@ -10,23 +9,81 @@ use crate::{
 use std::{collections::HashMap, path::Path};
 
 pub(crate) fn run(args: Vec<String>) -> Result<()> {
-    let mut args = args;
-    let from = take_value(&mut args, "--from")?;
-    let nul = take_flag(&mut args, "-0");
-    let rule_index = args.iter().position(|arg| arg.contains(':'));
-    if from.is_some() && rule_index.is_none() {
+    let mut build_args = Vec::new();
+    let mut from = None;
+    let mut nul = false;
+    let mut command = None;
+    let mut args = args.into_iter().peekable();
+    while let Some(arg) = args.peek() {
+        if arg == "--" {
+            args.next();
+            break;
+        }
+        if !arg.starts_with('-') {
+            break;
+        }
+        let arg = args.next().unwrap();
+        let (name, attached) = arg
+            .split_once('=')
+            .map_or((arg.as_str(), None), |(n, v)| (n, Some(v)));
+        match name {
+            "-h" | "--help" => {
+                println!(
+                    "usage: need get [OPTIONS] [-c COMMAND] <RULE> [--] <INPUT>...\n       need get [OPTIONS] [-c COMMAND] [-0] --from <PATH|-> <RULE>\n       need get [OPTIONS] --from <PATH|->\n\n-c COMMAND  One inline shell recipe (multiline allowed); requires a mapping rule.\n            Ignores needfiles; --file is rejected. Root defaults to the invocation\n            directory; --root overrides it. Normal build options apply."
+                );
+                return Ok(());
+            }
+            "-0" => nul = true,
+            "-c" | "--from" | "--file" | "--root" | "--output" | "--jobs" => {
+                let value = attached
+                    .map(str::to_owned)
+                    .or_else(|| args.next())
+                    .ok_or_else(|| {
+                        format!("{name} requires a value\nhelp: supply a value after {name}")
+                    })?;
+                match name {
+                    "-c" => {
+                        if command.is_some() || value.trim().is_empty() {
+                            return Err("get requires exactly one nonempty -c COMMAND\nhelp: use one -c with the complete shell recipe".into());
+                        }
+                        command = Some(value);
+                    }
+                    "--from" => from = Some(value),
+                    _ => {
+                        build_args.push(name.to_owned());
+                        build_args.push(value);
+                    }
+                }
+            }
+            "-j" => {
+                build_args.push(arg);
+                if args.peek().is_some_and(|v| v.parse::<usize>().is_ok()) {
+                    build_args.push(args.next().unwrap());
+                }
+            }
+            "--force" | "--dry-run" | "-n" | "--explain" | "--list" | "--cargo" => {
+                build_args.push(arg)
+            }
+            _ if arg.starts_with("-j") && arg.len() > 2 => build_args.push(arg),
+            _ => {
+                return Err(format!(
+                    "unknown get option: {arg}\nhelp: use need get --help"
+                ));
+            }
+        }
+    }
+    let rule = args.next();
+    if from.is_some() && rule.is_none() && command.is_none() {
         let declarations = read_declarations(from.as_deref().unwrap())?;
         if declarations.is_empty() {
             return Err("get declaration input is empty".into());
         }
-        args.extend(declarations.keys().map(ToString::to_string));
-        return crate::run_args_with_deps(args, declarations);
+        let targets = declarations.keys().map(ToString::to_string).collect();
+        return crate::run_build(build_args, declarations, None, Some(targets));
     }
-    let Some(rule_index) = rule_index else {
-        return Err("get requires a mapping rule such as 'thumbs/%: %'".into());
-    };
-    let rule = &args[rule_index];
-    let mut inputs = args[rule_index + 1..].to_vec();
+    let rule =
+        rule.ok_or("get requires a mapping rule\nhelp: supply a rule such as 'thumbs/%: %'")?;
+    let mut inputs: Vec<String> = args.collect();
     if inputs.first().is_some_and(|arg| arg == "--") {
         inputs.remove(0);
     }
@@ -37,12 +94,22 @@ pub(crate) fn run(args: Vec<String>) -> Result<()> {
         inputs = read_inputs(&path, nul)?;
     }
     if inputs.is_empty() {
-        return Err("get requires at least one input filename".into());
+        return Err("get requires at least one input filename\nhelp: supply filenames after the mapping rule".into());
     }
-    let mapped = map_inputs(rule, &inputs)?;
-    let mut build_args = args[..rule_index].to_vec();
-    build_args.extend(mapped);
-    crate::run_args(build_args)
+    let mapped = map_inputs(&rule, &inputs).map_err(|error| {
+        format!("{error}\nhelp: use one target pattern and one file input pattern, each with one %")
+    })?;
+    let inline = command
+        .map(|recipe| {
+            let (_, mut rules) = parse_needfile_text(Path::new("<inline rule>"), &rule)?;
+            let mapping_signature = crate::hash::hash_text(&rule);
+            let mut rule = rules.remove(0);
+            rule.recipe = recipe;
+            rule.deps.push(ParsedDependency::String(mapping_signature));
+            Ok::<_, String>(rule)
+        })
+        .transpose()?;
+    crate::run_build(build_args, HashMap::new(), inline, Some(mapped))
 }
 
 fn read_declarations(path: &str) -> Result<HashMap<ProjectPath, Vec<Dependency>>> {

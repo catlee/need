@@ -179,6 +179,27 @@ filenames from a file or `-` for stdin; add `-0` for NUL-delimited filenames.
 Without a mapping rule, `--from` accepts concrete declarations and supplies
 their file dependencies to matching needfile recipes.
 
+For a small transform, provide one inline shell recipe without a needfile:
+
+```sh
+need get -j -c 'magick {{in}} -thumbnail 200x200 {{out}}' 'thumbs/%: %' -- *.jpg
+```
+
+`-c COMMAND` accepts exactly one nonempty string, including multiline shell
+text. It requires a mapping rule with one target pattern and one file input
+pattern; recipes and attributes in the mapping are rejected. The command is
+stored as shell text and supports normal `{{in}}`, `{{out}}`, and `{{stem}}`
+interpolation and shell escaping. Options precede the mapping rule; filenames
+after the rule (with an optional `--`) are literal arguments. Use `--` before
+a mapping rule that begins with `-`.
+
+Inline mode ignores local and ancestor needfiles and rejects explicit `--file`.
+The invocation directory is the default root; `--root PATH` overrides it.
+Relative inputs, outputs, recipe working directory, `.need/` state, and logs
+use that root. Normal build options, parallelism, parent-directory creation,
+output validation, and pre/post input fingerprints apply. Successful builds
+persist normally; changes to the recipe or mapping make the outputs stale.
+
 On Unix, SIGINT and SIGTERM stop the active recipe process group, retain an
 interrupted log under `.need/logs/`, and leave the output group stale for the
 next invocation. State replacement is atomic; abandoned temporary state and
