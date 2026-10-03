@@ -6,6 +6,21 @@ All notable changes to `need` are documented here.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.1.1](https://github.com/catlee/need/compare/v0.1.0...v0.1.1) - 2026-09-24
+
+### Added
+
+- *(parser)* require pre-rule attributes
+- *(parser)* add pre-rule attributes
+
+### Other
+
+- *(deps)* bump actions/checkout from 4 to 7
+- configure dependabot updates
+- restore README rationale heading
+- *(skill)* clarify rule attributes
+- slim README
+
 ## [0.1.0](https://github.com/catlee/need/compare/v0.0.3...v0.1.0) - 2026-09-21
 
 ### Added
