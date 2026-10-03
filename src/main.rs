@@ -7,6 +7,7 @@ use std::{
 };
 
 mod cli;
+mod directory;
 mod execute;
 mod get;
 mod hash;
@@ -16,6 +17,7 @@ mod parser;
 mod state;
 
 use cli::*;
+use directory::{check_output_overlap, validate_directory_path};
 use execute::*;
 use hash::hash_text;
 use model::*;
@@ -79,7 +81,7 @@ pub(crate) fn run_build(
             &file,
         );
         let _lock = BuildLock::acquire(&root)?;
-        cleanup_recovery_files(&root)?;
+        cleanup_recovery_files(&root, &[])?;
         return list_recorded_outputs(&root, nul);
     }
     if !literal_targets && let Some(index) = get_command_index(&args) {
@@ -249,7 +251,7 @@ pub(crate) fn run_build(
         return Ok(());
     }
     let _lock = BuildLock::acquire(&ctx.project.root)?;
-    cleanup_recovery_files(&ctx.project.root)?;
+    cleanup_recovery_files(&ctx.project.root, &ctx.project.rules)?;
     install_signal_handlers()?;
     ctx.session.state = load_state(&ctx.project.root)?;
     let args = mapped_targets.unwrap_or(args);
@@ -377,7 +379,15 @@ fn recorded_outputs(root: &Path) -> Result<BTreeSet<ProjectPath>> {
 }
 
 fn remove_recorded_outputs(root: &Path) -> Result<()> {
+    let state = load_state(root)?;
     for output in recorded_outputs(root)? {
+        let directory = state
+            .rules
+            .values()
+            .any(|rule| rule.kind == OutputKind::Directory && rule.outputs.contains_key(&output));
+        if directory {
+            validate_directory_path(&output)?;
+        }
         if output.as_str() == ".need" || output.as_str().starts_with(".need/") {
             return Err(format!(
                 "recorded output {output} is inside .need\nhelp: remove it manually; cleanup modes preserve state until it is removed as a whole"
@@ -394,6 +404,10 @@ fn remove_recorded_outputs(root: &Path) -> Result<()> {
                 ));
             }
         };
+        if metadata.is_dir() && directory {
+            fs::remove_dir_all(&path).map_err(|error| format!("could not remove directory output {output}: {error}\nhelp: check permissions and retry"))?;
+            continue;
+        }
         if metadata.is_dir() {
             return Err(format!(
                 "recorded output {output} is a directory\nhelp: only file outputs can be removed by `need clean`"
@@ -741,11 +755,8 @@ fn resolve_rules(
     for parsed in parsed_rules {
         let mut rule = Rule {
             source: parsed.source.clone(),
-            outputs: parsed
-                .outputs
-                .iter()
-                .map(|output| ProjectPath::output(output))
-                .collect::<Result<Vec<_>>>()?,
+            kind: OutputKind::File,
+            outputs: Vec::new(),
             deps: expand_dependencies(&parsed.deps, vars, env_values)
                 .map_err(|error| format!("{}: {error}", parsed.source))?,
             recipe: parsed.recipe.clone(),
@@ -753,8 +764,8 @@ fn resolve_rules(
             pattern: false,
             env_refs: BTreeSet::new(),
         };
-        for value in &rule.outputs {
-            collect_env_refs(value.as_str(), raw_vars, &mut rule.env_refs);
+        for value in &parsed.outputs {
+            collect_env_refs(value, raw_vars, &mut rule.env_refs);
         }
         collect_env_refs(&rule.recipe, raw_vars, &mut rule.env_refs);
         for value in parsed
@@ -779,10 +790,21 @@ fn resolve_rules(
         for output in &parsed.outputs {
             output_words.extend(expand_words(output, vars, env_values)?);
         }
+        rule.kind = if output_words.iter().any(|word| word.ends_with('/')) {
+            OutputKind::Directory
+        } else {
+            OutputKind::File
+        };
         rule.outputs = output_words
             .iter()
             .map(|x| ProjectPath::output(x))
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<Result<Vec<_>>>()
+            .map_err(|error| {
+                format!(
+                    "{}: {error}\nhelp: choose an output beneath the project root",
+                    parsed.source
+                )
+            })?;
         if let Some(value) = parsed
             .options
             .output
@@ -841,6 +863,20 @@ fn resolve_rules(
         }
         rule.options.atomic = parsed.options.atomic;
         rule.options.allow_missing = parsed.options.allow_missing;
+        if rule.kind == OutputKind::Directory {
+            if rule.outputs.len() != 1
+                || !rule.options.atomic
+                || rule.options.allow_missing
+                || rule.options.outputs.is_some()
+            {
+                return Err(format!(
+                    "{}: directory outputs require exactly one output and @atomic; @allow-missing and @outputs-from are unsupported\nhelp: declare one trailing-slash output under @atomic",
+                    rule.source
+                ));
+            }
+            validate_directory_path(&rule.outputs[0])
+                .map_err(|error| format!("{}: {error}", rule.source))?;
+        }
         if rule.options.allow_missing && rule.options.outputs.is_some() {
             return Err("@allow-missing cannot be combined with @outputs-from(...)
 help: use @allow-missing only with statically declared outputs"
@@ -872,6 +908,28 @@ help: atomic publication currently supports declared outputs only"
         rule.pattern = rule.outputs.iter().any(|x| x.as_str().contains('%'));
         rules.push(rule);
     }
+    for rule in rules
+        .iter()
+        .filter(|rule| !rule.pattern && rule.kind == OutputKind::Directory)
+    {
+        for other in rules
+            .iter()
+            .filter(|other| !other.pattern && other.source != rule.source)
+        {
+            for output in &rule.outputs {
+                for candidate in &other.outputs {
+                    check_output_overlap(output, rule.kind, candidate, other.kind).map_err(
+                        |error| {
+                            format!(
+                                "{}: {error}\nconflicting rule: {}",
+                                rule.source, other.source
+                            )
+                        },
+                    )?;
+                }
+            }
+        }
+    }
     Ok(rules)
 }
 
@@ -885,6 +943,204 @@ mod tests {
         path::{Path, PathBuf},
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    fn directory_declarations_validate_and_preserve_marker_through_variables() {
+        for text in [
+            "out/:\n  true\n",
+            "@atomic\nout/ file:\n  true\n",
+            "@atomic\na/ b/:\n  true\n",
+            "@atomic\n@allow-missing\nout/:\n  true\n",
+            "@atomic\n@outputs-from(manifest)\nout/:\n  true\n",
+            "@atomic\n.need/cache/:\n  true\n",
+            "@atomic\n./:\n  true\n",
+            "@atomic\nout/:\n  true\nout/child:\n  true\n",
+            "container:\n  true\n@atomic\ncontainer/out/:\n  true\n",
+        ] {
+            let (vars, rules) = parse_needfile_text(Path::new("needfile"), text).unwrap();
+            let error = resolve_rules(&rules, &vars, &HashMap::new(), &vars).unwrap_err();
+            assert!(
+                error.contains("help:") || error.contains("empty path"),
+                "{error}"
+            );
+        }
+        let root = temp_project("directory-vars");
+        let ctx = context(&root, "dirs = previews/\n@atomic\n{{dirs}}:\n  true\n");
+        assert_eq!(ctx.project.rules[0].kind, OutputKind::Directory);
+        assert_eq!(
+            select_rule(&ctx, "previews").unwrap(),
+            select_rule(&ctx, "previews/").unwrap()
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn directory_state_defaults_to_file_and_cleanup_protects_root() {
+        let legacy: SavedRule =
+            serde_json::from_str(r#"{"signature":"old","outputs":{"out":"hash"}}"#).unwrap();
+        assert_eq!(legacy.kind, OutputKind::File);
+        assert!(
+            serde_json::from_str::<SavedRule>(
+                r#"{"signature":"old","kind":"directory","outputs":{".":"hash"}}"#
+            )
+            .is_err()
+        );
+        let root = temp_project("directory-clean");
+        fs::create_dir_all(root.join("out/empty")).unwrap();
+        fs::write(root.join("keep"), "safe").unwrap();
+        let mut state = State::default();
+        let mut saved = legacy;
+        saved.kind = OutputKind::Directory;
+        state.rules.insert("out".into(), saved);
+        save_state(&root, &state).unwrap();
+        remove_recorded_outputs(&root).unwrap();
+        assert!(!root.join("out").exists());
+        assert!(root.join("keep").is_file());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_root_dependencies_and_output_edits_rebuild() {
+        let root = temp_project("directory-deps");
+        fs::write(root.join("input"), "first").unwrap();
+        let text = "@atomic\npreviews/: input\n  cp {{in}} {{out}}/item\n  mkdir {{out}}/empty\nresult: previews/\n  cat {{in}}/item > {{out}}\n";
+        let mut ctx = context(&root, text);
+        build(&mut ctx, "result", None).unwrap();
+        assert_eq!(fs::read_to_string(root.join("result")).unwrap(), "first");
+        let saved = ctx.session.state.clone();
+        let mut current = context(&root, text);
+        current.session.state = saved.clone();
+        build(&mut current, "previews/", None).unwrap();
+        assert!(current.session.state.rules["previews"] == saved.rules["previews"]);
+        fs::write(root.join("previews/extra"), "obsolete").unwrap();
+        let mut changed = context(&root, text);
+        changed.session.state = saved;
+        build(&mut changed, "previews", None).unwrap();
+        assert!(!root.join("previews/extra").exists());
+        fs::write(root.join("input"), "second").unwrap();
+        changed.session.built.clear();
+        build(&mut changed, "result", None).unwrap();
+        assert_eq!(fs::read_to_string(root.join("result")).unwrap(), "second");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_kind_changes_signature_without_changing_file_signature_format() {
+        let root = temp_project("directory-kind");
+        let text = "@atomic\nout:\n  touch {{out}}\n";
+        let mut ctx = context(&root, text);
+        build(&mut ctx, "out", None).unwrap();
+        let expected = hash_text("recipe=touch out\nmods=@atomic\ndeps=[]\nenv=[]");
+        assert_eq!(ctx.session.state.rules["out"].signature, expected);
+        let saved = ctx.session.state.clone();
+        fs::remove_file(root.join("out")).unwrap();
+        let mut directory = context(&root, "@atomic\nout/:\n  touch {{out}}\n");
+        directory.session.state = saved;
+        build(&mut directory, "out", None).unwrap();
+        assert_ne!(directory.session.state.rules["out"].signature, expected);
+        assert_eq!(
+            directory.session.state.rules["out"].kind,
+            OutputKind::Directory
+        );
+        fs::remove_dir_all(root.join("out")).unwrap();
+        let mut file = context(&root, text);
+        file.session.state = directory.session.state;
+        build(&mut file, "out", None).unwrap();
+        assert_eq!(file.session.state.rules["out"].signature, expected);
+        assert_eq!(file.session.state.rules["out"].kind, OutputKind::File);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_publication_rename_failure_preserves_destination() {
+        let root = temp_project("directory-rename-failure");
+        fs::create_dir(root.join("out")).unwrap();
+        fs::write(root.join("out/item"), "old").unwrap();
+        let error = directory::publish(
+            &root,
+            &ProjectPath::output("missing-staging").unwrap(),
+            &ProjectPath::output("out").unwrap(),
+        )
+        .unwrap_err();
+        assert!(error.contains("atomically publish directory out") && error.contains("help:"));
+        assert_eq!(fs::read(root.join("out/item")).unwrap(), b"old");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn directory_fingerprint_tracks_raw_entries_modes_and_links_without_referents() {
+        use std::os::unix::{
+            ffi::OsStringExt,
+            fs::{PermissionsExt, symlink},
+        };
+        let root = temp_project("directory-hash");
+        fs::create_dir(root.join("tree")).unwrap();
+        let tree = root.join("tree");
+        let initial = hash_directory(&tree).unwrap();
+        fs::create_dir(tree.join("empty")).unwrap();
+        assert_ne!(initial, hash_directory(&tree).unwrap());
+        fs::remove_dir(tree.join("empty")).unwrap();
+        assert_eq!(initial, hash_directory(&tree).unwrap());
+        let raw = tree.join(std::ffi::OsString::from_vec(vec![0xff]));
+        fs::write(&raw, "one").unwrap();
+        let content = hash_directory(&tree).unwrap();
+        fs::write(&raw, "two").unwrap();
+        assert_ne!(content, hash_directory(&tree).unwrap());
+        let mode = hash_directory(&tree).unwrap();
+        fs::set_permissions(&raw, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_ne!(mode, hash_directory(&tree).unwrap());
+        fs::write(root.join("referent"), "one").unwrap();
+        symlink("../referent", tree.join("link")).unwrap();
+        let link = hash_directory(&tree).unwrap();
+        fs::write(root.join("referent"), "two").unwrap();
+        assert_eq!(link, hash_directory(&tree).unwrap());
+        fs::remove_file(tree.join("link")).unwrap();
+        symlink(std::ffi::OsString::from_vec(vec![0xfe]), tree.join("link")).unwrap();
+        assert_ne!(link, hash_directory(&tree).unwrap());
+        let socket = std::os::unix::net::UnixListener::bind(tree.join("socket")).unwrap();
+        assert!(
+            hash_directory(&tree)
+                .unwrap_err()
+                .contains("unsupported entry")
+        );
+        drop(socket);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn directory_patterns_reject_owned_ancestors_and_shared_worker_overlap() {
+        let root = temp_project("directory-owners");
+        let mut ctx = context(&root, "@atomic\nout/%/:\n  true\n");
+        assert!(
+            build(&mut ctx, "out/a/b", None)
+                .unwrap_err()
+                .to_string()
+                .contains("overlaps")
+        );
+        let ctx = context(&root, "@atomic\na%/:\n  true\n@atomic\n%/child/:\n  true\n");
+        directory::register_outputs(
+            &ctx,
+            "ab",
+            &[ProjectPath::output("ab").unwrap()],
+            OutputKind::Directory,
+        )
+        .unwrap();
+        let worker = ctx.clone();
+        assert!(
+            directory::register_outputs(
+                &worker,
+                "ab/child",
+                &[ProjectPath::output("ab/child").unwrap()],
+                OutputKind::Directory
+            )
+            .is_err()
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn get_inline_cli_errors_have_help() {

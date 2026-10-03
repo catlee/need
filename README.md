@@ -6,7 +6,7 @@
 <a href="https://crates.io/crates/need-tool"><img src="https://img.shields.io/crates/d/need-tool.svg" alt="crates.io downloads"></a>
 </div>
 
-`need` is a small build tool for file artifacts. Describe what files depend on
+`need` is a small build tool for filesystem artifacts. Describe what files depend on
 what; it rebuilds stale outputs using content signatures.
 
 > `just` does things. `need` makes things exist.
@@ -144,6 +144,36 @@ requested output groups, recorded generated outputs, and shrinking pattern chain
 retain rule precedence. Existing requested targets still rebuild when stale.
 Dependency chains deeper
 than 64 targets fail with a diagnostic instead of exhausting the stack.
+
+### Directory artifacts
+
+Declare a trailing slash and `@atomic` to replace a generated tree as one artifact:
+
+```make
+@atomic
+previews/: tree(src)
+  ./build-previews {{out}}
+
+archive.tar: previews/
+  tar -cf {{out}} {{in}}
+```
+
+`{{out}}` is an empty sibling staging directory. The recipe fills it; after
+validation and an input recheck, `need` publishes the whole tree atomically.
+Existing trees survive failed or interrupted recipes, and stale children disappear
+on replacement. `need previews` and `need previews/` select the same artifact.
+A plain dependency on the declared root builds it and fingerprints its complete
+tree. Child requests do not build the parent, and `tree(...)` remains freshness-only.
+
+Directory rules support variables and patterns, require exactly one output, and
+cannot use `@allow-missing` or `@outputs-from`. Each tree owns its subtree;
+overlapping outputs, `.need`, the project root, and symlinked parents are rejected.
+Directory output path components beginning `.need-tmp-` are reserved for staging;
+generated children inside the tree may use that prefix.
+Fingerprints track files, empty directories, Unix permissions, and symlink targets
+without following links. `need clean --outputs-only` recursively removes recorded
+directory roots. Atomic directory publication currently requires Linux GNU and
+filesystem support for `renameat2` exchange/no-replace; there is no fallback.
 
 ## Commands
 

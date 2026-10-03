@@ -74,3 +74,87 @@ pub(crate) fn hash_symlink(p: &Path) -> Result<String> {
 pub(crate) fn hash_text(s: &str) -> String {
     blake3::hash(s.as_bytes()).to_hex().to_string()
 }
+
+// Length prefixes keep raw path and link bytes unambiguous.
+pub(crate) fn hash_directory(root: &Path) -> Result<String> {
+    fn entry_error(path: &Path, error: impl std::fmt::Display) -> String {
+        format!(
+            "could not fingerprint directory entry {}: {error}\nhelp: check that the entry exists and is readable",
+            path.display()
+        )
+    }
+    fn bytes(hasher: &mut blake3::Hasher, value: &[u8]) {
+        hasher.update(&(value.len() as u64).to_le_bytes());
+        hasher.update(value);
+    }
+    let metadata = fs::symlink_metadata(root).map_err(|error| entry_error(root, error))?;
+    if !metadata.is_dir() {
+        return Err(format!(
+            "directory output {} is not a directory\nhelp: preserve the staging directory",
+            root.display()
+        ));
+    }
+    let mut paths = vec![root.to_path_buf()];
+    let mut index = 0;
+    while index < paths.len() {
+        let path = &paths[index];
+        let metadata = fs::symlink_metadata(path).map_err(|error| entry_error(path, error))?;
+        if metadata.is_dir() {
+            let entries = fs::read_dir(path)
+                .map_err(|error| entry_error(path, error))?
+                .map(|entry| entry.map(|entry| entry.path()))
+                .collect::<std::io::Result<Vec<_>>>()
+                .map_err(|error| entry_error(path, error))?;
+            paths.extend(entries);
+        }
+        index += 1;
+    }
+    paths.sort_by(|a, b| {
+        a.as_os_str()
+            .as_encoded_bytes()
+            .cmp(b.as_os_str().as_encoded_bytes())
+    });
+    let mut hasher = blake3::Hasher::new();
+    for path in paths {
+        let metadata = fs::symlink_metadata(&path).map_err(|error| entry_error(&path, error))?;
+        bytes(
+            &mut hasher,
+            path.strip_prefix(root)
+                .unwrap()
+                .as_os_str()
+                .as_encoded_bytes(),
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            hasher.update(&(metadata.permissions().mode() & 0o7777).to_le_bytes());
+        }
+        let kind = metadata.file_type();
+        if kind.is_symlink() {
+            hasher.update(b"link");
+            bytes(
+                &mut hasher,
+                fs::read_link(&path)
+                    .map_err(|error| entry_error(&path, error))?
+                    .as_os_str()
+                    .as_encoded_bytes(),
+            );
+        } else if kind.is_file() {
+            hasher.update(b"file");
+            bytes(
+                &mut hasher,
+                hash_file(&path)
+                    .map_err(|error| entry_error(&path, error))?
+                    .as_bytes(),
+            );
+        } else if kind.is_dir() {
+            hasher.update(b"directory");
+        } else {
+            return Err(format!(
+                "unsupported entry in directory output: {}\nhelp: produce only regular files, directories, and symlinks",
+                path.display()
+            ));
+        }
+    }
+    Ok(hasher.finalize().to_hex().to_string())
+}

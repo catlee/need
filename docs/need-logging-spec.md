@@ -356,6 +356,15 @@ exit status: 1
 
 In `stream` mode, output may already have appeared live and need not be repeated in full.
 
+Directory output groups use the normalized root path in status lines and log
+lookup, so `previews` and `previews/` share logs. Recipes receive the sibling
+staging directory through `{{out}}`. Validation, input-change, publication, or
+old-tree cleanup failures report the affected path and a `help:` hint and do not
+commit successful build state. Recipe logs describe child process execution;
+a successful child log alone does not imply successful directory publication.
+Interruption before publication preserves the previous tree and retains the
+usual interrupted recipe log.
+
 ## 14. Signals and Interruption
 
 If a child process is interrupted:

@@ -3,7 +3,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     num::NonZeroUsize,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use crate::Result;
@@ -64,9 +64,18 @@ impl AsRef<str> for ProjectPath {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum OutputKind {
+    #[default]
+    File,
+    Directory,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct Rule {
     pub(crate) source: String,
+    pub(crate) kind: OutputKind,
     pub(crate) outputs: Vec<ProjectPath>,
     pub(crate) deps: Vec<Dependency>,
     pub(crate) recipe: String,
@@ -171,6 +180,8 @@ pub(crate) struct HashRecord {
 
 #[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
 pub(crate) struct SavedRule {
+    #[serde(default)]
+    pub(crate) kind: OutputKind,
     pub(crate) signature: String,
     pub(crate) outputs: BTreeMap<ProjectPath, String>,
     #[serde(default)]
@@ -237,6 +248,8 @@ impl Jobs {
 #[derive(Clone, Default)]
 pub(crate) struct BuildSession {
     pub(crate) state: State,
+    pub(crate) owners: Arc<Mutex<BTreeMap<ProjectPath, (String, OutputKind)>>>,
+    pub(crate) directory_ownership: OnceLock<bool>,
     pub(crate) built: HashSet<ProjectPath>,
     pub(crate) requested: HashSet<ProjectPath>,
     pub(crate) cargo_deps: BTreeSet<String>,

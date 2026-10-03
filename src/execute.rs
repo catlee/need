@@ -21,8 +21,8 @@ use crate::{
     hash::{hash_file, hash_symlink, hash_text, walk},
     map::PercentPattern,
     model::{
-        BuildCtx, Dependency, Jobs, OutputMode, ProjectPath, RuleId, SavedManifest, SavedRule,
-        TargetMatch,
+        BuildCtx, Dependency, Jobs, OutputKind, OutputMode, ProjectPath, RuleId, SavedManifest,
+        SavedRule, TargetMatch,
     },
     parser::{canonical_exclusions, norm_rel},
 };
@@ -183,6 +183,19 @@ pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> Bui
 
 pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildResult<()> {
     c.session.requested.extend(targets.iter().cloned());
+    if crate::directory::has_directory_ownership(c) {
+        for target in targets {
+            if let TargetMatch::Rule { id, outputs, .. } = select_rule(c, target.as_str())? {
+                crate::directory::register_outputs(
+                    c,
+                    &group_key(&outputs),
+                    &outputs,
+                    c.project.rules[id.0].kind,
+                )
+                .map_err(|error| format!("{}: {error}", c.project.rules[id.0].source))?;
+            }
+        }
+    }
     if !c.options.jobs.is_parallel() || targets.len() <= 1 {
         for target in targets {
             build(c, target.as_str(), None)?;
@@ -262,6 +275,8 @@ pub(crate) fn build_inner(
     let rule = c.project.rules[ri].clone();
     c.session.cargo_env.extend(rule.env_refs.iter().cloned());
     let key = group_key(&outputs);
+    crate::directory::register_outputs(c, &key, &outputs, rule.kind)
+        .map_err(|error| format!("{}: {error}", rule.source))?;
     let mut resolved_deps = Vec::new();
     let mut has_glob = false;
     for dependency in &rule.deps {
@@ -466,7 +481,16 @@ pub(crate) fn build_inner(
     let known_dynamic = saved.as_ref().map_or(&[][..], |saved| &saved.dynamic);
     for o in outputs.iter().chain(known_dynamic) {
         let p = abs(c, o);
-        if p.is_file() {
+        if rule.kind == OutputKind::Directory && p.is_dir() {
+            let h = crate::hash::hash_directory(&p)?;
+            if saved
+                .as_ref()
+                .is_some_and(|saved| saved.kind != rule.kind || saved.outputs.get(o) != Some(&h))
+            {
+                reasons.push(format!("output changed: {o}"));
+            }
+            outsig.insert(o.clone(), h);
+        } else if p.is_file() && rule.kind == OutputKind::File {
             let h = cached_file_hash(c, &p)?;
             if rule.options.allow_missing
                 && saved
@@ -559,7 +583,7 @@ pub(crate) fn build_inner(
         }
     }
     let recipe_outputs = if rule.options.atomic && !c.options.dry {
-        temporary_outputs(&outputs)?
+        temporary_outputs(&outputs, rule.kind)?
     } else {
         outputs.clone()
     };
@@ -605,11 +629,17 @@ pub(crate) fn build_inner(
     {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
+    if rule.kind == OutputKind::Directory {
+        let staging = abs(c, &recipe_outputs[0]);
+        fs::create_dir(&staging).map_err(|error| format!("could not create directory staging output {}: {error}\nhelp: check access to the output parent", staging.display()))?;
+    }
     status_line(c, "need", &key, "\x1b[33m");
     let mode = rule.options.output.unwrap_or(c.options.output);
     run_recipe(c, &key, &rendered, mode)?;
     for (output, recipe_output) in outputs.iter().zip(&recipe_outputs) {
-        if !abs(c, recipe_output).is_file() {
+        if rule.kind == OutputKind::Directory {
+            crate::hash::hash_directory(&abs(c, recipe_output))?;
+        } else if !abs(c, recipe_output).is_file() {
             if rule.options.allow_missing {
                 missing.push(output.clone());
             } else {
@@ -619,7 +649,8 @@ pub(crate) fn build_inner(
     }
     let dynamic = if let Some(path) = &manifest {
         let dynamic = read_output_manifest(c, path.as_str())?;
-        validate_dynamic_outputs(c, &key, &outputs, &dynamic)?;
+        validate_dynamic_outputs(c, &key, &outputs, &dynamic)
+            .map_err(|error| format!("{}: {error}", rule.source))?;
         for output in &dynamic {
             let p = abs(c, output);
             if !p.is_file() {
@@ -645,7 +676,16 @@ pub(crate) fn build_inner(
         )
         .into());
     }
-    if rule.options.atomic {
+    if interrupted() {
+        return Err(
+            format!("build interrupted before publishing {key}\nhelp: rerun the build").into(),
+        );
+    }
+    if rule.kind == OutputKind::Directory {
+        crate::directory::register_outputs(c, &key, &outputs, rule.kind)
+            .map_err(|error| format!("{}: {error}", rule.source))?;
+        crate::directory::publish(&c.project.root, &recipe_outputs[0], &outputs[0])?;
+    } else if rule.options.atomic {
         publish_outputs(c, &recipe_outputs, &outputs, rule.options.allow_missing)?;
     }
     let mut saved_deps = deps;
@@ -653,7 +693,12 @@ pub(crate) fn build_inner(
     let saved_signature_deps = signature_dependencies(c, &saved_deps)?;
     let saved_sig = input_signature(c, &rule, &recipe, &saved_signature_deps)?;
     for output in &outputs {
-        if abs(c, output).is_file() {
+        if rule.kind == OutputKind::Directory {
+            outsig.insert(
+                output.clone(),
+                crate::hash::hash_directory(&abs(c, output))?,
+            );
+        } else if abs(c, output).is_file() {
             outsig.insert(output.clone(), cached_file_hash(c, &abs(c, output))?);
         } else if rule.options.allow_missing {
             missing.push(output.clone());
@@ -682,6 +727,7 @@ pub(crate) fn build_inner(
     c.session.state.rules.insert(
         key,
         SavedRule {
+            kind: rule.kind,
             signature: saved_sig,
             outputs: outsig,
             missing: missing.clone(),
@@ -696,7 +742,7 @@ pub(crate) fn build_inner(
     Ok(())
 }
 
-fn temporary_outputs(outputs: &[ProjectPath]) -> Result<Vec<ProjectPath>> {
+fn temporary_outputs(outputs: &[ProjectPath], kind: OutputKind) -> Result<Vec<ProjectPath>> {
     let id = NEXT_PUBLICATION_ID.fetch_add(1, Ordering::Relaxed);
     outputs
         .iter()
@@ -706,10 +752,15 @@ fn temporary_outputs(outputs: &[ProjectPath]) -> Result<Vec<ProjectPath>> {
                 .file_name()
                 .ok_or_else(|| format!("output has no file name: {output}"))?
                 .to_string_lossy();
-            let temporary = path
-                .parent()
-                .unwrap_or_else(|| Path::new(""))
-                .join(format!(".need-tmp-{id}-{}-{name}", std::process::id()));
+            let temporary = path.parent().unwrap_or_else(|| Path::new("")).join(format!(
+                ".need-tmp-{}{id}-{}-{name}",
+                if kind == OutputKind::Directory {
+                    "dir-"
+                } else {
+                    ""
+                },
+                std::process::id()
+            ));
             ProjectPath::output(&temporary.to_string_lossy())
         })
         .collect()
@@ -730,7 +781,7 @@ impl TemporaryOutputs {
 impl Drop for TemporaryOutputs {
     fn drop(&mut self) {
         for path in &self.paths {
-            let _ = fs::remove_file(path);
+            let _ = crate::directory::remove_temporary(path);
         }
     }
 }
@@ -868,7 +919,12 @@ fn input_signature(
         }
     );
     Ok(hash_text(&format!(
-        "recipe={recipe}\nmods={mods}\ndeps={dep_sig:?}\nenv={env_sig:?}"
+        "recipe={recipe}\nmods={mods}{}\ndeps={dep_sig:?}\nenv={env_sig:?}",
+        if rule.kind == OutputKind::Directory {
+            "@directory"
+        } else {
+            ""
+        }
     )))
 }
 
@@ -1042,6 +1098,7 @@ fn validate_dynamic_outputs(
     dynamic: &[ProjectPath],
 ) -> Result<()> {
     for output in dynamic {
+        crate::directory::register_outputs(c, key, std::slice::from_ref(output), OutputKind::File)?;
         if fixed.contains(output) || c.project.exact.contains_key(output.as_str()) {
             return Err(format!(
                 "dynamic output {output} conflicts with a declared output\nhelp: give each output one owning rule"
@@ -1481,6 +1538,8 @@ pub(crate) fn rotate_success_logs(dir: &Path, keep: usize) -> Result<()> {
 }
 
 pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
+    let normalized = norm_rel(t)?;
+    let t = normalized.as_str();
     if let Some(&i) = c.project.exact.get(t) {
         return Ok(TargetMatch::Rule {
             id: RuleId(i),
@@ -1747,6 +1806,15 @@ pub(crate) fn dependency_signature(c: &mut BuildCtx, dependency: &Dependency) ->
         return Ok(hash_text(&format!("{modified:?}:{}", metadata.len())));
     }
     let q = abs(c, path);
+    if matches!(dependency, Dependency::File(_))
+        && let Ok(TargetMatch::Rule { id, .. }) = select_rule(c, path)
+        && c.project.rules[id.0].kind == OutputKind::Directory
+    {
+        return match fs::symlink_metadata(&q) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok("MISSING".into()),
+            _ => crate::hash::hash_directory(&q),
+        };
+    }
     match fs::symlink_metadata(&q) {
         Ok(_) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok("MISSING".into()),

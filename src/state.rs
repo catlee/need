@@ -48,7 +48,7 @@ pub(crate) fn load_state(r: &Path) -> Result<State> {
         .map_err(|e| e.to_string())
 }
 
-pub(crate) fn cleanup_recovery_files(r: &Path) -> Result<()> {
+pub(crate) fn cleanup_recovery_files(r: &Path, rules: &[crate::model::Rule]) -> Result<()> {
     let directory = r.join(".need");
     let Ok(entries) = fs::read_dir(&directory) else {
         return Ok(());
@@ -69,11 +69,23 @@ pub(crate) fn cleanup_recovery_files(r: &Path) -> Result<()> {
                 .map_err(|e| e.to_string())?;
         }
     }
-    cleanup_atomic_temporary_outputs(r)?;
+    let state = load_state(r)?;
+    let owned = state
+        .rules
+        .values()
+        .flat_map(|rule| rule.outputs.keys())
+        .map(|output| r.join(output.as_str()))
+        .collect::<Vec<_>>();
+    cleanup_atomic_temporary_outputs(r, r, &owned, rules)?;
     Ok(())
 }
 
-fn cleanup_atomic_temporary_outputs(root: &Path) -> Result<()> {
+fn cleanup_atomic_temporary_outputs(
+    root: &Path,
+    project: &Path,
+    owned: &[PathBuf],
+    rules: &[crate::model::Rule],
+) -> Result<()> {
     let Ok(entries) = fs::read_dir(root) else {
         return Ok(());
     };
@@ -83,12 +95,38 @@ fn cleanup_atomic_temporary_outputs(root: &Path) -> Result<()> {
         let name = entry.file_name();
         let name = name.to_string_lossy();
         let file_type = entry.file_type().map_err(|e| e.to_string())?;
-        if file_type.is_dir() {
-            if name != ".need" && name != ".git" {
-                cleanup_atomic_temporary_outputs(&path)?;
-            }
-        } else if name.starts_with(".need-tmp-") {
-            fs::remove_file(path).map_err(|e| e.to_string())?;
+        let relative = path.strip_prefix(project).unwrap().to_string_lossy();
+        let declared = rules
+            .iter()
+            .filter(|rule| rule.kind == crate::model::OutputKind::Directory)
+            .any(|rule| {
+                !rule.pattern && rule.outputs[0].as_str() == relative
+                    || rule.pattern
+                        && !name.starts_with(".need-tmp-")
+                        && crate::map::PercentPattern::new(rule.outputs[0].as_str())
+                            .is_some_and(|pattern| pattern.capture(&relative).is_some())
+            });
+        if owned.contains(&path) || declared {
+            continue;
+        }
+        let staging_directory = name.strip_prefix(".need-tmp-dir-").is_some_and(|rest| {
+            let mut parts = rest.splitn(3, '-');
+            parts.next().is_some_and(|part| part.parse::<u64>().is_ok())
+                && parts.next().is_some_and(|part| part.parse::<u32>().is_ok())
+                && parts.next().is_some_and(|part| !part.is_empty())
+        });
+        let output_container = owned.iter().any(|output| output.starts_with(&path))
+            || rules
+                .iter()
+                .filter(|rule| !rule.pattern)
+                .flat_map(|rule| &rule.outputs)
+                .any(|output| project.join(output.as_str()).starts_with(&path));
+        if name.starts_with(".need-tmp-")
+            && (!file_type.is_dir() || staging_directory && !output_container)
+        {
+            crate::directory::remove_temporary(&path)?;
+        } else if file_type.is_dir() && name != ".need" && name != ".git" {
+            cleanup_atomic_temporary_outputs(&path, project, owned, rules)?;
         }
     }
     Ok(())
@@ -141,7 +179,7 @@ mod tests {
         fs::write(root.join(".need/tmp/abandoned/stdout"), b"partial").unwrap();
         fs::write(root.join("nested/.need-tmp-stale-output"), b"partial").unwrap();
 
-        cleanup_recovery_files(&root).unwrap();
+        cleanup_recovery_files(&root, &[]).unwrap();
         assert!(!root.join(".need/state.json.abandoned.tmp").exists());
         assert!(!root.join(".need/tmp/abandoned").exists());
         assert!(!root.join("nested/.need-tmp-stale-output").exists());

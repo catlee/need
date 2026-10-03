@@ -157,7 +157,7 @@ strip or reinterpret `#` in recipe bodies.
 Notes
 -----
 
-`need` builds file artifacts. Use `just` for commands such as testing, running,
+`need` builds file and explicitly declared directory artifacts. Use `just` for commands such as testing, running,
 or starting services. `need clean` removes `.need/` beside the discovered or
 explicitly selected needfile. `need clean --outputs-only` removes the paths
 recorded from successful builds while retaining state; `--remove-outputs` then
@@ -275,3 +275,38 @@ once per rule.
 Use `@jobs(N)` to limit concurrent instances of a rule to positive integer `N`.
 The global `-j`/`--jobs` setting remains the overall ceiling; the attribute
 only affects scheduling and does not change freshness signatures.
+
+Directory outputs
+-----------------
+
+Use an explicit trailing slash and `@atomic` for one whole-tree artifact:
+
+```make
+@atomic
+previews/: tree(src)
+  ./build-previews {{out}}
+```
+
+The staging directory already exists and is empty; write the tree beneath
+`{{out}}`. Need validates it and rechecks inputs before atomically publishing.
+Old trees survive failure or interruption before publication; replacement removes
+stale children. Linux GNU with `renameat2` exchange/no-replace support is required;
+there is no fallback. Variables and patterns work. Exactly one output is allowed;
+`@allow-missing` and `@outputs-from` are unsupported.
+
+`need previews` and `need previews/` select the same artifact. A plain root
+dependency builds and fingerprints the whole tree. Child requests do not build
+the parent; `tree(...)` remains freshness-only. Directory outputs exclusively
+own their subtree, including against directory pattern ancestors. Do not declare
+overlapping outputs, the project root, `.need` trees, or symlinked parents.
+Preexisting file/symlink roots are rejected; a real unrecorded directory may be
+replaced. Fingerprints include contents, empty directories, Unix permissions,
+and raw symlink targets, without following links. Unsupported entry types fail.
+`need clean --outputs-only` recursively removes explicitly recorded directory
+roots without following symlinks; legacy file records cannot authorize this.
+
+Directory output paths MUST NOT contain components beginning `.need-tmp-`,
+including after pattern instantiation. This namespace is reserved for staging.
+Generated children inside owned trees may use that prefix; recovery preserves
+them. Recovery recognizes generated directory staging names and protects
+containers holding declared or recorded outputs.

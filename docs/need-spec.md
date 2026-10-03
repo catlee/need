@@ -63,6 +63,7 @@ The current implementation includes the core artifact graph, including:
 - compiler depfiles through `@depfile(...)`, including persisted discovered
   dependencies and Make-style escaping/continuations
 - opt-in atomic publication for declared file outputs through `@atomic`
+- explicit trailing-slash directory artifacts with atomic whole-tree publication
 - partial declared output sets through `@allow-missing`, including persisted
   absent-output outcomes and subset cleanup
 - explicit command-output freshness probes through `command(...)`
@@ -84,7 +85,7 @@ Primary goals:
 
 1. Make-like dependency syntax.
 2. Normal indentation; tabs are not special.
-3. File artifacts as the core abstraction.
+3. Filesystem artifacts as the core abstraction.
 4. Automatic parent-directory creation.
 5. Multiple outputs produced by one rule.
 6. Pattern rules.
@@ -112,7 +113,7 @@ Non-goals:
 
 ## 3. Core Model
 
-A `needfile` declares how file artifacts are produced from other dependencies.
+A `needfile` declares how filesystem artifacts are produced from other dependencies.
 
 Example:
 
@@ -138,9 +139,9 @@ If required, `need` recursively builds generated dependencies first.
 
 ---
 
-## 4. Targets Are Files
+## 4. Targets Are Artifacts
 
-Every target in a `needfile` represents a file artifact.
+Every target in a `needfile` represents a file or explicitly declared directory artifact.
 
 Example:
 
@@ -149,13 +150,9 @@ build/foo.png: src/foo.svg
   convert {{in}} {{out}}
 ```
 
-Directories are **not** artifacts.
-
-Directories exist only:
-
-- as containers for files
-- as scopes for dependency globs
-- as paths whose metadata or tree contents may be observed through explicit dependency expressions
+A trailing slash explicitly declares a directory artifact, as described in
+section 8.2. Other directories remain containers, glob scopes, or paths observed
+through dependency expressions. Parent directory creation is infrastructure.
 
 There is no `.PHONY` mechanism because command-like targets are outside the scope of `need`.
 
@@ -377,6 +374,66 @@ font_0.png
 ```
 
 exist after successful execution.
+
+---
+
+### 8.2 Directory artifacts
+
+```make
+@atomic
+previews/: tree(src)
+  ./build-previews {{out}}
+```
+
+The trailing slash is preserved through variable expansion before output path
+normalization. It declares the output kind, not a distinct path identity:
+`previews` and `previews/` select the same root. Pattern rules support directory
+outputs too. A directory rule MUST have exactly one output and `@atomic`, and
+MUST NOT use `@allow-missing` or `@outputs-from(...)`.
+
+The root is one whole-graph artifact. Plain dependencies on the root build its
+producer and fingerprint the tree; child paths do not implicitly build the root.
+`tree(...)` stays freshness-only. Each root owns its entire subtree. Concrete
+declared, remembered, requested, and resolved outputs MUST NOT overlap a directory
+owner. Ancestors matching directory patterns count as owners, even before an
+instance has built. Parallel workers share concrete ownership checks. The project
+root, `.need` output trees, symlinked parents, and existing file/symlink roots are
+rejected. An existing unrecorded real directory may be replaced.
+
+Directory output paths MUST NOT contain components beginning `.need-tmp-`,
+including after pattern instantiation. This namespace is reserved for staging.
+Generated children inside owned trees may use that prefix; recovery preserves
+them. Recovery recognizes generated directory staging names and protects
+containers holding declared or recorded outputs.
+
+The directory fingerprint includes the root and descendants in deterministic raw
+relative-path order, entry kind, regular file contents, Unix permission bits,
+empty directories, and raw symlink target bytes. It MUST NOT follow symlinks or
+include timestamps or ownership. Sockets, devices, and FIFOs are errors. Missing
+or modified trees are stale. Staging and final fingerprints bypass the file hash
+cache. This does not promise a multi-open filesystem read snapshot.
+
+Before execution, `need` creates an empty unique sibling staging directory and
+substitutes it for `{{out}}`. After the recipe succeeds, it validates the complete
+staging tree and rechecks dependencies before publication. On Linux GNU,
+`renameat2(RENAME_EXCHANGE)` exchanges staging with an existing destination;
+`RENAME_NOREPLACE` publishes to an absent destination. Unsupported platforms or
+filesystems fail with an actionable diagnostic; there is no non-atomic fallback.
+Failure or interruption before publication leaves the old tree untouched.
+
+After exchange, `need` removes the old tree at the staging path, fingerprints the
+final root, then records successful state. Cleanup or state-write failure MUST
+NOT commit new successful state. Recovery removes abandoned staging directories
+without following symlinks, then reevaluates freshness. A crash after publication
+but before state commit is recoverable; if published contents match the previous
+successful fingerprint, that state may still be current.
+
+Persisted rule records include an output kind, defaulting to file for older
+state. Directory kind contributes to input signatures; existing file signatures
+keep their format. `need clean` recursively removes only explicitly recorded
+directory roots. Legacy file records pointing to directories remain errors.
+Cleanup MUST reject unsafe roots and symlinked parents and MUST NOT follow output
+symlinks.
 
 ---
 
@@ -1539,7 +1596,8 @@ state replacement rules. Filesystem changes made by a recipe are not rolled
 back when the post-check fails, so the next invocation re-evaluates the rule
 from the unchanged last successful state.
 
-Output signatures use the same metadata-assisted hash cache as input files:
+File output signatures use the same metadata-assisted hash cache as input files;
+directory output signatures are always recomputed:
 
 ```text
 size + mtime unchanged
@@ -2035,7 +2093,7 @@ only recorded outputs and retains `.need/`, while `need clean --remove-outputs`
 removes recorded outputs first and then `.need/`. With `--file PATH`, the
 project is the directory containing that explicit needfile; relative paths are
 resolved from the invocation directory. All modes take the project lock, only
-act on safe project-relative recorded file paths, and are idempotent when state
+act on safe project-relative recorded artifact paths, and are idempotent when state
 or outputs are absent.
 
 Use `just` to remove build artifacts as well:
