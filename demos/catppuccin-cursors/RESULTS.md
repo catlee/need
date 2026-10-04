@@ -1,0 +1,161 @@
+# Results
+
+The pinned integration at `a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4` replaces the existing cursor workflow for all four flavours, 16 accents, 11 scales/formats, aliases, public roots, `all`, build and archive entry points. It retains the Qt/SVG metadata generator and one Inkscape batch per theme. The demo exposes one argument-preserving `just upstream +args` passthrough.
+
+**Issue #56 remains incomplete.** The reproducible project ledger shows production orchestration grows by 2 total lines and 14 nonblank/noncomment lines. Full Linux equivalence and lifecycle behavior are useful results, but they do not meet the issue’s required production reduction.
+
+## Full Linux run
+
+On Linux x86_64 with the prepared real toolchain, Qt offscreen, and an isolated D-Bus session, replacement `just upstream all` completed in 652 s (321 Need recipe executions) and `just upstream zip` in 20 s (64). The pristine pinned `just all` and `just zip` took about 178.7 s and 10.19 s. The Need executable was the worktree `target/debug/need` (debug profile), so timings are environment-specific and show no speedup. The run produced 64 themes and 64 release ZIPs across all flavours/accents. Semantic inventory comparisons passed for `svgs`, `pngs`, `hl`, `dist`, and `releases`, including recursive `.hlc` members, names, contents, types, modes and symlinks; ZIP timestamps/compression encoding are excluded as archive metadata.
+
+The `work/%/` rule has `@jobs(2)`; a real two-theme run showed overlapping independent theme jobs, each retaining its single Inkscape batch. The first untagged renderer failure was a Gio application-registration abort before rendering. The real command now sets a per-process `INKSCAPE_APP_ID_TAG`; the tagged two-theme and full run passed. It was not an output-content or memory failure.
+
+The prior four-flavour mauve comparison and four-archive sample remain separately labelled in `measured-results.json`; they are not substituted for the full 64-theme result. An independent `--equivalence` run at commit `19fa1da` (before the bookkeeping-only `e82f725`) reproduced pristine `just all` in 173.033 s and `just zip` in 10.196 s; all 64 themes, 64 archives, and five public-root inventories matched. Tool versions are recorded under `independent_verification`.
+
+## Lifecycle evidence
+
+`verify.py --lifecycle` ran one theme in a disposable checkout path containing spaces; the full 64-theme render was not run from a path containing spaces. It exercises real generators and tools; injected marker writes exist only in the disposable verifier copy.
+
+| Scenario | Need recipes | Seconds | Result |
+|---|---:|---:|---|
+| clean | 0 | 0.012 | clean completed |
+| narrow PNG target | 4 | 11.687 | one target rebuilt its dependency chain |
+| selected flavour/accent build after clean | 22 | 13.902 | 16 SVG accents and requested dist output produced |
+| current build | 0 | 1.517 | zero recipes |
+| touch input without byte change | 0 | 1.429 | zero recipes |
+| content edit with older mtime | 4 | 9.703 | affected targets rebuilt |
+| unchanged CURSOR_FRAME_TIME | 0 | 1.468 | zero recipes |
+| CURSOR_FRAME_TIME 30 → 31 | 4 | 9.872 | affected targets rebuilt; animation metadata delay changed 30 → 31 |
+| real helper failure after staged marker write | 1 | 1.333 | published roots and state unchanged; recovery succeeded |
+| SIGTERM after staged marker write | — | 1.551 | published roots and state unchanged before recovery; next Need run removed staging and recovery succeeded |
+| delete required wait-12.svg | — | — | Whiskers rejects missing input before publication; output removal unsupported |
+
+The generator-failure and interruption marker was verified under `.need-tmp-dir-*`, never in the published theme root. For interruption, old public roots and `state.json` were compared before recovery; the abandoned staging marker was checked only after the next Need invocation. The helper was restored in `finally`, and recovery ran successfully. `touch_same_bytes`, `current_build`, and unchanged frame time each ran zero recipes; content edits and changed frame time ran four. The source-deletion probe also ran pristine `./build -f latte -a mauve` at the pinned revision: it fails on the same required `wait-12.svg` Whiskers read. This is upstream template behavior, not a demonstrated Need deletion gap.
+
+Invalid frame time is also rejected, but is not used as the partial-publication proof. Atomicity is per declared output directory; `work`, `pngs`, `hl`, and `dist` are not one group transaction.
+
+## Counting
+
+UTF-8 source/configuration including SVG; exclude README.md, CHANGELOG.md, AUTHORS, LICENSE and .webp. Nonblank/noncomment excludes blank and leading-# lines; docstrings/inline/XML comments count. Patch is transport: count applied source once, plus delivered demo helpers separately.
+
+Counts are total lines / nonblank noncomment lines. Net removed = deleted − added; a negative number means growth. The file-by-file ledger is generated by applying `upstream.patch` to a pristine pinned archive; patch application, repeated application, `git --numstat` totals, and changed-anchor rejection are checked.
+
+| Scope/category | Before | After | Deleted | Added | Net removed (negative = growth) |
+|---|---:|---:|---:|---:|---:|
+| project/production | 2317 / 2197 | 2319 / 2211 | 133 / 109 | 135 / 123 | -2 / -14 |
+| project/verification | 0 / 0 | 707 / 673 | 0 / 0 | 707 / 673 | -707 / -673 |
+| project/combined | 2317 / 2197 | 3026 / 2884 | 133 / 109 | 842 / 796 | -709 / -687 |
+| converted_pipeline/production | 392 / 303 | 394 / 317 | 133 / 109 | 135 / 123 | -2 / -14 |
+| converted_pipeline/verification | 0 / 0 | 707 / 673 | 0 / 0 | 707 / 673 | -707 / -673 |
+| converted_pipeline/combined | 392 / 303 | 1101 / 990 | 133 / 109 | 842 / 796 | -709 / -687 |
+## File-by-file ledger
+
+Unchanged upstream files are retained rows, not deletions. Demo setup/configuration is counted as production; `verify.py` is verification code. README/RESULTS and measured data are documented exclusions; `upstream.patch` is transport and the applied source is counted once.
+
+| File | Category | Pipeline | Before | After | Deleted | Added |
+|---|---|:---:|---:|---:|---:|---:|
+| `.editorconfig` | production | no | 34 / 19 | 34 / 19 | 0 / 0 | 0 / 0 |
+| `.github/workflows/build.yml` | production | no | 38 / 36 | 38 / 36 | 0 / 0 | 0 / 0 |
+| `.github/workflows/release.yml` | production | no | 36 / 32 | 36 / 32 | 0 / 0 | 0 / 0 |
+| `.gitignore` | production | yes | 6 / 6 | 10 / 9 | 0 / 0 | 4 / 3 |
+| `.release-please-manifest.json` | production | no | 3 / 3 | 3 / 3 | 0 / 0 | 0 / 0 |
+| `assets/gen_assets` | production | no | 142 / 137 | 142 / 137 | 0 / 0 | 0 / 0 |
+| `build` | production | yes | 70 / 53 | 19 / 13 | 60 / 49 | 9 / 9 |
+| `default.nix` | production | yes | 61 / 52 | 79 / 70 | 0 / 0 | 18 / 18 |
+| `flake.lock` | production | no | 26 / 26 | 26 / 26 | 0 / 0 | 0 / 0 |
+| `flake.nix` | production | no | 26 / 23 | 26 / 23 | 0 / 0 | 0 / 0 |
+| `justfile` | production | yes | 19 / 10 | 22 / 12 | 2 / 2 | 5 / 4 |
+| `needfile` | production | yes | 0 / 0 | 38 / 31 | 0 / 0 | 38 / 31 |
+| `release-please-config.json` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `renovate.json` | production | no | 6 / 6 | 6 / 6 | 0 / 0 | 0 / 0 |
+| `requirements-need.txt` | production | yes | 0 / 0 | 1 / 1 | 0 / 0 | 1 / 1 |
+| `scripts/build-cursors` | production | yes | 97 / 72 | 74 / 57 | 55 / 46 | 32 / 31 |
+| `scripts/create_zips` | production | yes | 19 / 14 | 13 / 12 | 16 / 12 | 10 / 10 |
+| `scripts/generate-metadata` | production | yes | 120 / 96 | 120 / 96 | 0 / 0 | 0 / 0 |
+| `shell.nix` | production | no | 9 / 9 | 9 / 9 | 0 / 0 | 0 / 0 |
+| `source.lock` | production | yes | 0 / 0 | 1 / 1 | 0 / 0 | 1 / 1 |
+| `src/cursorList` | production | no | 113 / 113 | 113 / 113 | 0 / 0 | 0 / 0 |
+| `src/svgo.config.mjs` | production | no | 7 / 7 | 7 / 7 | 0 / 0 | 0 / 0 |
+| `src/svgs/alias.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/all-scroll.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/bottom_left_corner.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/bottom_right_corner.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/bottom_side.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/cell.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/center_ptr.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/col-resize.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/color-picker.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/context-menu.svg` | production | no | 29 / 29 | 29 / 29 | 0 / 0 | 0 / 0 |
+| `src/svgs/copy.svg` | production | no | 29 / 29 | 29 / 29 | 0 / 0 | 0 / 0 |
+| `src/svgs/crosshair.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/default.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/dnd-move.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/dnd-no-drop.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/down-arrow.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/draft.svg` | production | no | 17 / 17 | 17 / 17 | 0 / 0 | 0 / 0 |
+| `src/svgs/help.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/left-arrow.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/left_side.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/no-drop.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/not-allowed.svg` | production | no | 22 / 22 | 22 / 22 | 0 / 0 | 0 / 0 |
+| `src/svgs/openhand.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/pencil.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/pirate.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/pointer.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/progress-01.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/progress-02.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/progress-03.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/progress-04.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/progress-05.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/progress-06.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/progress-07.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/progress-08.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/progress-09.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/progress-10.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/progress-11.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/progress-12.svg` | production | no | 28 / 28 | 28 / 28 | 0 / 0 | 0 / 0 |
+| `src/svgs/right-arrow.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/right_ptr.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/right_side.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/row-resize.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/size_bdiag.svg` | production | no | 18 / 18 | 18 / 18 | 0 / 0 | 0 / 0 |
+| `src/svgs/size_fdiag.svg` | production | no | 18 / 18 | 18 / 18 | 0 / 0 | 0 / 0 |
+| `src/svgs/size_hor.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/size_ver.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/text.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/top_left_corner.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/top_right_corner.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/top_side.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/up-arrow.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/vertical-text.svg` | production | no | 16 / 16 | 16 / 16 | 0 / 0 | 0 / 0 |
+| `src/svgs/wait-01.svg` | production | no | 22 / 22 | 22 / 22 | 0 / 0 | 0 / 0 |
+| `src/svgs/wait-02.svg` | production | no | 22 / 22 | 22 / 22 | 0 / 0 | 0 / 0 |
+| `src/svgs/wait-03.svg` | production | no | 22 / 22 | 22 / 22 | 0 / 0 | 0 / 0 |
+| `src/svgs/wait-04.svg` | production | no | 22 / 22 | 22 / 22 | 0 / 0 | 0 / 0 |
+| `src/svgs/wait-05.svg` | production | no | 22 / 22 | 22 / 22 | 0 / 0 | 0 / 0 |
+| `src/svgs/wait-06.svg` | production | no | 22 / 22 | 22 / 22 | 0 / 0 | 0 / 0 |
+| `src/svgs/wait-07.svg` | production | no | 22 / 22 | 22 / 22 | 0 / 0 | 0 / 0 |
+| `src/svgs/wait-08.svg` | production | no | 22 / 22 | 22 / 22 | 0 / 0 | 0 / 0 |
+| `src/svgs/wait-09.svg` | production | no | 22 / 22 | 22 / 22 | 0 / 0 | 0 / 0 |
+| `src/svgs/wait-10.svg` | production | no | 22 / 22 | 22 / 22 | 0 / 0 | 0 / 0 |
+| `src/svgs/wait-11.svg` | production | no | 22 / 22 | 22 / 22 | 0 / 0 | 0 / 0 |
+| `src/svgs/wait-12.svg` | production | no | 22 / 22 | 22 / 22 | 0 / 0 | 0 / 0 |
+| `src/svgs/wayland-cursor.svg` | production | no | 22 / 22 | 22 / 22 | 0 / 0 | 0 / 0 |
+| `src/svgs/x-cursor.svg` | production | no | 22 / 22 | 22 / 22 | 0 / 0 | 0 / 0 |
+| `src/svgs/zoom-in.svg` | production | no | 17 / 17 | 17 / 17 | 0 / 0 | 0 / 0 |
+| `src/svgs/zoom-out.svg` | production | no | 17 / 17 | 17 / 17 | 0 / 0 | 0 / 0 |
+| `src/templates/index.theme.tera` | production | no | 11 / 11 | 11 / 11 | 0 / 0 | 0 / 0 |
+| `src/templates/manifest.hl.tera` | production | no | 12 / 12 | 12 / 12 | 0 / 0 | 0 / 0 |
+| `src/templates/svgs.tera` | production | no | 31 / 29 | 31 / 29 | 0 / 0 | 0 / 0 |
+| `demo/.gitignore` | production | yes | 0 / 0 | 4 / 4 | 0 / 0 | 4 / 4 |
+| `demo/justfile` | production | yes | 0 / 0 | 12 / 10 | 0 / 0 | 12 / 10 |
+| `demo/upstream.lock` | production | yes | 0 / 0 | 1 / 1 | 0 / 0 | 1 / 1 |
+| `demo/verify.py` | verification | yes | 0 / 0 | 707 / 673 | 0 / 0 | 707 / 673 |
+
+## Remaining limits
+
+- Nix is unavailable. `default.nix` now includes its own declared input in the fileset, but neither `x86_64-linux` nor `aarch64-linux` packaging was run; the second rendering architecture and full platform parity are also unverified.
+- Content changes rebuild the selected theme batch; there is no cursor/scale-level regeneration. Successful removal after deleting a required source SVG is unsupported by the pinned Whiskers template.
+- Independent output roots publish atomically one at a time, not as a multi-root transaction.
+- A concrete shorter candidate is `@atomic` on `pngs/%/ hl/%/ dist/%/` with the existing `{{out[n]}}` indexing in the retained batch helper. It could remove `work/%/` and its three copy-rule blocks (about 12 total / 9 nonblank needfile lines), while keeping one Inkscape batch and separate-root atomic/recovery guarantees. Current Need rejects multiple directory outputs in one rule. This is a static multi-root publication candidate, not #50 dynamic manifests; its core implementation/tests/docs cost and whole-project net savings are unproven. The current graph works with existing syntax, so there is no feature blocker to this implementation.
+- The production line ledger is growth, so #56’s simplification acceptance is unmet. Keep the issue open and describe this as an incomplete related demo.
