@@ -13,6 +13,13 @@ all/clean/zip workflows, Nix packaging, and asset generation remain available.
 [RESULTS.md](RESULTS.md) reports historical code costs and measured behaviour
 separately. See [issue #56](https://github.com/catlee/need/issues/56).
 
+The revised completion requirement calls for replacing every existing cursor
+entry point. This patch does not do that. The
+[complete replacement assessment](RESULTS.md#complete-replacement-assessment)
+inventories the pinned callers and reports a counted complete-replacement draft
+that still grows production. `candidate.patch` is for review/counting only; setup
+continues to apply the verified partial `upstream.patch`.
+
 ## Run the prototype
 
 Use Linux GNU and a filesystem supporting `renameat2` exchange/no-replace.
@@ -35,7 +42,8 @@ just build
 just build                       # zero recipes when current
 just build generated/svgs/       # SVG root only
 CURSOR_FRAME_TIME=45 just build  # real animation timing
-just verify                      # disposable copies; writes evidence.json
+just verify                      # full renderer suite; last rerun unverified
+python3 verify.py --ledger-only   # patch/counts/one-theme dry runs; no rendering
 just clean                       # recorded outputs and state in upstream/
 ```
 

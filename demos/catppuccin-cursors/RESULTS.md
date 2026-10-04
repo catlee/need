@@ -1,7 +1,7 @@
 # Recorded integration and code-removal report
 
 The project-wide code-removal goal remains **unmet**. The historical comparison
-adds 105 production lines and 595 verification lines, for 700 combined lines.
+adds 105 production lines and 691 verification lines, for 796 combined lines.
 No upstream file or supported workflow can be deleted on this evidence. The
 mocha/mauve conversion is partial; selective cursor/scale regeneration is not
 achieved. Separate metadata roots are not per-cursor incrementality.
@@ -23,11 +23,11 @@ zero for new setup, configuration, probes, verification and fixtures.
 | Scope | Category | Before | After | Deleted | Added | Net removed |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | Full project + delivery | production | 2317 / 2197 | 2422 / 2285 | 17 / 17 | 122 / 105 | -105 / -88 |
-| Full project + delivery | verification | 0 / 0 | 595 / 555 | 0 / 0 | 595 / 555 | -595 / -555 |
-| Full project + delivery | combined | 2317 / 2197 | 3017 / 2840 | 17 / 17 | 717 / 660 | -700 / -643 |
+| Full project + delivery | verification | 0 / 0 | 691 / 651 | 0 / 0 | 691 / 651 | -691 / -651 |
+| Full project + delivery | combined | 2317 / 2197 | 3113 / 2936 | 17 / 17 | 813 / 756 | -796 / -739 |
 | Converted pipeline files + delivery | production | 312 / 237 | 417 / 325 | 17 / 17 | 122 / 105 | -105 / -88 |
-| Converted pipeline files + delivery | verification | 0 / 0 | 595 / 555 | 0 / 0 | 595 / 555 | -595 / -555 |
-| Converted pipeline files + delivery | combined | 312 / 237 | 1012 / 880 | 17 / 17 | 717 / 660 | -700 / -643 |
+| Converted pipeline files + delivery | verification | 0 / 0 | 691 / 651 | 0 / 0 | 691 / 651 | -691 / -651 |
+| Converted pipeline files + delivery | combined | 312 / 237 | 1108 / 976 | 17 / 17 | 813 / 756 | -796 / -739 |
 
 Production includes scripts, task/artifact definitions, tool probes, source and
 Python pins, ignore files, templates, SVG source markup and all other existing
@@ -45,7 +45,7 @@ for both metrics, `after = before − deleted + added` is asserted per file.
 The converted-pipeline scope contains the full original justfile, `build`,
 `build-cursors`, `generate-metadata`, their changed ignore configuration, every
 new integration file, and every delivered production/verification helper. It
-keeps unsupported workflow code in after, rather than pretending that only the
+keeps unconverted workflow code in after, rather than pretending that only the
 selected two-line recipe can replace the whole project. Other historical source
 files remain in the full-project ledger below, unchanged.
 
@@ -78,7 +78,7 @@ validate frame time. The real Qt metadata generator is retained unchanged.
 | `demo/.gitignore` | production | 0 / 0 | 7 / 7 | 0 / 0 | 7 / 7 |
 | `demo/justfile` | production | 0 / 0 | 20 / 15 | 0 / 0 | 20 / 15 |
 | `demo/upstream.lock` | production | 0 / 0 | 1 / 1 | 0 / 0 | 1 / 1 |
-| `demo/verify.py` | verification | 0 / 0 | 595 / 555 | 0 / 0 | 595 / 555 |
+| `demo/verify.py` | verification | 0 / 0 | 691 / 651 | 0 / 0 | 691 / 651 |
 
 The native patch alone grows by 77 total / 65 nonblank-noncomment lines. The
 outside delivery adds another 28 / 23 production lines plus the full verification
@@ -203,20 +203,23 @@ all original just recipes remain. General all-flavour/accents, all/clean/zip,
 Nix packaging and asset-generation workflows are preserved, not converted or
 claimed removable. Their full platform/product parity has not been tested.
 
-## Fresh real-tool measurements
+## Recorded real-tool measurements
 
 | Scenario | Upstream recipes / seconds | Need recipes / seconds |
 | --- | ---: | ---: |
-| Clean selected theme | 1 / 3.0157 | 4 / 2.6563 |
-| Current selected theme | 1 / 2.9473 | 0 / 0.3008 |
-| Single SVG content edit | 1 / 2.9540 | 2 / 2.7059 |
-| Narrowest workflow (different output scope) | 1 / 3.0909 | 1 / 0.1713 |
+| Clean selected theme | 1 / 5.7225 | 4 / 5.3679 |
+| Current selected theme | 1 / 6.0977 | 0 / 0.5541 |
+| Single SVG content edit | 1 / 4.5892 | 2 / 4.8768 |
+| Narrowest workflow (different output scope) | 1 / 4.319 | 1 / 0.2324 |
 
 Current SVG-root request: 0 recipes /
-0.0584 s. Measured maximum active artifact
+0.0776 s. Measured maximum active artifact
 recipes was 2, matching `-j2`. Every theme build retains one Inkscape shell batch
 across all eleven scales. Only the three template products schedule independently.
 
+These are prior completed prototype observations, not a fresh full verification
+of this revision. Later full renderer runs did not complete (SIGTERM); the
+coordinator also reported an older-mtime failure. No latest full pass is claimed.
 These are single elapsed-time observations, not statistical speedup claims.
 Upstream `just build mocha mauve` renders sixteen accent SVG sets while compiling
 one theme; Need selects mauve through Whiskers' native override. Upstream's
@@ -232,17 +235,17 @@ downloads and Cargo compilation are excluded.
 - **407 published inventory entries** match upstream: Xcursor file bytes,
   scalable SVG files/metadata and symlink targets, and decompressed Hyprcursor
   member inventories/content. Archive timestamps/order are not semantic output.
-- Byte-preserving touch: **0 recipes / 0.2896 s**.
+- Byte-preserving touch: **0 recipes / 0.5409 s**.
   SVG byte edit with mtime set to one second after the epoch: **2 recipes /
-  2.7059 s**, with output matching upstream's same edit.
-- Frame time unchanged: **0 recipes / 0.2849 s**;
-  30 → 45 ms: **1 recipe / 2.5725 s**. Animated Xcursor
+  4.8768 s**, with output matching upstream's same edit.
+- Frame time unchanged: **0 recipes / 0.5773 s**;
+  30 → 45 ms: **1 recipe / 5.1015 s**. Animated Xcursor
   bytes, scalable metadata and Hyprcursor timing change; static cursor bytes do
   not. Repeating 45 ms skips; invalid zero preserves the old theme.
 - Real metadata generator failure after writing a staged Xcursor:
-  **2.1515 s**, old published inventory preserved,
+  **4.1241 s**, old published inventory preserved,
   staging removed and failure log retained. Restoring exact old inputs skips;
-  changed corrected generator: **1 recipe / 2.5446 s**,
+  changed corrected generator: **1 recipe / 5.3765 s**,
   followed by zero recipes.
 - Alias deletion rebuilds one theme recipe and removes both published symlinks.
   SVG-plus-matrix deletion rebuilds two recipes, removes the stale SVG/archive,
@@ -264,3 +267,186 @@ is not a multi-file group transaction either. There is no group-transactional
 publication or multi-open reader snapshot. Failure is exercised; interruption
 is not. Freshness and atomic safety are demonstrated outcomes; they do not
 establish code reduction or selective cursor/scale regeneration.
+
+## Complete replacement assessment
+
+The revised completion section in #56 supersedes this prototype. The integration
+patch has **not** replaced the existing entry points. All-flavour equivalence,
+Nix caller compatibility, and net production reduction remain unproved. Keep
+#56 open and describe PR #65 as related work.
+
+### Pinned upstream workflow inventory
+
+This inventory comes from the pinned Git tree, before further implementation.
+
+| Entry point | Contract and callers | Disposition |
+| --- | --- | --- |
+| `./build -f FLAVOR [-a 'ACCENTS']` | Four flavours: latte, frappe, macchiato, mocha. Sixteen accents: blue, dark, flamingo, green, lavender, light, maroon, mauve, peach, pink, red, rosewater, sapphire, sky, teal, yellow. Default selects all accents. Whiskers renders all accents of the selected flavour, even when building a subset. | Retained; not replaced. |
+| `just build f [a]` | Forwards flavour and one space-separated accent argument to `./build`; README documents single and multiple accents. | Retained. |
+| `just all` | Cleans first, then builds all four flavours and 64 themes. | Retained. |
+| `just clean` | Removes `pngs/`, `hl/`, `dist/`, `releases/`, `svgs/`. | Retained. |
+| `scripts/build-cursors SVG PNG HL OUTPUT` | Writes three independent destination roots in one invocation; one Inkscape shell session per theme. PNG cache uses timestamps. Eleven scales: 50, 75, 100, 125, 150, 175, 200, 225, 250, 275, 300 percent; nominal size 24, rendering size 32, upstream frame time 30 ms. | Retained with quoting and frame-time changes. |
+| `scripts/generate-metadata` | Qt SVG hotspot transforms, animation frame ordering, Xcursor compilation/configs, scalable SVG JSON/copies, Hyprcursor metadata/copies. Arguments include all destinations, sizes, delay and scales. | Retained once, unchanged. |
+| `scripts/create_zips`, `just zip` | Enumerate existing `dist/*/index.theme`, create `releases/THEME.zip` with symlinks preserved (`zip -ry`). Do not implicitly build absent themes. | Retained. |
+| `default.nix` | Source fileset explicitly includes build/scripts/justfile/source/license. Calls `just all` then `just zip`; installs releases. Adding Need requires a pinned build dependency and adding its configuration to this fileset. | Retained; new dependency not supplied or tested. |
+| `flake.nix`, `shell.nix` | Flake declares x86_64-linux and aarch64-linux packages/shells; shell inherits derivation dependencies. | Retained. Only x86_64 Linux real-tool evidence exists here. |
+| `.github/workflows/build.yml`, `release.yml` | Ubuntu Nix build; upload flavour ZIP patterns or `result/*.zip`. | Retained; no workflow run claimed. |
+| `assets/gen_assets [-a -t -i -c -s -e]` | Separate preview workflow: Whiskers SVG generation, ImageMagick strips/labels/composition/WebP. `-s` consumes existing public `svgs/`; generated flavour strips also live there. | Retained. A cursor graph must not own/clean the entire shared `svgs/` root. |
+| Three Tera templates, `src/svgs`, `src/cursorList` | Palette substitution including light/dark special colours; template output names; alias chains and Hyprcursor overrides. | Retained domain inputs, not removable orchestration. |
+
+Published themes contain Xcursor, scalable SVG and Hyprcursor archives plus
+AUTHORS, LICENSE, index.theme and manifest.hl. Public intermediate `svgs/`,
+`pngs/` and `hl/` are also part of the existing workflow. README installation
+paths and the flake describe Linux; no macOS support is inferred. #49 is not a
+blocker for these declared Linux targets. External packaging callers beyond the
+pinned repository were not audited.
+
+### Current-syntax feasibility and exact candidate ledger
+
+The grouped-directory parser rejection is **not a completion blocker**. One
+atomic combined root plus atomic copy rules uses current syntax. An exploratory
+real-tool fixture reproduced all three mocha/mauve roots once, including PNG
+configs and Hyprcursor intermediates. Later attempts aborted in Inkscape's
+GIO/D-Bus startup; one isolated-session workaround also failed. I stopped that
+investigation and removed the expanded fixture. Its failure/recovery, deletion,
+and cleaning checks are **not verified**. The original prototype checks below
+remain a separate completed experiment.
+
+[candidate.patch](candidate.patch) now makes the proposed complete form concrete.
+It is a **draft for counting, not the delivered runtime integration**. It applies
+to the same pristine pin, replaces the existing build/archive loops, updates
+existing just entry points, adds a pinned Need derivation to Nix, and uses:
+
+```make
+@atomic
+work/%/: svgs/%/ generated/%/ ...
+  scripts/build-cursors svgs/{{stem}} {{out}}/pngs {{out}}/hl {{out}}/dist
+  cp AUTHORS LICENSE svgs/{{stem}}/index.theme generated/{{stem}}/hl/{{stem}}/manifest.hl {{out}}/dist/
+  cp generated/{{stem}}/hl/{{stem}}/manifest.hl {{out}}/hl/
+
+@atomic
+pngs/%/: work/%/
+  cp -a work/{{stem}}/pngs/. {{out}}
+
+@atomic
+hl/%/: work/%/
+  cp -a work/{{stem}}/hl/. {{out}}
+
+@atomic
+dist/%/: work/%/
+  cp -a work/{{stem}}/dist/. {{out}}
+```
+
+The ellipsis abbreviates the draft's explicit inputs, env and tool probe, not
+proposed syntax. The patch contains the full valid 34-line needfile. A 12-line
+helper runs the three unchanged Tera templates inside the generated staging
+root. Its nested `svgs/THEME` and `hl/THEME` retain their original filenames;
+the public SVG copy has no extra manifest file. Domain transformations remain
+once in the templates, real Qt metadata generator and real renderer helper.
+The renderer's two timestamp-condition lines are displaced by Need freshness.
+
+| Contract | Candidate mapping and limits |
+| --- | --- |
+| Ownership | Generated, SVG, work, PNG, HL and dist theme roots are disjoint. Root dependencies are explicit; #51/PR #64 are unnecessary. Shared `svgs/` itself has no owner. |
+| Public intermediates | Plain-directory copy rules preserve legacy root paths; the once-reproduced fixture matched all three roots. Copies consume an immutable work root. Extra storage and complete-batch regeneration remain costs. |
+| Flavour/accent arguments | `build` retains getopts and default accents; uses explicit `need get` mappings to request SVG roots for all 16 accents of the chosen flavour, then each of the three public roots for selected accents. `%` captures the full theme name; the template helper splits its known components. No Cartesian syntax is needed. All 64 combinations remain unverified. |
+| Freshness/deletion | Complete-tree replacement should remove stale children; all copy rules depend on the whole combined root. This design does not preserve incremental PNG reuse or selective cursor/scale freshness. Extended candidate checks did not finish. |
+| Failure/recovery | Existing atomic-root semantics preserve each root on failed generation/copy. Successful sibling copies may already publish; there is no group transaction. Candidate failure and recovery execution is unverified. |
+| Clean/preview callers | Need recorded cleaning should leave unowned preview files. Existing `just clean` still deliberately removes the original shared roots, plus generated/work/state. Asset generation remains unchanged and must not write owned SVG roots concurrently with a build. |
+| Archive callers | `scripts/create_zips` stays callable, requests ZIPs only for existing dist themes, and preserves symlinks. Atomic rebuild replaces rather than updates an existing ZIP, so old stale archive members may differ from upstream's update behaviour. Exact archive/caller parity is unproved. |
+| Nix callers | `default.nix` adds Need via a Cargo-lock-based derivation at Need revision `c01aba29b8ae404c23afa0a4ff991971f4b7229c`, and includes its new input files. Nix is unavailable here; x86_64-linux Nix and aarch64-linux builds are unverified. |
+
+The following is an **exact source ledger**, not the earlier +61-line estimate.
+`python3 verify.py --ledger-only` applies, reverses and reapplies the candidate to a pristine Git
+archive, reproduces these counts, and checks Git numstat. It does not build the
+candidate. The isolated one-theme `need get -n` checks passed for SVG, PNG, HL and dist
+with real command fingerprints; archive filename mapping passed for 64 names.
+The initial dry run failed because Whiskers was missing from PATH. Adding the
+real user-space tool directory resolved that probe failure. No candidate recipe
+was executed. Both comparisons use the same historical baseline and counting rule.
+Common delivery files are counted anew, with zero historical credit; patches
+are transport and are counted through their applied sources, separately. The
+candidate and prototype are alternatives, not summed as two runtime engines.
+
+| Candidate scope | Category | Before | After | Deleted | Added | Net removed |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Full project + delivery | production | 2317 / 2197 | 2388 / 2270 | 102 / 82 | 173 / 155 | -71 / -73 |
+| Full project + delivery | verification | 0 / 0 | 691 / 651 | 0 / 0 | 691 / 651 | -691 / -651 |
+| Full project + delivery | combined | 2317 / 2197 | 3079 / 2921 | 102 / 82 | 864 / 806 | -762 / -724 |
+| Conversion files + delivery | production | 392 / 303 | 463 / 376 | 102 / 82 | 173 / 155 | -71 / -73 |
+| Conversion files + delivery | verification | 0 / 0 | 691 / 651 | 0 / 0 | 691 / 651 | -691 / -651 |
+| Conversion files + delivery | combined | 392 / 303 | 1154 / 1027 | 102 / 82 | 864 / 806 | -762 / -724 |
+
+| Candidate file | Before | After | Deleted | Added |
+| --- | ---: | ---: | ---: | ---: |
+| `.gitignore` | 6 / 6 | 10 / 9 | 0 / 0 | 4 / 3 |
+| `build` | 70 / 53 | 24 / 23 | 63 / 47 | 17 / 17 |
+| `default.nix` | 61 / 52 | 79 / 70 | 0 / 0 | 18 / 18 |
+| `justfile` | 19 / 10 | 22 / 12 | 2 / 2 | 5 / 4 |
+| `needfile` | 0 / 0 | 34 / 27 | 0 / 0 | 34 / 27 |
+| `requirements-need.txt` | 0 / 0 | 1 / 1 | 0 / 0 | 1 / 1 |
+| `scripts/build-cursors` | 97 / 72 | 100 / 75 | 21 / 21 | 24 / 24 |
+| `scripts/create_zips` | 19 / 14 | 13 / 12 | 16 / 12 | 10 / 10 |
+| `scripts/generate-metadata` | 120 / 96 | 120 / 96 | 0 / 0 | 0 / 0 |
+| `scripts/render-template` | 0 / 0 | 12 / 11 | 0 / 0 | 12 / 11 |
+| `scripts/tool-identity.py` | 0 / 0 | 19 / 16 | 0 / 0 | 19 / 16 |
+| `source.lock` | 0 / 0 | 1 / 1 | 0 / 0 | 1 / 1 |
+| `demo/.gitignore` | 0 / 0 | 7 / 7 | 0 / 0 | 7 / 7 |
+| `demo/justfile` | 0 / 0 | 20 / 15 | 0 / 0 | 20 / 15 |
+| `demo/upstream.lock` | 0 / 0 | 1 / 1 | 0 / 0 | 1 / 1 |
+| `demo/verify.py` | 0 / 0 | 691 / 651 | 0 / 0 | 691 / 651 |
+
+All other historical files are unchanged, as listed in the historical inventory
+above. `candidate_code_removal.ledger` in measured-results.json contains every
+candidate row, including unchanged files. Conversion scope adds `default.nix`
+and `scripts/create_zips` to the original scope; their cost is not hidden among
+unchanged project files.
+
+The candidate shrinks `build` from 70 to 24 lines: Git reports 63 deleted
+and 17 added, for **46 net lines removed**. The archive script shrinks from
+19 to 13: six net lines removed. These are file deltas, not interchangeable
+with hunk deletions. It
+adds 34 rule lines, 12 template-helper lines, 19 probe lines, 18 Nix lines,
+configuration/pins, compatibility recipe changes and 28 external delivery lines.
+The exact result is **71 more production lines / 73 more nonblank-noncomment
+lines**. Even excluding external delivery, the native integration grows by
+43 / 50 lines. It does not provide a credible reducing replacement as written,
+and its full compatibility is unproved. I am leaving it as a counted draft,
+keeping the verified prototype labelled partial, and leaving #56 open.
+
+The unchanged Qt generator, SVG palette transformations, renderer batch, aliases,
+format metadata and preview script cannot be credited as deleted orchestration.
+The build/archive paths must remain callable; Nix must acquire the new tool.
+No unchanged general orchestration loop is retained in this draft to manufacture
+a blocker: the remaining costs are domain work, compatibility and replacement
+plumbing. There is **no actual mandatory Need feature dependency established**,
+and this experiment does not prove that every possible replacement must grow.
+
+### Expressiveness follow-up
+
+Current syntax uses a combined work root and three copy rules. A general
+multi-directory-output extension could use the existing indexed substitutions:
+
+```make
+@atomic
+pngs/%/ hl/%/ dist/%/: svgs/%/ generated/%/ ...
+  scripts/build-cursors svgs/{{stem}} {{out[0]}} {{out[1]}} {{out[2]}}
+```
+
+This is proposed syntax; current Need rejects that header. It could remove the
+three four-line copy-rule blocks: **12 total / 9 nonblank-noncomment production
+lines**, changing this draft to 59 / 64 lines of growth. It would not eliminate
+the domain/helper/Nix work or establish net reduction. Required semantics include
+non-overlapping tree ownership, full content/inventory/deletion fingerprints,
+indexed staging, one recipe batch, bounded jobs, input rechecks, failed/interrupted
+staging cleanup and recoverable per-root publication/state. Publication may be
+per root; no group transaction is required. This focused proposal is optional,
+not a mandatory #50 dependency.
+
+[Batching issue #53](https://github.com/catlee/need/issues/53) is another optional
+improvement: collect only stale cursor/scale instances into one renderer session
+with unambiguous argument boundaries and individual freshness records. No shorter
+batch syntax or reduction is established here. Complete flavour coverage can use
+whole-theme batches without it. #49, #51 and #55 also remain optional for this
+Linux design; PR #64 is unmerged and unused. The unmet requirements are a reducing
+complete replacement and its verified output/options/caller coverage.

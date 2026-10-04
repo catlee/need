@@ -100,7 +100,7 @@
       {"file": "demo/.gitignore","category": "production","scope": true,"before": {"total": 0,"nonblank_noncomment": 0},"after": {"total": 7,"nonblank_noncomment": 7},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 7,"nonblank_noncomment": 7}},
       {"file": "demo/justfile","category": "production","scope": true,"before": {"total": 0,"nonblank_noncomment": 0},"after": {"total": 20,"nonblank_noncomment": 15},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 20,"nonblank_noncomment": 15}},
       {"file": "demo/upstream.lock","category": "production","scope": true,"before": {"total": 0,"nonblank_noncomment": 0},"after": {"total": 1,"nonblank_noncomment": 1},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 1,"nonblank_noncomment": 1}},
-      {"file": "demo/verify.py","category": "verification","scope": true,"before": {"total": 0,"nonblank_noncomment": 0},"after": {"total": 595,"nonblank_noncomment": 555},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 595,"nonblank_noncomment": 555}}
+      {"file": "demo/verify.py","category": "verification","scope": true,"before": {"total": 0,"nonblank_noncomment": 0},"after": {"total": 691,"nonblank_noncomment": 651},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 691,"nonblank_noncomment": 651}}
     ],
     "summary": {
       "project": {
@@ -132,20 +132,20 @@
             "nonblank_noncomment": 0
           },
           "after": {
-            "total": 595,
-            "nonblank_noncomment": 555
+            "total": 691,
+            "nonblank_noncomment": 651
           },
           "deleted": {
             "total": 0,
             "nonblank_noncomment": 0
           },
           "added": {
-            "total": 595,
-            "nonblank_noncomment": 555
+            "total": 691,
+            "nonblank_noncomment": 651
           },
           "net_code_removed": {
-            "total": -595,
-            "nonblank_noncomment": -555
+            "total": -691,
+            "nonblank_noncomment": -651
           }
         },
         "combined": {
@@ -154,20 +154,20 @@
             "nonblank_noncomment": 2197
           },
           "after": {
-            "total": 3017,
-            "nonblank_noncomment": 2840
+            "total": 3113,
+            "nonblank_noncomment": 2936
           },
           "deleted": {
             "total": 17,
             "nonblank_noncomment": 17
           },
           "added": {
-            "total": 717,
-            "nonblank_noncomment": 660
+            "total": 813,
+            "nonblank_noncomment": 756
           },
           "net_code_removed": {
-            "total": -700,
-            "nonblank_noncomment": -643
+            "total": -796,
+            "nonblank_noncomment": -739
           }
         }
       },
@@ -200,20 +200,20 @@
             "nonblank_noncomment": 0
           },
           "after": {
-            "total": 595,
-            "nonblank_noncomment": 555
+            "total": 691,
+            "nonblank_noncomment": 651
           },
           "deleted": {
             "total": 0,
             "nonblank_noncomment": 0
           },
           "added": {
-            "total": 595,
-            "nonblank_noncomment": 555
+            "total": 691,
+            "nonblank_noncomment": 651
           },
           "net_code_removed": {
-            "total": -595,
-            "nonblank_noncomment": -555
+            "total": -691,
+            "nonblank_noncomment": -651
           }
         },
         "combined": {
@@ -222,20 +222,20 @@
             "nonblank_noncomment": 237
           },
           "after": {
-            "total": 1012,
-            "nonblank_noncomment": 880
+            "total": 1108,
+            "nonblank_noncomment": 976
           },
           "deleted": {
             "total": 17,
             "nonblank_noncomment": 17
           },
           "added": {
-            "total": 717,
-            "nonblank_noncomment": 660
+            "total": 813,
+            "nonblank_noncomment": 756
           },
           "net_code_removed": {
-            "total": -700,
-            "nonblank_noncomment": -643
+            "total": -796,
+            "nonblank_noncomment": -739
           }
         }
       }
@@ -252,7 +252,8 @@
         "evidence.json"
       ],
       "patch_transport": [
-        "upstream.patch (its applied source is counted)"
+        "upstream.patch",
+        "candidate.patch (applied source counted separately)"
       ],
       "ignored_generated_or_installed": [
         "upstream/",
@@ -280,23 +281,23 @@
   },
   "integration_baseline": {
     "recipes": 1,
-    "seconds": 2.9864
+    "seconds": 5.7381
   },
   "retained_general_build": {
     "recipes": 1,
-    "seconds": 2.9875
+    "seconds": 6.5809
   },
   "upstream_clean": {
     "recipes": 1,
-    "seconds": 3.0157
+    "seconds": 5.7225
   },
   "upstream_current": {
     "recipes": 1,
-    "seconds": 2.9473
+    "seconds": 6.0977
   },
   "need_clean": {
     "recipes": 4,
-    "seconds": 2.6563,
+    "seconds": 5.3679,
     "maximum_active": 2
   },
   "equivalence": {
@@ -310,191 +311,191 @@
   },
   "need_current": {
     "recipes": 0,
-    "seconds": 0.3008,
+    "seconds": 0.5541,
     "maximum_active": 0
   },
   "touch_without_byte_change": {
     "recipes": 0,
-    "seconds": 0.2896,
+    "seconds": 0.5409,
     "maximum_active": 0
   },
   "older_mtime_edit": {
     "recipes": 2,
-    "seconds": 2.7059,
+    "seconds": 4.8768,
     "maximum_active": 1
   },
   "upstream_edit": {
     "recipes": 1,
-    "seconds": 2.954
+    "seconds": 4.5892
   },
   "restore_edit": {
     "recipes": 2,
-    "seconds": 2.7327,
+    "seconds": 4.0399,
     "maximum_active": 1
   },
   "need_narrow_clean": {
     "recipes": 1,
-    "seconds": 0.1713,
+    "seconds": 0.2324,
     "maximum_active": 1
   },
   "need_narrow_current": {
     "recipes": 0,
-    "seconds": 0.0584,
+    "seconds": 0.0776,
     "maximum_active": 0
   },
   "upstream_narrow": {
     "recipes": 1,
-    "seconds": 3.0909
+    "seconds": 4.319
   },
   "complete_after_narrow": {
     "recipes": 3,
-    "seconds": 2.6815,
+    "seconds": 5.2691,
     "maximum_active": 1
   },
   "env_unchanged": {
     "recipes": 0,
-    "seconds": 0.2849,
+    "seconds": 0.5773,
     "maximum_active": 0
   },
   "env_changed": {
     "recipes": 1,
-    "seconds": 2.5725,
+    "seconds": 5.1015,
     "maximum_active": 1
   },
   "env_changed_current": {
     "recipes": 0,
-    "seconds": 0.2956,
+    "seconds": 0.5176,
     "maximum_active": 0
   },
   "restore_env": {
     "recipes": 1,
-    "seconds": 2.9952,
+    "seconds": 4.9517,
     "maximum_active": 1
   },
   "invalid_frame_time_preserved": true,
   "atomic_failure": {
-    "seconds": 2.1515,
+    "seconds": 4.1241,
     "preserved": true,
     "staging_removed": true,
     "retained_failure_log": true
   },
   "failure_restored_inputs_current": {
     "recipes": 0,
-    "seconds": 0.2999,
+    "seconds": 0.5475,
     "maximum_active": 0
   },
   "failure_recovery": {
     "recipes": 1,
-    "seconds": 2.5446,
+    "seconds": 5.3765,
     "maximum_active": 1
   },
   "recovery_current": {
     "recipes": 0,
-    "seconds": 0.2869,
+    "seconds": 0.5227,
     "maximum_active": 0
   },
   "alias_deletion": {
     "recipes": 1,
-    "seconds": 2.6271,
+    "seconds": 4.9731,
     "maximum_active": 1
   },
   "upstream_alias_deletion": {
     "recipes": 1,
-    "seconds": 3.0023
+    "seconds": 5.8397
   },
   "restore_alias": {
     "recipes": 1,
-    "seconds": 2.8074,
+    "seconds": 5.1898,
     "maximum_active": 1
   },
   "source_deletion": {
     "recipes": 2,
-    "seconds": 2.6543,
+    "seconds": 6.3415,
     "maximum_active": 1
   },
   "upstream_source_deletion_clean": {
     "recipes": 1,
-    "seconds": 2.8768
+    "seconds": 7.8898
   },
   "restore_source": {
     "recipes": 2,
-    "seconds": 2.6723,
+    "seconds": 7.7603,
     "maximum_active": 1
   },
   "input_scripts/need-build": {
     "recipes": 4,
-    "seconds": 2.9578,
+    "seconds": 7.7906,
     "maximum_active": 2
   },
   "restore_scripts/need-build": {
     "recipes": 4,
-    "seconds": 3.0662,
+    "seconds": 16.4445,
     "maximum_active": 2
   },
   "input_source.lock": {
     "recipes": 4,
-    "seconds": 2.8778,
+    "seconds": 11.5514,
     "maximum_active": 2
   },
   "restore_source.lock": {
     "recipes": 4,
-    "seconds": 3.1214,
+    "seconds": 7.2226,
     "maximum_active": 2
   },
   "input_requirements-need.txt": {
     "recipes": 1,
-    "seconds": 2.6823,
+    "seconds": 7.3019,
     "maximum_active": 1
   },
   "restore_requirements-need.txt": {
     "recipes": 1,
-    "seconds": 2.6512,
+    "seconds": 7.4015,
     "maximum_active": 1
   },
   "input_flake.lock": {
     "recipes": 1,
-    "seconds": 3.6162,
+    "seconds": 7.318,
     "maximum_active": 1
   },
   "restore_flake.lock": {
     "recipes": 1,
-    "seconds": 2.5982,
+    "seconds": 7.2869,
     "maximum_active": 1
   },
   "tool_identical_bytes_current": {
     "recipes": 0,
-    "seconds": 0.3097,
+    "seconds": 0.6397,
     "maximum_active": 0
   },
   "tool_bytes_changed": {
     "recipes": 3,
-    "seconds": 0.472,
+    "seconds": 0.9783,
     "maximum_active": 2
   },
   "whiskers_skips_theme_on_identical_bytes": true,
   "tool_changed_current": {
     "recipes": 0,
-    "seconds": 0.2824,
+    "seconds": 0.5808,
     "maximum_active": 0
   },
   "restore_tool": {
     "recipes": 3,
-    "seconds": 0.464,
+    "seconds": 0.9602,
     "maximum_active": 2
   },
   "theme_tool_bytes_changed": {
     "recipes": 1,
-    "seconds": 2.597,
+    "seconds": 7.6359,
     "maximum_active": 1
   },
   "theme_tool_changed_current": {
     "recipes": 0,
-    "seconds": 0.3026,
+    "seconds": 0.6068,
     "maximum_active": 0
   },
   "restore_theme_tool": {
     "recipes": 1,
-    "seconds": 2.8198,
+    "seconds": 7.1565,
     "maximum_active": 1
   },
   "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
@@ -503,5 +504,301 @@
     "whiskers": "catppuccin-whiskers 2.9.0",
     "xcursorgen": "xcursorgen version 1.0.9",
     "python": "Python 3.12.13"
+  },
+  "replacement_syntax_trials": [
+    {
+      "needfile": "@atomic\npngs/%/ hl/%/ dist/%/: svgs/%/\n  scripts/build-cursors {{in}} {{out}}\n",
+      "exit_status": 1,
+      "diagnostic": "error: needfile:2: directory outputs require exactly one output and @atomic; @allow-missing and @outputs-from are unsupported\nhelp: declare one trailing-slash output under @atomic\n"
+    },
+    {
+      "needfile": "@atomic\n@outputs-from(outputs)\ndist/%/: svgs/%/\n  scripts/build-cursors {{in}} {{out}}\n",
+      "exit_status": 1,
+      "diagnostic": "error: needfile:3: directory outputs require exactly one output and @atomic; @allow-missing and @outputs-from are unsupported\nhelp: declare one trailing-slash output under @atomic\n"
+    }
+  ],
+  "candidate_code_removal": {
+    "counting_rule": "UTF-8 source/configuration including SVG; exclude README.md, CHANGELOG.md, AUTHORS, LICENSE and .webp. Nonblank/noncomment excludes blank and leading-# lines; docstrings/inline/XML comments count. Patch is transport: count applied source once, plus delivered demo helpers separately.",
+    "ledger": [
+      {"file": ".editorconfig","category": "production","scope": false,"before": {"total": 34,"nonblank_noncomment": 19},"after": {"total": 34,"nonblank_noncomment": 19},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": ".github/workflows/build.yml","category": "production","scope": false,"before": {"total": 38,"nonblank_noncomment": 36},"after": {"total": 38,"nonblank_noncomment": 36},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": ".github/workflows/release.yml","category": "production","scope": false,"before": {"total": 36,"nonblank_noncomment": 32},"after": {"total": 36,"nonblank_noncomment": 32},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": ".gitignore","category": "production","scope": true,"before": {"total": 6,"nonblank_noncomment": 6},"after": {"total": 10,"nonblank_noncomment": 9},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 4,"nonblank_noncomment": 3}},
+      {"file": ".release-please-manifest.json","category": "production","scope": false,"before": {"total": 3,"nonblank_noncomment": 3},"after": {"total": 3,"nonblank_noncomment": 3},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "assets/gen_assets","category": "production","scope": false,"before": {"total": 142,"nonblank_noncomment": 137},"after": {"total": 142,"nonblank_noncomment": 137},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "build","category": "production","scope": true,"before": {"total": 70,"nonblank_noncomment": 53},"after": {"total": 24,"nonblank_noncomment": 23},"deleted": {"total": 63,"nonblank_noncomment": 47},"added": {"total": 17,"nonblank_noncomment": 17}},
+      {"file": "default.nix","category": "production","scope": true,"before": {"total": 61,"nonblank_noncomment": 52},"after": {"total": 79,"nonblank_noncomment": 70},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 18,"nonblank_noncomment": 18}},
+      {"file": "flake.lock","category": "production","scope": false,"before": {"total": 26,"nonblank_noncomment": 26},"after": {"total": 26,"nonblank_noncomment": 26},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "flake.nix","category": "production","scope": false,"before": {"total": 26,"nonblank_noncomment": 23},"after": {"total": 26,"nonblank_noncomment": 23},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "justfile","category": "production","scope": true,"before": {"total": 19,"nonblank_noncomment": 10},"after": {"total": 22,"nonblank_noncomment": 12},"deleted": {"total": 2,"nonblank_noncomment": 2},"added": {"total": 5,"nonblank_noncomment": 4}},
+      {"file": "needfile","category": "production","scope": true,"before": {"total": 0,"nonblank_noncomment": 0},"after": {"total": 34,"nonblank_noncomment": 27},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 34,"nonblank_noncomment": 27}},
+      {"file": "release-please-config.json","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "renovate.json","category": "production","scope": false,"before": {"total": 6,"nonblank_noncomment": 6},"after": {"total": 6,"nonblank_noncomment": 6},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "requirements-need.txt","category": "production","scope": true,"before": {"total": 0,"nonblank_noncomment": 0},"after": {"total": 1,"nonblank_noncomment": 1},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 1,"nonblank_noncomment": 1}},
+      {"file": "scripts/build-cursors","category": "production","scope": true,"before": {"total": 97,"nonblank_noncomment": 72},"after": {"total": 100,"nonblank_noncomment": 75},"deleted": {"total": 21,"nonblank_noncomment": 21},"added": {"total": 24,"nonblank_noncomment": 24}},
+      {"file": "scripts/create_zips","category": "production","scope": true,"before": {"total": 19,"nonblank_noncomment": 14},"after": {"total": 13,"nonblank_noncomment": 12},"deleted": {"total": 16,"nonblank_noncomment": 12},"added": {"total": 10,"nonblank_noncomment": 10}},
+      {"file": "scripts/generate-metadata","category": "production","scope": true,"before": {"total": 120,"nonblank_noncomment": 96},"after": {"total": 120,"nonblank_noncomment": 96},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "scripts/render-template","category": "production","scope": true,"before": {"total": 0,"nonblank_noncomment": 0},"after": {"total": 12,"nonblank_noncomment": 11},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 12,"nonblank_noncomment": 11}},
+      {"file": "scripts/tool-identity.py","category": "production","scope": true,"before": {"total": 0,"nonblank_noncomment": 0},"after": {"total": 19,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 19,"nonblank_noncomment": 16}},
+      {"file": "shell.nix","category": "production","scope": false,"before": {"total": 9,"nonblank_noncomment": 9},"after": {"total": 9,"nonblank_noncomment": 9},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "source.lock","category": "production","scope": true,"before": {"total": 0,"nonblank_noncomment": 0},"after": {"total": 1,"nonblank_noncomment": 1},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 1,"nonblank_noncomment": 1}},
+      {"file": "src/cursorList","category": "production","scope": false,"before": {"total": 113,"nonblank_noncomment": 113},"after": {"total": 113,"nonblank_noncomment": 113},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgo.config.mjs","category": "production","scope": false,"before": {"total": 7,"nonblank_noncomment": 7},"after": {"total": 7,"nonblank_noncomment": 7},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/alias.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/all-scroll.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/bottom_left_corner.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/bottom_right_corner.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/bottom_side.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/cell.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/center_ptr.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/col-resize.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/color-picker.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/context-menu.svg","category": "production","scope": false,"before": {"total": 29,"nonblank_noncomment": 29},"after": {"total": 29,"nonblank_noncomment": 29},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/copy.svg","category": "production","scope": false,"before": {"total": 29,"nonblank_noncomment": 29},"after": {"total": 29,"nonblank_noncomment": 29},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/crosshair.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/default.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/dnd-move.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/dnd-no-drop.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/down-arrow.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/draft.svg","category": "production","scope": false,"before": {"total": 17,"nonblank_noncomment": 17},"after": {"total": 17,"nonblank_noncomment": 17},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/help.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/left-arrow.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/left_side.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/no-drop.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/not-allowed.svg","category": "production","scope": false,"before": {"total": 22,"nonblank_noncomment": 22},"after": {"total": 22,"nonblank_noncomment": 22},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/openhand.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/pencil.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/pirate.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/pointer.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/progress-01.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/progress-02.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/progress-03.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/progress-04.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/progress-05.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/progress-06.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/progress-07.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/progress-08.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/progress-09.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/progress-10.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/progress-11.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/progress-12.svg","category": "production","scope": false,"before": {"total": 28,"nonblank_noncomment": 28},"after": {"total": 28,"nonblank_noncomment": 28},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/right-arrow.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/right_ptr.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/right_side.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/row-resize.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/size_bdiag.svg","category": "production","scope": false,"before": {"total": 18,"nonblank_noncomment": 18},"after": {"total": 18,"nonblank_noncomment": 18},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/size_fdiag.svg","category": "production","scope": false,"before": {"total": 18,"nonblank_noncomment": 18},"after": {"total": 18,"nonblank_noncomment": 18},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/size_hor.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/size_ver.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/text.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/top_left_corner.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/top_right_corner.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/top_side.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/up-arrow.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/vertical-text.svg","category": "production","scope": false,"before": {"total": 16,"nonblank_noncomment": 16},"after": {"total": 16,"nonblank_noncomment": 16},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/wait-01.svg","category": "production","scope": false,"before": {"total": 22,"nonblank_noncomment": 22},"after": {"total": 22,"nonblank_noncomment": 22},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/wait-02.svg","category": "production","scope": false,"before": {"total": 22,"nonblank_noncomment": 22},"after": {"total": 22,"nonblank_noncomment": 22},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/wait-03.svg","category": "production","scope": false,"before": {"total": 22,"nonblank_noncomment": 22},"after": {"total": 22,"nonblank_noncomment": 22},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/wait-04.svg","category": "production","scope": false,"before": {"total": 22,"nonblank_noncomment": 22},"after": {"total": 22,"nonblank_noncomment": 22},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/wait-05.svg","category": "production","scope": false,"before": {"total": 22,"nonblank_noncomment": 22},"after": {"total": 22,"nonblank_noncomment": 22},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/wait-06.svg","category": "production","scope": false,"before": {"total": 22,"nonblank_noncomment": 22},"after": {"total": 22,"nonblank_noncomment": 22},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/wait-07.svg","category": "production","scope": false,"before": {"total": 22,"nonblank_noncomment": 22},"after": {"total": 22,"nonblank_noncomment": 22},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/wait-08.svg","category": "production","scope": false,"before": {"total": 22,"nonblank_noncomment": 22},"after": {"total": 22,"nonblank_noncomment": 22},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/wait-09.svg","category": "production","scope": false,"before": {"total": 22,"nonblank_noncomment": 22},"after": {"total": 22,"nonblank_noncomment": 22},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/wait-10.svg","category": "production","scope": false,"before": {"total": 22,"nonblank_noncomment": 22},"after": {"total": 22,"nonblank_noncomment": 22},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/wait-11.svg","category": "production","scope": false,"before": {"total": 22,"nonblank_noncomment": 22},"after": {"total": 22,"nonblank_noncomment": 22},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/wait-12.svg","category": "production","scope": false,"before": {"total": 22,"nonblank_noncomment": 22},"after": {"total": 22,"nonblank_noncomment": 22},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/wayland-cursor.svg","category": "production","scope": false,"before": {"total": 22,"nonblank_noncomment": 22},"after": {"total": 22,"nonblank_noncomment": 22},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/x-cursor.svg","category": "production","scope": false,"before": {"total": 22,"nonblank_noncomment": 22},"after": {"total": 22,"nonblank_noncomment": 22},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/zoom-in.svg","category": "production","scope": false,"before": {"total": 17,"nonblank_noncomment": 17},"after": {"total": 17,"nonblank_noncomment": 17},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/svgs/zoom-out.svg","category": "production","scope": false,"before": {"total": 17,"nonblank_noncomment": 17},"after": {"total": 17,"nonblank_noncomment": 17},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/templates/index.theme.tera","category": "production","scope": false,"before": {"total": 11,"nonblank_noncomment": 11},"after": {"total": 11,"nonblank_noncomment": 11},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/templates/manifest.hl.tera","category": "production","scope": false,"before": {"total": 12,"nonblank_noncomment": 12},"after": {"total": 12,"nonblank_noncomment": 12},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "src/templates/svgs.tera","category": "production","scope": false,"before": {"total": 31,"nonblank_noncomment": 29},"after": {"total": 31,"nonblank_noncomment": 29},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 0,"nonblank_noncomment": 0}},
+      {"file": "demo/.gitignore","category": "production","scope": true,"before": {"total": 0,"nonblank_noncomment": 0},"after": {"total": 7,"nonblank_noncomment": 7},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 7,"nonblank_noncomment": 7}},
+      {"file": "demo/justfile","category": "production","scope": true,"before": {"total": 0,"nonblank_noncomment": 0},"after": {"total": 20,"nonblank_noncomment": 15},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 20,"nonblank_noncomment": 15}},
+      {"file": "demo/upstream.lock","category": "production","scope": true,"before": {"total": 0,"nonblank_noncomment": 0},"after": {"total": 1,"nonblank_noncomment": 1},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 1,"nonblank_noncomment": 1}},
+      {"file": "demo/verify.py","category": "verification","scope": true,"before": {"total": 0,"nonblank_noncomment": 0},"after": {"total": 691,"nonblank_noncomment": 651},"deleted": {"total": 0,"nonblank_noncomment": 0},"added": {"total": 691,"nonblank_noncomment": 651}}
+    ],
+    "summary": {
+      "project": {
+        "production": {
+          "before": {
+            "total": 2317,
+            "nonblank_noncomment": 2197
+          },
+          "after": {
+            "total": 2388,
+            "nonblank_noncomment": 2270
+          },
+          "deleted": {
+            "total": 102,
+            "nonblank_noncomment": 82
+          },
+          "added": {
+            "total": 173,
+            "nonblank_noncomment": 155
+          },
+          "net_code_removed": {
+            "total": -71,
+            "nonblank_noncomment": -73
+          }
+        },
+        "verification": {
+          "before": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "after": {
+            "total": 691,
+            "nonblank_noncomment": 651
+          },
+          "deleted": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "added": {
+            "total": 691,
+            "nonblank_noncomment": 651
+          },
+          "net_code_removed": {
+            "total": -691,
+            "nonblank_noncomment": -651
+          }
+        },
+        "combined": {
+          "before": {
+            "total": 2317,
+            "nonblank_noncomment": 2197
+          },
+          "after": {
+            "total": 3079,
+            "nonblank_noncomment": 2921
+          },
+          "deleted": {
+            "total": 102,
+            "nonblank_noncomment": 82
+          },
+          "added": {
+            "total": 864,
+            "nonblank_noncomment": 806
+          },
+          "net_code_removed": {
+            "total": -762,
+            "nonblank_noncomment": -724
+          }
+        }
+      },
+      "converted_pipeline": {
+        "production": {
+          "before": {
+            "total": 392,
+            "nonblank_noncomment": 303
+          },
+          "after": {
+            "total": 463,
+            "nonblank_noncomment": 376
+          },
+          "deleted": {
+            "total": 102,
+            "nonblank_noncomment": 82
+          },
+          "added": {
+            "total": 173,
+            "nonblank_noncomment": 155
+          },
+          "net_code_removed": {
+            "total": -71,
+            "nonblank_noncomment": -73
+          }
+        },
+        "verification": {
+          "before": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "after": {
+            "total": 691,
+            "nonblank_noncomment": 651
+          },
+          "deleted": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "added": {
+            "total": 691,
+            "nonblank_noncomment": 651
+          },
+          "net_code_removed": {
+            "total": -691,
+            "nonblank_noncomment": -651
+          }
+        },
+        "combined": {
+          "before": {
+            "total": 392,
+            "nonblank_noncomment": 303
+          },
+          "after": {
+            "total": 1154,
+            "nonblank_noncomment": 1027
+          },
+          "deleted": {
+            "total": 102,
+            "nonblank_noncomment": 82
+          },
+          "added": {
+            "total": 864,
+            "nonblank_noncomment": 806
+          },
+          "net_code_removed": {
+            "total": -762,
+            "nonblank_noncomment": -724
+          }
+        }
+      }
+    },
+    "removable_files_or_tasks": [],
+    "excluded_delivered_files": {
+      "documentation": [
+        "README.md",
+        "RESULTS.md",
+        "repository README demo link"
+      ],
+      "measurement_data": [
+        "measured-results.json",
+        "evidence.json"
+      ],
+      "patch_transport": [
+        "upstream.patch",
+        "candidate.patch (applied source counted separately)"
+      ],
+      "ignored_generated_or_installed": [
+        "upstream/",
+        ".need/",
+        "generated/",
+        "theme/",
+        ".venv/",
+        "__pycache__/"
+      ]
+    },
+    "partial_conversion": true,
+    "project_wide_savings_proven": false,
+    "build_verified": false
+  },
+  "candidate_mappings": {
+    "mapped_variants": 64,
+    "dry_run_theme": "catppuccin-mocha-mauve-cursors",
+    "real_tool_fingerprints": true,
+    "four_product_dry_runs": true,
+    "archive_mapping": true,
+    "build_verified": false
+  },
+  "verification_status": {
+    "ledger_and_one_theme_dry_runs": "passed; no renderer recipes run",
+    "candidate_build": "unverified",
+    "nix_linux_architectures": "both unverified; Nix unavailable",
+    "latest_full_renderer_suite": "not completed: SIGTERM; coordinator reported older-mtime failure; no fresh full pass claimed",
+    "recorded_renderer_observations": "prior completed partial-prototype run"
   }
 }

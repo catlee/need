@@ -1,0 +1,433 @@
+diff --git a/.gitignore b/.gitignore
+index d29387e..3fbc904 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -4,3 +4,7 @@ releases/
+ result
+ hl/
+ /svgs/
++
++/generated/
++/work/
++/.need/
+diff --git a/build b/build
+index 3f249fd..4387af2 100755
+--- a/build
++++ b/build
+@@ -1,70 +1,24 @@
+ #!/usr/bin/env bash
+-
+-# Volantes cursors, based on KDE Breeze
+-# Copyright (c) 2016 Keefer Rourke <keefer.rourke@gmail.com>
+-# Copyright (c) 2020 Sergei Eremenko <https://github.com/SmartFinn>
+-
+ set -eu
+-
+-build_svgs() {
+-  local src_dir="$1"
+-
+-  if [[ -n "$2" ]]; then
+-    flavour="-f $2"
+-  fi
+-
+-  for file in $src_dir/templates/*.tera; do
+-    [ -f "$file" ] || continue
+-    whiskers $file $flavour
+-  done
+-}
+-
+-SCRIPT_DIR="$(dirname "$0")"
+-SRC_DIR="$SCRIPT_DIR/src"
+-OUT_DIR="$SCRIPT_DIR/dist"
+-PNG_DIR="$SCRIPT_DIR/pngs"
+-SVGS_DIR="$SCRIPT_DIR/svgs"
+-HL_DIR="$SCRIPT_DIR/hl"
+-
+-AUTHORS="$SCRIPT_DIR/AUTHORS"
+-LICENSE="$SCRIPT_DIR/LICENSE"
+-
+-ACCENTS="blue dark flamingo green lavender light maroon mauve peach pink red rosewater sapphire sky teal yellow"
+-
++cd "$(dirname "${BASH_SOURCE[0]}")"
++all_accents="blue dark flamingo green lavender light maroon mauve peach pink red rosewater sapphire sky teal yellow"
++ACCENTS="$all_accents"
+ while getopts "f:a:" option; do
+-  case $option in
+-  f)
+-    FLAVOR="$OPTARG"
+-    ;;
+-  a)
+-    ACCENTS="$OPTARG"
+-    ;;
+-  \?)
+-    echo "Invalid option: -$OPTARG"
+-    exit 1
+-    ;;
++  case "$option" in
++    f) FLAVOR="$OPTARG" ;;
++    a) ACCENTS="$OPTARG" ;;
++    *) exit 1 ;;
+   esac
+ done
+-echo "[INFO] - Flavor: '$FLAVOR'"
+-echo "[INFO] - Accent(s): '$ACCENTS'"
+-
+-echo "[INFO] - Generating SVGs..."
+-build_svgs $SRC_DIR $FLAVOR
+-echo "[INFO] - Generating SVGs complete."
+-
+-echo "[INFO] - Building cursor formats; xcursor, hyprcursor, plasmasvg..."
++svg_themes=()
++for accent in $all_accents; do
++  svg_themes+=("catppuccin-$FLAVOR-$accent-cursors")
++done
++need get -j2 'svgs/%/: %' -- "${svg_themes[@]}"
++themes=()
+ for accent in $ACCENTS; do
+-  theme_name="catppuccin-$FLAVOR-$accent-cursors"
+-  theme_src_dir="$SVGS_DIR/$theme_name"
+-  theme_out_dir="$OUT_DIR/$theme_name"
+-  theme_png_dir="$PNG_DIR/$theme_name"
+-  theme_hl_dir="$HL_DIR/$theme_name"
+-
+-  scripts/build-cursors "$theme_src_dir" "$theme_png_dir" "$theme_hl_dir" "$theme_out_dir"
+-
+-  cp -f "$AUTHORS" "$theme_out_dir"
+-  cp -f "$LICENSE" "$theme_out_dir"
+-  cp -f "$theme_src_dir/index.theme" "$theme_out_dir"
+-  cp -f "$theme_hl_dir/manifest.hl" "$theme_out_dir"
++  themes+=("catppuccin-$FLAVOR-$accent-cursors")
++done
++for product in pngs hl dist; do
++  need get -j2 "$product/%/: %" -- "${themes[@]}"
+ done
+-echo "[INFO] - Finished building cursor formats; xcursor, hyprcursor, plasmasvg"
+diff --git a/default.nix b/default.nix
+index 21a8359..64fd57e 100644
+--- a/default.nix
++++ b/default.nix
+@@ -1,6 +1,7 @@
+ {
+   lib,
+   stdenvNoCC,
++  rustPlatform,
+   inkscape,
+   just,
+   xcursorgen,
+@@ -9,6 +10,18 @@
+   python3,
+   python3Packages,
+ }:
++let
++  needSource = builtins.fetchGit {
++    url = "https://github.com/catlee/need.git";
++    rev = "c01aba29b8ae404c23afa0a4ff991971f4b7229c";
++  };
++  need = rustPlatform.buildRustPackage {
++    pname = "need";
++    version = "0.1.1";
++    src = needSource;
++    cargoLock.lockFile = needSource + "/Cargo.lock";
++  };
++in
+ stdenvNoCC.mkDerivation {
+   name = "catppuccin-cursors";
+   src = lib.fileset.toSource {
+@@ -19,6 +32,10 @@ stdenvNoCC.mkDerivation {
+         ./scripts
+         ./justfile
+         ./build
++        ./needfile
++        ./source.lock
++        ./requirements-need.txt
++        ./flake.lock
+         ./AUTHORS
+         ./LICENSE
+       ]
+@@ -27,6 +44,7 @@ stdenvNoCC.mkDerivation {
+
+   nativeBuildInputs = [
+     just
++    need
+     xcursorgen
+     inkscape
+     zip
+diff --git a/justfile b/justfile
+index e939e5a..39fedfa 100644
+--- a/justfile
++++ b/justfile
+@@ -1,3 +1,5 @@
++set positional-arguments
++
+ _default:
+   @just --list
+
+@@ -5,7 +7,8 @@ accents := "blue dark flamingo green lavender light maroon mauve peach pink red
+
+ # Remove all files in the ".pngs/", ".hl/", "./dist", "./releases" and "./svgs" directories
+ clean:
+-  rm -rf pngs/ hl/ dist/ releases/ svgs/
++  need clean --remove-outputs
++  rm -rf pngs/ hl/ dist/ releases/ svgs/ generated/ work/
+
+ # Zip all directories inside of "./dist"
+ zip:
+@@ -13,7 +16,7 @@ zip:
+
+ # Generate a single flavor with accents, defaults to all accents
+ build f a=accents:
+-  ./build -f {{f}} -a '{{a}}'
++  ./build -f "$1" -a "$2"
+
+ # Generate all flavors with their accents
+ all: clean (build "latte") (build "frappe") (build "macchiato") (build "mocha")
+diff --git a/needfile b/needfile
+new file mode 100644
+index 0000000..103e94b
+--- /dev/null
++++ b/needfile
+@@ -0,0 +1,34 @@
++need.output = grouped
++
++@atomic
++@jobs(2)
++generated/%/: tree(src/svgs) src/templates/*.tera scripts/render-template scripts/tool-identity.py source.lock command(python3 scripts/tool-identity.py bash whiskers)
++  scripts/render-template {{stem}} {{out}}
++
++@atomic
++svgs/%/: generated/%/
++  cp -a generated/{{stem}}/svgs/{{stem}}/. {{out}}
++
++@atomic
++@jobs(2)
++work/%/: svgs/%/ generated/%/ scripts/build-cursors scripts/generate-metadata scripts/tool-identity.py src/cursorList AUTHORS LICENSE flake.lock requirements-need.txt source.lock env(CURSOR_FRAME_TIME) command(python3 scripts/tool-identity.py bash inkscape xcursorgen zip python3 QtSvg)
++  scripts/build-cursors svgs/{{stem}} {{out}}/pngs {{out}}/hl {{out}}/dist
++  cp AUTHORS LICENSE svgs/{{stem}}/index.theme generated/{{stem}}/hl/{{stem}}/manifest.hl {{out}}/dist/
++  cp generated/{{stem}}/hl/{{stem}}/manifest.hl {{out}}/hl/
++
++@atomic
++pngs/%/: work/%/
++  cp -a work/{{stem}}/pngs/. {{out}}
++
++@atomic
++hl/%/: work/%/
++  cp -a work/{{stem}}/hl/. {{out}}
++
++@atomic
++dist/%/: work/%/
++  cp -a work/{{stem}}/dist/. {{out}}
++
++@atomic
++releases/%.zip: dist/%/ scripts/tool-identity.py source.lock command(python3 scripts/tool-identity.py bash zip)
++  destination="$(realpath {{out}})"
++  cd dist && zip -qry "$destination" {{stem}}
+diff --git a/requirements-need.txt b/requirements-need.txt
+new file mode 100644
+index 0000000..51d461b
+--- /dev/null
++++ b/requirements-need.txt
+@@ -0,0 +1 @@
++PySide6==6.10.2
+diff --git a/scripts/build-cursors b/scripts/build-cursors
+index eab5d68..657bd60 100755
+--- a/scripts/build-cursors
++++ b/scripts/build-cursors
+@@ -2,16 +2,21 @@
+
+ set -euo pipefail
+
+-BIN_DIR="$(dirname "${BASH_SOURCE[0]}")"
+-SRC_DIR="src"
++BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++SRC_DIR="$BIN_DIR/../src"
+ HL_DIR="$3"
+-BUILD_DIR="$2"
+-RAWSVG_DIR="$1"
++BUILD_DIR="$(realpath "$2")"
++RAWSVG_DIR="$(realpath "$1")"
+ ALIASES="$SRC_DIR/cursorList"
+
+ NOMINAL_SIZE=24
+ REAL_SIZE=32
+-FRAME_TIME=30
++FRAME_TIME="${CURSOR_FRAME_TIME:-30}"
++if [[ ! "$FRAME_TIME" =~ ^[1-9][0-9]*$ ]]; then
++  echo "error: $0: CURSOR_FRAME_TIME must be a positive integer" >&2
++  echo "help: set CURSOR_FRAME_TIME=30 for the upstream default" >&2
++  exit 1
++fi
+ SCALES="50 75 100 125 150 175 200 225 250 275 300"
+
+ # Make folders
+@@ -22,22 +27,20 @@ mkdir -p "$BUILD_DIR/config"
+
+ # Generate pixmaps
+ genPixmaps=""
+-for RAWSVG in ${RAWSVG_DIR}/*.svg; do
++for RAWSVG in "${RAWSVG_DIR}"/*.svg; do
+   BASENAME=${RAWSVG##*/}
+   BASENAME=${BASENAME%.*}
+   genPixmaps+="file-open:${RAWSVG};"
+
+   for scale in $SCALES; do
+     DIR="$BUILD_DIR/x${scale}"
+-    if [[ "${DIR}/${BASENAME}.png" -ot ${RAWSVG} ]]; then
+       genPixmaps+=" export-width:$((${REAL_SIZE} * scale / 100)); export-height:$((${REAL_SIZE} * scale / 100)); export-filename:${DIR}/${BASENAME}.png; export-do;"
+-    fi
+   done
+   genPixmaps+=" file-close; "
+
+ done
+
+-inkscape --shell <<<${genPixmaps} &>/dev/null
++inkscape --shell <<<"${genPixmaps}" &>/dev/null
+
+ # Generate cursor theme
+ OUTPUT=$4
+@@ -45,10 +48,10 @@ rm -rf "$OUTPUT"
+ mkdir -p "$OUTPUT/cursors"
+ mkdir -p "$OUTPUT/cursors_scalable"
+ mkdir -p "$HL_DIR"
+-$BIN_DIR/generate-metadata ${RAWSVG_DIR} "$BUILD_DIR" "$OUTPUT/cursors" "$OUTPUT/cursors_scalable" "$HL_DIR" ${NOMINAL_SIZE} ${REAL_SIZE} ${FRAME_TIME} ${SCALES}
++"$BIN_DIR/generate-metadata" "${RAWSVG_DIR}" "$BUILD_DIR" "$OUTPUT/cursors" "$OUTPUT/cursors_scalable" "$HL_DIR" "${NOMINAL_SIZE}" "${REAL_SIZE}" "${FRAME_TIME}" ${SCALES}
+
+ # Generate shortcuts
+-while read ALIAS; do
++while read -r ALIAS; do
+   FROM=${ALIAS% *}
+   TO=${ALIAS#* }
+
+@@ -57,9 +60,9 @@ while read ALIAS; do
+   fi
+
+   ln -s "$TO" "$OUTPUT/cursors/$FROM"
+-done <$ALIASES
++done <"$ALIASES"
+
+-while read ALIAS; do
++while read -r ALIAS; do
+   FROM=${ALIAS% *}
+   TO=${ALIAS#* }
+
+@@ -68,9 +71,9 @@ while read ALIAS; do
+   fi
+
+   ln -s "$TO" "$OUTPUT/cursors_scalable/$FROM"
+-done <$ALIASES
++done <"$ALIASES"
+
+-while read ALIAS; do
++while read -r ALIAS; do
+   FROM=${ALIAS% *}
+   TO=${ALIAS#* }
+
+@@ -79,19 +82,19 @@ while read ALIAS; do
+   fi
+
+   if [ -f "$HL_DIR/$TO/meta.hl" ]; then # need to ensure $TO is not a mapping itself
+-    echo -ne "\ndefine_override = $FROM" >>$HL_DIR/$TO/meta.hl
++    echo -ne "\ndefine_override = $FROM" >>"$HL_DIR/$TO/meta.hl"
+   else
+-    grep=$(grep -m 1 "^$TO " $ALIASES)
++    grep=$(grep -m 1 "^$TO " "$ALIASES")
+     TO=${grep#* }
+-    echo -ne "\ndefine_override = $FROM" >>$HL_DIR/$TO/meta.hl
++    echo -ne "\ndefine_override = $FROM" >>"$HL_DIR/$TO/meta.hl"
+   fi
+-done <$ALIASES
++done <"$ALIASES"
+
+ #zip up hyprcursor
+ mkdir -p "$OUTPUT/hyprcursors"
+-for dir in $HL_DIR/*; do
++for dir in "$HL_DIR"/*; do
+   if [ -d "$dir" ]; then
+-    dir_name=$(basename "$dir")
++    dir_name=$(basename -- "$dir")
+     zip -qr "$OUTPUT/hyprcursors/$dir_name.hlc" -j "$dir/"
+   fi
+ done
+diff --git a/scripts/create_zips b/scripts/create_zips
+index 9f4e244..3986e13 100755
+--- a/scripts/create_zips
++++ b/scripts/create_zips
+@@ -1,19 +1,13 @@
+ #!/usr/bin/env bash
+-
+ set -eu
+-
+-SCRIPT_DIR="$(dirname "$0")"
+-ROOT="$(dirname $SCRIPT_DIR)"
+-SRC_DIR="$ROOT/src"
+-OUT_DIR="$ROOT/dist"
+-ZIPS_DIR="$ROOT/releases"
+-
+-[ -d "$ZIPS_DIR" ] || mkdir -p "$ZIPS_DIR"
+-
+-cd $OUT_DIR
+-for dir in */; do
+-  [ -e "$dir/index.theme" ] || continue
+-  theme_name="$(basename "$dir")"
+-  zip -ry "../releases/$theme_name" "$theme_name"
++cd "$(dirname "${BASH_SOURCE[0]}")/.."
++test -d dist
++mkdir -p releases
++indexes=()
++for index in dist/*/index.theme; do
++  [ -f "$index" ] || continue
++  indexes+=("$index")
+ done
+-cd ..
++if ((${#indexes[@]})); then
++  need get -j2 'releases/%.zip: dist/%/index.theme' -- "${indexes[@]}"
++fi
+diff --git a/scripts/render-template b/scripts/render-template
+new file mode 100755
+index 0000000..072307d
+--- /dev/null
++++ b/scripts/render-template
+@@ -0,0 +1,12 @@
++#!/usr/bin/env bash
++set -euo pipefail
++root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
++name="$1"
++variant="${name#catppuccin-}"
++flavour="${variant%%-*}"
++accent="${variant#*-}"
++accent="${accent%-cursors}"
++cd "$2"
++for template in "$root"/src/templates/*.tera; do
++  whiskers "$template" -f "$flavour" --overrides "$(printf '{"accent":["%s"]}' "$accent")"
++done
+diff --git a/scripts/tool-identity.py b/scripts/tool-identity.py
+new file mode 100644
+index 0000000..f7e4a2d
+--- /dev/null
++++ b/scripts/tool-identity.py
+@@ -0,0 +1,19 @@
++"""Fingerprint only the executables and Qt extension requested by a rule."""
++
++import hashlib
++import shutil
++import sys
++from pathlib import Path
++
++for name in sys.argv[1:]:
++    if name == "QtSvg":
++        from PySide6 import QtSvg
++
++        filename = QtSvg.__file__
++    else:
++        filename = shutil.which(name)
++    if filename is None:
++        sys.exit(
++            f"error: {__file__}: tool {name!r} is missing\nhelp: install it and add it to PATH"
++        )
++    print(name, hashlib.sha256(Path(filename).read_bytes()).hexdigest())
+diff --git a/source.lock b/source.lock
+new file mode 100644
+index 0000000..c23e373
+--- /dev/null
++++ b/source.lock
+@@ -0,0 +1 @@
++a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4

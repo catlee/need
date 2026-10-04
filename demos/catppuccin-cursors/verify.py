@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import time
@@ -331,7 +332,7 @@ def counted(contents):
     }
 
 
-def ledger(before, after):
+def ledger(before, after, patch=DEMO / "upstream.patch"):
     # Count every tracked UTF-8 source/configuration file, including SVG markup.
     historical = {
         str(p.relative_to(before))
@@ -342,7 +343,7 @@ def ledger(before, after):
     }
     changes = {}
     filename = None
-    for line in (DEMO / "upstream.patch").read_text().splitlines():
+    for line in patch.read_text().splitlines():
         if line.startswith("diff --git "):
             filename = line.split(" b/", 1)[1]
             changes[filename] = {"deleted": [], "added": []}
@@ -450,7 +451,10 @@ def ledger(before, after):
         "excluded_delivered_files": {
             "documentation": ["README.md", "RESULTS.md", "repository README demo link"],
             "measurement_data": ["measured-results.json", "evidence.json"],
-            "patch_transport": ["upstream.patch (its applied source is counted)"],
+            "patch_transport": [
+                "upstream.patch",
+                "candidate.patch (applied source counted separately)",
+            ],
             "ignored_generated_or_installed": [
                 "upstream/",
                 ".need/",
@@ -478,6 +482,28 @@ if __name__ == "__main__":
     patch = DEMO / "upstream.patch"
     with tempfile.TemporaryDirectory(prefix="need-cursors-verification-") as temporary:
         temporary = Path(temporary)
+        RESULTS["replacement_syntax_trials"] = []
+        for header in (
+            "@atomic\npngs/%/ hl/%/ dist/%/: svgs/%/",
+            "@atomic\n@outputs-from(outputs)\ndist/%/: svgs/%/",
+        ):
+            trial = temporary / "needfile"
+            trial.write_text(header + "\n  scripts/build-cursors {{in}} {{out}}\n")
+            result = subprocess.run(
+                [str(NEED), "--file", str(trial), "--list"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert result.returncode == 1
+            assert "directory outputs require exactly one output" in result.stderr
+            RESULTS["replacement_syntax_trials"].append(
+                {
+                    "needfile": trial.read_text(),
+                    "exit_status": result.returncode,
+                    "diagnostic": result.stderr.replace(str(trial), "needfile"),
+                }
+            )
         before = temporary / "historical"
         before.mkdir()
         with tarfile.open(fileobj=io.BytesIO(archive)) as source:
@@ -505,6 +531,70 @@ if __name__ == "__main__":
         )
         assert rejected.returncode != 0 and "scripts/build-cursors" in rejected.stderr
         RESULTS["code_removal"] = first
+        candidate_patch = DEMO / "candidate.patch"
+        candidate = temporary / "candidate ledger"
+        shutil.copytree(before, candidate)
+        subprocess.run(
+            ["git", "apply", "--check", str(candidate_patch)], cwd=candidate, check=True
+        )
+        subprocess.run(
+            ["git", "apply", str(candidate_patch)], cwd=candidate, check=True
+        )
+        RESULTS["candidate_code_removal"] = ledger(before, candidate, candidate_patch)
+        RESULTS["candidate_code_removal"]["build_verified"] = False
+        accents = (
+            (before / "justfile")
+            .read_text()
+            .split('accents := "', 1)[1]
+            .split('"', 1)[0]
+            .split()
+        )
+        variants = [
+            f"catppuccin-{flavour}-{accent}-cursors"
+            for flavour in ("latte", "frappe", "macchiato", "mocha")
+            for accent in accents
+        ]
+        assert len(variants) == 64
+        for product in ("svgs", "pngs", "hl", "dist"):
+            subprocess.run(
+                [str(NEED), "get", "-n", "-j2", f"{product}/%/: %", "--", THEME],
+                cwd=candidate,
+                env=ENV,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        archives = subprocess.check_output(
+            [
+                str(NEED),
+                "map",
+                "releases/%.zip: dist/%/index.theme",
+                "--",
+                *[f"dist/{name}/index.theme" for name in variants],
+            ],
+            cwd=candidate,
+            text=True,
+        )
+        assert archives.splitlines() == [f"releases/{name}.zip" for name in variants]
+        RESULTS["candidate_mappings"] = {
+            "mapped_variants": len(variants),
+            "dry_run_theme": THEME,
+            "real_tool_fingerprints": True,
+            "four_product_dry_runs": True,
+            "archive_mapping": True,
+            "build_verified": False,
+        }
+        subprocess.run(
+            ["git", "apply", "--reverse", str(candidate_patch)],
+            cwd=candidate,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "apply", str(candidate_patch)], cwd=candidate, check=True
+        )
+        assert RESULTS["candidate_code_removal"] == ledger(
+            before, candidate, candidate_patch
+        ) | {"build_verified": False}
         RESULTS["integration_patch"] = {
             "revision": revision,
             "sha256": hashlib.sha256(patch.read_bytes()).hexdigest(),
@@ -513,6 +603,12 @@ if __name__ == "__main__":
             "git_numstat_verified": True,
             "patch_drift_rejected": True,
         }
+        if "--ledger-only" in sys.argv:
+            (DEMO / "evidence.json").write_text(json.dumps(RESULTS, indent=2) + "\n")
+            print(
+                "Patch, ledger, one-theme mapping/fingerprint checks passed; no builds run."
+            )
+            raise SystemExit(0)
         # Validate the uninstrumented production build before adding test-only events.
         built = subprocess.run(
             [str(NEED), "-j2", "theme/"],
