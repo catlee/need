@@ -1,6 +1,6 @@
 # Catppuccin replacement results
 
-Issue #56 remains incomplete: the actual production integration grows code, and archive equivalence plus the full replacement evidence suite remain unverified. There is one integration patch; the alternative candidate and prototype adapter are removed. No Need core behavior changed.
+Issue #56 remains incomplete: the actual production integration grows code and the full replacement evidence suite remains unverified. There is one integration patch; the alternative candidate and prototype adapter are removed. No Need core behavior changed.
 
 ## Actual workflow
 
@@ -12,8 +12,8 @@ Native Nix retains both declared Linux systems and adds pinned Need through defa
 
 - Demo build latte/frappe/macchiato/mocha mauve all passed using the actual patched entry points.
 - Pristine upstream comparison passed for all three published roots and aliases for each flavour, and 16 public SVG accents per flavour. No timing or reduction result is inferred from this.
-- Demo zip created four real release archives. Outer ZIP member equivalence failed. Nested .hlc ZIPs contain timestamp-bearing members and were compared as raw bytes inside the outer ZIP; the failure cause was not isolated. Archive equivalence remains unverified.
-- All 64 theme mappings for svgs/pngs/hl/dist passed current-syntax need get dry runs with real command fingerprints. This is mapping evidence, not 64-theme rendering.
+- Demo zip created four real release archives. Recursive comparison passed for all 408 outer members and 46 nested .hlc archives per flavour, including names, content, file types, permission bits, DOS attributes, comments, non-time extra fields and symlink targets. Raw ZIP bytes differ only in DOS/extended timestamp fields (`date_time` and Info-ZIP UT extra 0x5455); there are 522 affected member paths per archive. These timestamps come from separately generated files and are archive metadata, not content differences.
+- All 64 theme mappings for svgs/pngs/hl/dist passed current-syntax need get dry runs with real command fingerprints. This is mapping evidence, not 64-theme rendering. Comparator regression passed for timestamps, nested content, file content, permissions, symlink targets, entry types, renamed/missing members and duplicate-name rejection.
 - Patch applied twice independently to pristine pinned source; ledgers agree with git --numstat; a changed pinned helper rejects application.
 - just format and full just check passed; Ruff, Python compilation and Bash syntax checks passed. No full just verify renderer harness rerun.
 
@@ -26,11 +26,11 @@ UTF-8 source/configuration including SVG; exclude README.md, CHANGELOG.md, AUTHO
 | Scope/category | Before total / code | After total / code | Deleted total / code | Added total / code | Net removed total / code |
 |---|---:|---:|---:|---:|---:|
 | project/production | 2317 / 2197 | 2326 / 2219 | 138 / 109 | 147 / 131 | -9 / -22 |
-| project/verification | 0 / 0 | 319 / 307 | 0 / 0 | 319 / 307 | -319 / -307 |
-| project/combined | 2317 / 2197 | 2645 / 2526 | 138 / 109 | 466 / 438 | -328 / -329 |
+| project/verification | 0 / 0 | 428 / 407 | 0 / 0 | 428 / 407 | -428 / -407 |
+| project/combined | 2317 / 2197 | 2754 / 2626 | 138 / 109 | 575 / 538 | -437 / -429 |
 | converted_pipeline/production | 392 / 303 | 401 / 325 | 138 / 109 | 147 / 131 | -9 / -22 |
-| converted_pipeline/verification | 0 / 0 | 319 / 307 | 0 / 0 | 319 / 307 | -319 / -307 |
-| converted_pipeline/combined | 392 / 303 | 720 / 632 | 138 / 109 | 466 / 438 | -328 / -329 |
+| converted_pipeline/verification | 0 / 0 | 428 / 407 | 0 / 0 | 428 / 407 | -428 / -407 |
+| converted_pipeline/combined | 392 / 303 | 829 / 732 | 138 / 109 | 575 / 538 | -437 / -429 |
 
 ## File ledger
 
@@ -134,7 +134,7 @@ Counts are total / nonblank noncomment. Unchanged rows are retained, not deletio
 | demo/.gitignore | production | 0 / 0 | 4 / 4 | 0 / 0 | 4 / 4 |
 | demo/justfile | production | 0 / 0 | 24 / 18 | 0 / 0 | 24 / 18 |
 | demo/upstream.lock | production | 0 / 0 | 1 / 1 | 0 / 0 | 1 / 1 |
-| demo/verify.py | verification | 0 / 0 | 319 / 307 | 0 / 0 | 319 / 307 |
+| demo/verify.py | verification | 0 / 0 | 428 / 407 | 0 / 0 | 428 / 407 |
 
 ## Expressiveness and remaining acceptance
 

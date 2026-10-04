@@ -98,7 +98,7 @@
       {"file": "demo/.gitignore", "category": "production", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 4, "nonblank_noncomment": 4}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 4, "nonblank_noncomment": 4}},
       {"file": "demo/justfile", "category": "production", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 24, "nonblank_noncomment": 18}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 24, "nonblank_noncomment": 18}},
       {"file": "demo/upstream.lock", "category": "production", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 1, "nonblank_noncomment": 1}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 1, "nonblank_noncomment": 1}},
-      {"file": "demo/verify.py", "category": "verification", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 319, "nonblank_noncomment": 307}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 319, "nonblank_noncomment": 307}}
+      {"file": "demo/verify.py", "category": "verification", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 428, "nonblank_noncomment": 407}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 428, "nonblank_noncomment": 407}}
     ],
     "summary": {
       "project": {
@@ -130,20 +130,20 @@
             "nonblank_noncomment": 0
           },
           "after": {
-            "total": 319,
-            "nonblank_noncomment": 307
+            "total": 428,
+            "nonblank_noncomment": 407
           },
           "deleted": {
             "total": 0,
             "nonblank_noncomment": 0
           },
           "added": {
-            "total": 319,
-            "nonblank_noncomment": 307
+            "total": 428,
+            "nonblank_noncomment": 407
           },
           "net_code_removed": {
-            "total": -319,
-            "nonblank_noncomment": -307
+            "total": -428,
+            "nonblank_noncomment": -407
           }
         },
         "combined": {
@@ -152,20 +152,20 @@
             "nonblank_noncomment": 2197
           },
           "after": {
-            "total": 2645,
-            "nonblank_noncomment": 2526
+            "total": 2754,
+            "nonblank_noncomment": 2626
           },
           "deleted": {
             "total": 138,
             "nonblank_noncomment": 109
           },
           "added": {
-            "total": 466,
-            "nonblank_noncomment": 438
+            "total": 575,
+            "nonblank_noncomment": 538
           },
           "net_code_removed": {
-            "total": -328,
-            "nonblank_noncomment": -329
+            "total": -437,
+            "nonblank_noncomment": -429
           }
         }
       },
@@ -198,20 +198,20 @@
             "nonblank_noncomment": 0
           },
           "after": {
-            "total": 319,
-            "nonblank_noncomment": 307
+            "total": 428,
+            "nonblank_noncomment": 407
           },
           "deleted": {
             "total": 0,
             "nonblank_noncomment": 0
           },
           "added": {
-            "total": 319,
-            "nonblank_noncomment": 307
+            "total": 428,
+            "nonblank_noncomment": 407
           },
           "net_code_removed": {
-            "total": -319,
-            "nonblank_noncomment": -307
+            "total": -428,
+            "nonblank_noncomment": -407
           }
         },
         "combined": {
@@ -220,20 +220,20 @@
             "nonblank_noncomment": 303
           },
           "after": {
-            "total": 720,
-            "nonblank_noncomment": 632
+            "total": 829,
+            "nonblank_noncomment": 732
           },
           "deleted": {
             "total": 138,
             "nonblank_noncomment": 109
           },
           "added": {
-            "total": 466,
-            "nonblank_noncomment": 438
+            "total": 575,
+            "nonblank_noncomment": 538
           },
           "net_code_removed": {
-            "total": -328,
-            "nonblank_noncomment": -329
+            "total": -437,
+            "nonblank_noncomment": -429
           }
         }
       }
@@ -299,14 +299,60 @@
     "scales": 11,
     "pristine_root_and_alias_inventory_equal": true,
     "public_svg_accents_equal_per_flavour": 16,
-    "timings_recorded": false
+    "timings_recorded": true,
+    "baseline_build_seconds": {
+      "latte": 4.1699,
+      "frappe": 4.0928,
+      "macchiato": 4.1506,
+      "mocha": 5.7026
+    },
+    "semantic_equivalence": {
+      "latte": {
+        "published_roots_and_aliases": true,
+        "public_svg_accents": 16
+      },
+      "frappe": {
+        "published_roots_and_aliases": true,
+        "public_svg_accents": 16
+      },
+      "macchiato": {
+        "published_roots_and_aliases": true,
+        "public_svg_accents": 16
+      },
+      "mocha": {
+        "published_roots_and_aliases": true,
+        "public_svg_accents": 16
+      }
+    }
   },
   "archives": {
     "entry_point": "demo just zip -> upstream just zip -> scripts/create_zips",
     "created_real_archives": 4,
-    "creation_passed": true,
-    "zip_member_comparison_passed": false,
-    "limitation": "Outer ZIP member comparison failed; nested .hlc ZIPs were compared as raw member bytes. Cause not isolated; exact archive equivalence remains unverified."
+    "semantic_equivalence_passed": true,
+    "member_counts_per_archive": {
+      "outer_members": 408,
+      "nested_hlc_archives": 46,
+      "nested_members_per_hlc": {
+        "2": 44,
+        "13": 2
+      },
+      "recursive_member_paths": 522
+    },
+    "raw_bytes_equal": false,
+    "raw_difference_root_cause": {
+      "fields": [
+        "ZipInfo.date_time",
+        "ZipInfo.extra"
+      ],
+      "paths_per_archive": 522,
+      "field_differences_per_archive": {
+        "date_time": 522,
+        "extra": 522
+      },
+      "extended_timestamp_extra_id": "0x5455 (Info-ZIP UT)",
+      "interpretation": "DOS and extended ZIP timestamps differ because the independently built files were created at different times. Other extra fields, member comments, names, contents, types, permissions, DOS attributes, and symlink targets compare equal."
+    },
+    "comparison_policy": "recursive member names, file contents, Unix type and mode, DOS attributes, comments, non-time extra fields, and symlink targets; ignores DOS/extended timestamps, ZIP64 size/offset fields, and compression encoding"
   },
   "unverified": [
     "Full 64-theme rendering",
@@ -314,5 +360,18 @@
     "Failure/interruption/recovery, touch, older-mtime edit, frame-time change and deletion for the replacement",
     "Nix packaging for x86_64-linux and aarch64-linux; Nix unavailable",
     "Fresh real rendering from a checkout path containing spaces"
-  ]
+  ],
+  "comparator_regression": {
+    "passed": true,
+    "cases": [
+      "different DOS and extended timestamps compare equal recursively",
+      "changed nested .hlc content differs",
+      "changed regular-file content differs",
+      "changed permission bits differ",
+      "changed symlink target differs while nested member remains",
+      "changed entry type differs",
+      "renamed/missing member differs",
+      "duplicate member names are rejected"
+    ]
+  }
 }

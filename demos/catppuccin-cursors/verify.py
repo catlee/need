@@ -5,11 +5,14 @@ import io
 import json
 import os
 import shutil
+import stat
+import struct
 import subprocess
 import sys
 import tarfile
 import tempfile
 import time
+import warnings
 import zipfile
 from pathlib import Path
 
@@ -18,6 +21,47 @@ NEED = DEMO.parents[1] / "target/debug/need"
 THEME = "catppuccin-mocha-mauve-cursors"
 RESULTS = {}
 ENV = dict(os.environ, CURSOR_FRAME_TIME="30", QT_QPA_PLATFORM="offscreen")
+
+
+def archive_inventory(source):
+    data = source if isinstance(source, bytes) else source.read_bytes()
+    result = {}
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        entries = archive.infolist()
+        if len({entry.filename for entry in entries}) != len(entries):
+            raise ValueError("duplicate archive member names")
+        for entry in entries:
+            mode = entry.external_attr >> 16
+            kind = stat.S_IFMT(mode)
+            contents = archive.read(entry)
+            if kind == stat.S_IFLNK:
+                value = ["symlink", contents.hex()]
+            elif entry.filename.endswith((".hlc", ".zip")):
+                value = archive_inventory(contents)
+            else:
+                value = ["file", hashlib.sha256(contents).hexdigest()]
+            result[entry.filename] = [
+                kind,
+                stat.S_IMODE(mode),
+                entry.external_attr & 0xFFFF,
+                entry.create_system,
+                entry.flag_bits,
+                entry.internal_attr,
+                entry.comment.hex(),
+                archive_extra(entry.extra),
+                value,
+            ]
+        return {"comment": archive.comment.hex(), "members": result}
+
+
+def archive_extra(extra):
+    fields = []
+    while extra:
+        field, size = struct.unpack_from("<HH", extra)
+        value, extra = extra[4 : 4 + size], extra[4 + size :]
+        if field not in {0x0001, 0x5455}:
+            fields.append([field, value.hex()])
+    return fields
 
 
 def inventory(root):
@@ -29,14 +73,78 @@ def inventory(root):
         elif path.is_dir():
             result[name] = ["directory"]
         elif path.suffix in {".hlc", ".zip"}:
-            with zipfile.ZipFile(path) as archive:
-                result[name] = {
-                    entry: hashlib.sha256(archive.read(entry)).hexdigest()
-                    for entry in sorted(archive.namelist())
-                }
+            result[name] = archive_inventory(path)
         else:
             result[name] = ["file", hashlib.sha256(path.read_bytes()).hexdigest()]
     return result
+
+
+def test_archive_inventory():
+    def archive(entries, timestamp=(2024, 1, 1, 0, 0, 0)):
+        data = io.BytesIO()
+        with zipfile.ZipFile(data, "w") as output:
+            for name, content, mode in entries:
+                info = zipfile.ZipInfo(name, timestamp)
+                info.create_system = 3
+                info.external_attr = mode << 16
+                info.extra = struct.pack("<HHBI", 0x5455, 5, 1, timestamp[0])
+                output.writestr(info, content)
+        return data.getvalue()
+
+    nested = archive([("meta.hl", b"metadata", stat.S_IFREG | 0o644)])
+    base = [
+        ("theme/meta.hlc", nested, stat.S_IFREG | 0o644),
+        ("theme/alias", b"default", stat.S_IFLNK | 0o777),
+    ]
+    original = archive(base)
+
+    def variant(index, entry, timestamp=(2024, 1, 1, 0, 0, 0)):
+        changed = base.copy()
+        changed[index] = entry
+        return archive(changed, timestamp)
+
+    later_nested = archive(
+        [("meta.hl", b"metadata", stat.S_IFREG | 0o644)], (2025, 1, 1, 0, 0, 0)
+    )
+    later = archive(
+        [
+            (base[0][0], later_nested, base[0][2]),
+            base[1],
+        ],
+        (2025, 1, 1, 0, 0, 0),
+    )
+    assert archive_inventory(original) == archive_inventory(later)
+    assert archive_inventory(original) != archive_inventory(
+        variant(1, (base[1][0], b"other", base[1][2]))
+    )
+    assert archive_inventory(original) != archive_inventory(
+        variant(0, (base[0][0], nested, stat.S_IFREG | 0o600))
+    )
+    assert archive_inventory(original) != archive_inventory(
+        variant(1, (base[1][0], base[1][1], stat.S_IFREG | 0o644))
+    )
+    assert archive_inventory(original) != archive_inventory(
+        variant(1, ("theme/renamed", base[1][1], base[1][2]))
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        duplicate = archive([("same", content, mode) for _, content, mode in base])
+    try:
+        archive_inventory(duplicate)
+    except ValueError as error:
+        assert str(error) == "duplicate archive member names"
+    else:
+        raise AssertionError("duplicate member names were accepted")
+    assert archive_inventory(original) != archive_inventory(
+        variant(
+            0,
+            (
+                base[0][0],
+                archive([("meta.hl", b"changed", stat.S_IFREG | 0o644)]),
+                base[0][2],
+            ),
+        )
+    )
 
 
 def counted(contents):
@@ -186,6 +294,7 @@ def ledger(before, after, patch=DEMO / "upstream.patch"):
 
 
 if __name__ == "__main__":
+    test_archive_inventory()
     revision = (DEMO / "upstream.lock").read_text().strip()
     checkout = DEMO / "upstream"
     assert (
@@ -298,10 +407,10 @@ if __name__ == "__main__":
                 "real_archives": 4,
                 "member_content_equal": inventory(before / "releases")
                 == inventory(checkout / "releases"),
+                "comparison": "recursive member names, file contents, Unix type and mode, DOS attributes, comments, non-time extra fields, and symlink targets; ignores DOS/extended timestamps, ZIP64 size/offset fields, and compression encoding",
             }
             (DEMO / "evidence.json").write_text(json.dumps(RESULTS, indent=2) + "\n")
             assert RESULTS["archives"]["member_content_equal"]
-            RESULTS["archives"] = {"real_archives": 4, "member_content_equal": True}
         if "--ledger-only" in sys.argv:
             (DEMO / "evidence.json").write_text(json.dumps(RESULTS, indent=2) + "\n")
             print("Patch, ledger and 64-theme mapping checks passed.")
