@@ -104,6 +104,8 @@ Need must let both callers build the full selected graph with content freshness,
 
 The current CLI route has a demonstrated portability gap: recipes and command probes launch `sh` (`src/execute.rs:1164,1906`) and path interpolation uses Unix escaping (`:1676`). That cannot directly preserve the Windows/MSVC build-script caller. A Rust in-process Need API is one candidate; a portable argv/process interface with a supported Cargo invocation path is another. A native Helix integration is also possible if it reuses Need's engine rather than duplicating it. Need is currently binary-only (`Cargo.toml` has `[[bin]]`); this audit does not establish which candidate is smallest.
 
+The in-process option is conditional on Helix's compiler floor: pinned upstream declares `rust-version = "1.76"` (`upstream/Cargo.toml:46-54`), while Need uses edition 2024 (`Cargo.toml:1-4`), which requires Rust 1.85 ([Rust 2024 Edition Guide](https://doc.rust-lang.org/edition-guide/rust-2024/index.html)). Directly embedding the current crate would raise Helix's declared compiler requirement; evaluate whether that is acceptable. A host-native external-process interface could keep Rust build dependencies separate. This supports investigating process-based designs; it does not select one.
+
 The concrete deletion candidates in pinned `grammar.rs` are limited:
 
 - Delete timestamp freshness `needs_recompile`/`mtime` (`:568-590`), its `SystemTime` import, and the check at `:425-430`.
