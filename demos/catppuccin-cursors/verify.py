@@ -635,11 +635,6 @@ if __name__ == "__main__":
             RESULTS["lifecycle"]["pristine_source_deletion"] = pristine_deletion_probe(
                 before
             )
-            if (DEMO / "evidence.json").exists():
-                previous = json.loads((DEMO / "evidence.json").read_text())
-                for key in ("full_linux", "full_equivalence"):
-                    if key in previous:
-                        RESULTS[key] = previous[key]
             (DEMO / "evidence.json").write_text(json.dumps(RESULTS, indent=2) + "\n")
             print(
                 "One-theme lifecycle checks passed; evidence.json contains measurements."
@@ -693,19 +688,9 @@ if __name__ == "__main__":
                 "roots_equal": list(roots),
                 "comparison": "recursive member names, file contents, Unix type and mode, DOS attributes, comments, non-time extra fields, and symlink targets; ignores DOS/extended timestamps, ZIP64 size/offset fields, and compression encoding",
             }
-            if (DEMO / "evidence.json").exists():
-                previous = json.loads((DEMO / "evidence.json").read_text())
-                for key in ("lifecycle", "pristine_source_deletion", "full_linux"):
-                    if key in previous:
-                        RESULTS[key] = previous[key]
             (DEMO / "evidence.json").write_text(json.dumps(RESULTS, indent=2) + "\n")
         if "--ledger-only" in sys.argv:
             evidence_path = DEMO / "evidence.json"
-            if evidence_path.exists():
-                previous = json.loads(evidence_path.read_text())
-                for key in ("lifecycle", "pristine_source_deletion", "full_linux"):
-                    if key in previous:
-                        RESULTS[key] = previous[key]
             evidence_path.write_text(json.dumps(RESULTS, indent=2) + "\n")
             print("Patch, ledger and 64-theme mapping checks passed.")
             raise SystemExit(0)

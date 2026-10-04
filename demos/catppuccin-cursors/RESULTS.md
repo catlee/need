@@ -43,11 +43,11 @@ Counts are total lines / nonblank noncomment lines. Net removed = deleted − ad
 | Scope/category | Before | After | Deleted | Added | Net removed (negative = growth) |
 |---|---:|---:|---:|---:|---:|
 | project/production | 2317 / 2197 | 2319 / 2211 | 133 / 109 | 135 / 123 | -2 / -14 |
-| project/verification | 0 / 0 | 722 / 688 | 0 / 0 | 722 / 688 | -722 / -688 |
-| project/combined | 2317 / 2197 | 3041 / 2899 | 133 / 109 | 857 / 811 | -724 / -702 |
+| project/verification | 0 / 0 | 707 / 673 | 0 / 0 | 707 / 673 | -707 / -673 |
+| project/combined | 2317 / 2197 | 3026 / 2884 | 133 / 109 | 842 / 796 | -709 / -687 |
 | converted_pipeline/production | 392 / 303 | 394 / 317 | 133 / 109 | 135 / 123 | -2 / -14 |
-| converted_pipeline/verification | 0 / 0 | 722 / 688 | 0 / 0 | 722 / 688 | -722 / -688 |
-| converted_pipeline/combined | 392 / 303 | 1116 / 1005 | 133 / 109 | 857 / 811 | -724 / -702 |
+| converted_pipeline/verification | 0 / 0 | 707 / 673 | 0 / 0 | 707 / 673 | -707 / -673 |
+| converted_pipeline/combined | 392 / 303 | 1101 / 990 | 133 / 109 | 842 / 796 | -709 / -687 |
 ## File-by-file ledger
 
 Unchanged upstream files are retained rows, not deletions. Demo setup/configuration is counted as production; `verify.py` is verification code. README/RESULTS and measured data are documented exclusions; `upstream.patch` is transport and the applied source is counted once.
@@ -150,7 +150,7 @@ Unchanged upstream files are retained rows, not deletions. Demo setup/configurat
 | `demo/.gitignore` | production | yes | 0 / 0 | 4 / 4 | 0 / 0 | 4 / 4 |
 | `demo/justfile` | production | yes | 0 / 0 | 12 / 10 | 0 / 0 | 12 / 10 |
 | `demo/upstream.lock` | production | yes | 0 / 0 | 1 / 1 | 0 / 0 | 1 / 1 |
-| `demo/verify.py` | verification | yes | 0 / 0 | 722 / 688 | 0 / 0 | 722 / 688 |
+| `demo/verify.py` | verification | yes | 0 / 0 | 707 / 673 | 0 / 0 | 707 / 673 |
 
 ## Remaining limits
 

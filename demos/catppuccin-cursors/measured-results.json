@@ -98,7 +98,7 @@
       {"file": "demo/.gitignore", "category": "production", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 4, "nonblank_noncomment": 4}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 4, "nonblank_noncomment": 4}},
       {"file": "demo/justfile", "category": "production", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 12, "nonblank_noncomment": 10}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 12, "nonblank_noncomment": 10}},
       {"file": "demo/upstream.lock", "category": "production", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 1, "nonblank_noncomment": 1}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 1, "nonblank_noncomment": 1}},
-      {"file": "demo/verify.py", "category": "verification", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 722, "nonblank_noncomment": 688}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 722, "nonblank_noncomment": 688}}
+      {"file": "demo/verify.py", "category": "verification", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 707, "nonblank_noncomment": 673}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 707, "nonblank_noncomment": 673}}
     ],
     "summary": {
       "project": {
@@ -130,20 +130,20 @@
             "nonblank_noncomment": 0
           },
           "after": {
-            "total": 722,
-            "nonblank_noncomment": 688
+            "total": 707,
+            "nonblank_noncomment": 673
           },
           "deleted": {
             "total": 0,
             "nonblank_noncomment": 0
           },
           "added": {
-            "total": 722,
-            "nonblank_noncomment": 688
+            "total": 707,
+            "nonblank_noncomment": 673
           },
           "net_code_removed": {
-            "total": -722,
-            "nonblank_noncomment": -688
+            "total": -707,
+            "nonblank_noncomment": -673
           }
         },
         "combined": {
@@ -152,20 +152,20 @@
             "nonblank_noncomment": 2197
           },
           "after": {
-            "total": 3041,
-            "nonblank_noncomment": 2899
+            "total": 3026,
+            "nonblank_noncomment": 2884
           },
           "deleted": {
             "total": 133,
             "nonblank_noncomment": 109
           },
           "added": {
-            "total": 857,
-            "nonblank_noncomment": 811
+            "total": 842,
+            "nonblank_noncomment": 796
           },
           "net_code_removed": {
-            "total": -724,
-            "nonblank_noncomment": -702
+            "total": -709,
+            "nonblank_noncomment": -687
           }
         }
       },
@@ -198,20 +198,20 @@
             "nonblank_noncomment": 0
           },
           "after": {
-            "total": 722,
-            "nonblank_noncomment": 688
+            "total": 707,
+            "nonblank_noncomment": 673
           },
           "deleted": {
             "total": 0,
             "nonblank_noncomment": 0
           },
           "added": {
-            "total": 722,
-            "nonblank_noncomment": 688
+            "total": 707,
+            "nonblank_noncomment": 673
           },
           "net_code_removed": {
-            "total": -722,
-            "nonblank_noncomment": -688
+            "total": -707,
+            "nonblank_noncomment": -673
           }
         },
         "combined": {
@@ -220,20 +220,20 @@
             "nonblank_noncomment": 303
           },
           "after": {
-            "total": 1116,
-            "nonblank_noncomment": 1005
+            "total": 1101,
+            "nonblank_noncomment": 990
           },
           "deleted": {
             "total": 133,
             "nonblank_noncomment": 109
           },
           "added": {
-            "total": 857,
-            "nonblank_noncomment": 811
+            "total": 842,
+            "nonblank_noncomment": 796
           },
           "net_code_removed": {
-            "total": -724,
-            "nonblank_noncomment": -702
+            "total": -709,
+            "nonblank_noncomment": -687
           }
         }
       }
