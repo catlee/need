@@ -8,17 +8,5 @@ setup:
   git -C upstream checkout --detach FETCH_HEAD
   if ! git -C upstream apply --reverse --check ../upstream.patch 2>/dev/null; then git -C upstream apply --check ../upstream.patch && git -C upstream apply ../upstream.patch; fi
 
-build flavour='mocha' accents='mauve':
-  just --justfile upstream/justfile build "$@"
-
-all:
-  just --justfile upstream/justfile all
-
-zip:
-  just --justfile upstream/justfile zip
-
-verify:
-  python3 verify.py
-
-clean:
-  just --justfile upstream/justfile clean
+upstream +args:
+  just --justfile upstream/justfile "$@"

@@ -11,16 +11,10 @@ index d29387e..3fbc904 100644
 +/work/
 +/.need/
 diff --git a/build b/build
-index 3f249fd..654fde5 100755
+index 3f249fd..c5b489f 100755
 --- a/build
 +++ b/build
-@@ -1,70 +1,15 @@
- #!/usr/bin/env bash
--
--# Volantes cursors, based on KDE Breeze
--# Copyright (c) 2016 Keefer Rourke <keefer.rourke@gmail.com>
--# Copyright (c) 2020 Sergei Eremenko <https://github.com/SmartFinn>
--
+@@ -7,64 +7,13 @@
  set -eu
 -
 -build_svgs() {
@@ -92,11 +86,10 @@ index 3f249fd..654fde5 100755
 -  cp -f "$theme_hl_dir/manifest.hl" "$theme_out_dir"
 -done
 -echo "[INFO] - Finished building cursor formats; xcursor, hyprcursor, plasmasvg"
-+need generated/
 +need get -j2 "svgs/catppuccin-$FLAVOR-%-cursors/: %" -- $all_accents
 +need get -j2 "dist/catppuccin-$FLAVOR-%-cursors/: %" -- $ACCENTS
 diff --git a/default.nix b/default.nix
-index 21a8359..bad7df1 100644
+index 21a8359..9c29eeb 100644
 --- a/default.nix
 +++ b/default.nix
 @@ -1,6 +1,7 @@
@@ -126,17 +119,18 @@ index 21a8359..bad7df1 100644
  stdenvNoCC.mkDerivation {
    name = "catppuccin-cursors";
    src = lib.fileset.toSource {
-@@ -19,6 +32,9 @@ stdenvNoCC.mkDerivation {
+@@ -19,6 +32,10 @@ stdenvNoCC.mkDerivation {
          ./scripts
          ./justfile
          ./build
++        ./default.nix
 +        ./needfile
 +        ./source.lock
 +        ./requirements-need.txt
          ./AUTHORS
          ./LICENSE
        ]
-@@ -27,6 +43,7 @@ stdenvNoCC.mkDerivation {
+@@ -27,6 +44,7 @@ stdenvNoCC.mkDerivation {
 
    nativeBuildInputs = [
      just
@@ -225,7 +219,7 @@ index 0000000..51d461b
 @@ -0,0 +1 @@
 +PySide6==6.10.2
 diff --git a/scripts/build-cursors b/scripts/build-cursors
-index eab5d68..1cf24bd 100755
+index eab5d68..1f78800 100755
 --- a/scripts/build-cursors
 +++ b/scripts/build-cursors
 @@ -2,96 +2,73 @@
@@ -283,7 +277,7 @@ index eab5d68..1cf24bd 100755
  done
 
 -inkscape --shell <<<${genPixmaps} &>/dev/null
-+inkscape --shell <<<"${genPixmaps}" &>/dev/null
++INKSCAPE_APP_ID_TAG=needp$$ inkscape --shell <<<"${genPixmaps}" >/dev/null
 
  # Generate cursor theme
  OUTPUT=$4

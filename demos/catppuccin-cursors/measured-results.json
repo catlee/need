@@ -8,8 +8,8 @@
       {"file": ".gitignore", "category": "production", "scope": true, "before": {"total": 6, "nonblank_noncomment": 6}, "after": {"total": 10, "nonblank_noncomment": 9}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 4, "nonblank_noncomment": 3}},
       {"file": ".release-please-manifest.json", "category": "production", "scope": false, "before": {"total": 3, "nonblank_noncomment": 3}, "after": {"total": 3, "nonblank_noncomment": 3}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 0, "nonblank_noncomment": 0}},
       {"file": "assets/gen_assets", "category": "production", "scope": false, "before": {"total": 142, "nonblank_noncomment": 137}, "after": {"total": 142, "nonblank_noncomment": 137}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 0, "nonblank_noncomment": 0}},
-      {"file": "build", "category": "production", "scope": true, "before": {"total": 70, "nonblank_noncomment": 53}, "after": {"total": 15, "nonblank_noncomment": 14}, "deleted": {"total": 65, "nonblank_noncomment": 49}, "added": {"total": 10, "nonblank_noncomment": 10}},
-      {"file": "default.nix", "category": "production", "scope": true, "before": {"total": 61, "nonblank_noncomment": 52}, "after": {"total": 78, "nonblank_noncomment": 69}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 17, "nonblank_noncomment": 17}},
+      {"file": "build", "category": "production", "scope": true, "before": {"total": 70, "nonblank_noncomment": 53}, "after": {"total": 19, "nonblank_noncomment": 13}, "deleted": {"total": 60, "nonblank_noncomment": 49}, "added": {"total": 9, "nonblank_noncomment": 9}},
+      {"file": "default.nix", "category": "production", "scope": true, "before": {"total": 61, "nonblank_noncomment": 52}, "after": {"total": 79, "nonblank_noncomment": 70}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 18, "nonblank_noncomment": 18}},
       {"file": "flake.lock", "category": "production", "scope": false, "before": {"total": 26, "nonblank_noncomment": 26}, "after": {"total": 26, "nonblank_noncomment": 26}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 0, "nonblank_noncomment": 0}},
       {"file": "flake.nix", "category": "production", "scope": false, "before": {"total": 26, "nonblank_noncomment": 23}, "after": {"total": 26, "nonblank_noncomment": 23}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 0, "nonblank_noncomment": 0}},
       {"file": "justfile", "category": "production", "scope": true, "before": {"total": 19, "nonblank_noncomment": 10}, "after": {"total": 22, "nonblank_noncomment": 12}, "deleted": {"total": 2, "nonblank_noncomment": 2}, "added": {"total": 5, "nonblank_noncomment": 4}},
@@ -96,9 +96,9 @@
       {"file": "src/templates/manifest.hl.tera", "category": "production", "scope": false, "before": {"total": 12, "nonblank_noncomment": 12}, "after": {"total": 12, "nonblank_noncomment": 12}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 0, "nonblank_noncomment": 0}},
       {"file": "src/templates/svgs.tera", "category": "production", "scope": false, "before": {"total": 31, "nonblank_noncomment": 29}, "after": {"total": 31, "nonblank_noncomment": 29}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 0, "nonblank_noncomment": 0}},
       {"file": "demo/.gitignore", "category": "production", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 4, "nonblank_noncomment": 4}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 4, "nonblank_noncomment": 4}},
-      {"file": "demo/justfile", "category": "production", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 24, "nonblank_noncomment": 18}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 24, "nonblank_noncomment": 18}},
+      {"file": "demo/justfile", "category": "production", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 12, "nonblank_noncomment": 10}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 12, "nonblank_noncomment": 10}},
       {"file": "demo/upstream.lock", "category": "production", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 1, "nonblank_noncomment": 1}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 1, "nonblank_noncomment": 1}},
-      {"file": "demo/verify.py", "category": "verification", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 428, "nonblank_noncomment": 407}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 428, "nonblank_noncomment": 407}}
+      {"file": "demo/verify.py", "category": "verification", "scope": true, "before": {"total": 0, "nonblank_noncomment": 0}, "after": {"total": 722, "nonblank_noncomment": 688}, "deleted": {"total": 0, "nonblank_noncomment": 0}, "added": {"total": 722, "nonblank_noncomment": 688}}
     ],
     "summary": {
       "project": {
@@ -108,20 +108,20 @@
             "nonblank_noncomment": 2197
           },
           "after": {
-            "total": 2326,
-            "nonblank_noncomment": 2219
+            "total": 2319,
+            "nonblank_noncomment": 2211
           },
           "deleted": {
-            "total": 138,
+            "total": 133,
             "nonblank_noncomment": 109
           },
           "added": {
-            "total": 147,
-            "nonblank_noncomment": 131
+            "total": 135,
+            "nonblank_noncomment": 123
           },
           "net_code_removed": {
-            "total": -9,
-            "nonblank_noncomment": -22
+            "total": -2,
+            "nonblank_noncomment": -14
           }
         },
         "verification": {
@@ -130,20 +130,20 @@
             "nonblank_noncomment": 0
           },
           "after": {
-            "total": 428,
-            "nonblank_noncomment": 407
+            "total": 722,
+            "nonblank_noncomment": 688
           },
           "deleted": {
             "total": 0,
             "nonblank_noncomment": 0
           },
           "added": {
-            "total": 428,
-            "nonblank_noncomment": 407
+            "total": 722,
+            "nonblank_noncomment": 688
           },
           "net_code_removed": {
-            "total": -428,
-            "nonblank_noncomment": -407
+            "total": -722,
+            "nonblank_noncomment": -688
           }
         },
         "combined": {
@@ -152,20 +152,20 @@
             "nonblank_noncomment": 2197
           },
           "after": {
-            "total": 2754,
-            "nonblank_noncomment": 2626
+            "total": 3041,
+            "nonblank_noncomment": 2899
           },
           "deleted": {
-            "total": 138,
+            "total": 133,
             "nonblank_noncomment": 109
           },
           "added": {
-            "total": 575,
-            "nonblank_noncomment": 538
+            "total": 857,
+            "nonblank_noncomment": 811
           },
           "net_code_removed": {
-            "total": -437,
-            "nonblank_noncomment": -429
+            "total": -724,
+            "nonblank_noncomment": -702
           }
         }
       },
@@ -176,20 +176,20 @@
             "nonblank_noncomment": 303
           },
           "after": {
-            "total": 401,
-            "nonblank_noncomment": 325
+            "total": 394,
+            "nonblank_noncomment": 317
           },
           "deleted": {
-            "total": 138,
+            "total": 133,
             "nonblank_noncomment": 109
           },
           "added": {
-            "total": 147,
-            "nonblank_noncomment": 131
+            "total": 135,
+            "nonblank_noncomment": 123
           },
           "net_code_removed": {
-            "total": -9,
-            "nonblank_noncomment": -22
+            "total": -2,
+            "nonblank_noncomment": -14
           }
         },
         "verification": {
@@ -198,20 +198,20 @@
             "nonblank_noncomment": 0
           },
           "after": {
-            "total": 428,
-            "nonblank_noncomment": 407
+            "total": 722,
+            "nonblank_noncomment": 688
           },
           "deleted": {
             "total": 0,
             "nonblank_noncomment": 0
           },
           "added": {
-            "total": 428,
-            "nonblank_noncomment": 407
+            "total": 722,
+            "nonblank_noncomment": 688
           },
           "net_code_removed": {
-            "total": -428,
-            "nonblank_noncomment": -407
+            "total": -722,
+            "nonblank_noncomment": -688
           }
         },
         "combined": {
@@ -220,20 +220,20 @@
             "nonblank_noncomment": 303
           },
           "after": {
-            "total": 829,
-            "nonblank_noncomment": 732
+            "total": 1116,
+            "nonblank_noncomment": 1005
           },
           "deleted": {
-            "total": 138,
+            "total": 133,
             "nonblank_noncomment": 109
           },
           "added": {
-            "total": 575,
-            "nonblank_noncomment": 538
+            "total": 857,
+            "nonblank_noncomment": 811
           },
           "net_code_removed": {
-            "total": -437,
-            "nonblank_noncomment": -429
+            "total": -724,
+            "nonblank_noncomment": -702
           }
         }
       }
@@ -266,7 +266,7 @@
   },
   "integration_patch": {
     "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
-    "sha256": "43497223b28166a39f4fa193deea1e1255b84345ad376578466a69ceff6b77d3",
+    "sha256": "21bd4bf986477e27384d9e74ce2a299c57069000b0c0c0f1474bb81249abd9d5",
     "applied_to_pristine": true,
     "ledger_reproduced": true,
     "git_numstat_verified": true,
@@ -323,7 +323,8 @@
         "published_roots_and_aliases": true,
         "public_svg_accents": 16
       }
-    }
+    },
+    "scope": "Earlier four-flavour mauve sample only; not the complete 64-theme run."
   },
   "archives": {
     "entry_point": "demo just zip -> upstream just zip -> scripts/create_zips",
@@ -352,14 +353,17 @@
       "extended_timestamp_extra_id": "0x5455 (Info-ZIP UT)",
       "interpretation": "DOS and extended ZIP timestamps differ because the independently built files were created at different times. Other extra fields, member comments, names, contents, types, permissions, DOS attributes, and symlink targets compare equal."
     },
-    "comparison_policy": "recursive member names, file contents, Unix type and mode, DOS attributes, comments, non-time extra fields, and symlink targets; ignores DOS/extended timestamps, ZIP64 size/offset fields, and compression encoding"
+    "comparison_policy": "recursive member names, file contents, Unix type and mode, DOS attributes, comments, non-time extra fields, and symlink targets; ignores DOS/extended timestamps, ZIP64 size/offset fields, and compression encoding",
+    "scope": "Earlier four-archive mauve sample only; full 64-archive result is in full_linux."
   },
   "unverified": [
-    "Full 64-theme rendering",
-    "Clean/current/edit/narrow recipe timings and concurrency for the replacement",
-    "Failure/interruption/recovery, touch, older-mtime edit, frame-time change and deletion for the replacement",
-    "Nix packaging for x86_64-linux and aarch64-linux; Nix unavailable",
-    "Fresh real rendering from a checkout path containing spaces"
+    "Nix packaging for x86_64-linux and aarch64-linux; Nix is unavailable. The default.nix fileset input was reviewed and patched, but no Nix build was run.",
+    "Non-x86_64 rendering architecture and full platform parity.",
+    "Rendering from a checkout path containing spaces; lifecycle exercised a path with spaces on one theme.",
+    "Selective cursor/scale regeneration: current graph rebuilds the selected theme batch.",
+    "Transactional publication across work/pngs/hl/dist roots; each declared directory publishes atomically, but the roots are separate transactions.",
+    "Successful output removal after deleting a source SVG: pinned Whiskers rejects the missing required source before regeneration; both pristine and replacement rejection are measured.",
+    "Updated --equivalence full baseline reproduction path was not rerun after compacting it to all 64 themes; parent will run it independently after commit. The implementation and pristine full runs already completed and their semantic comparison passed."
   ],
   "comparator_regression": {
     "passed": true,
@@ -373,5 +377,199 @@
       "renamed/missing member differs",
       "duplicate member names are rejected"
     ]
+  },
+  "lifecycle": {
+    "clean": {
+      "exit": 0,
+      "seconds": 0.012,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "narrow_png_target": {
+      "exit": 0,
+      "seconds": 11.687,
+      "need_recipes": 4,
+      "got_targets": 4
+    },
+    "reset": {
+      "exit": 0,
+      "seconds": 0.086,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "build_after_clean": {
+      "exit": 0,
+      "seconds": 13.902,
+      "need_recipes": 22,
+      "got_targets": 22
+    },
+    "current_build": {
+      "exit": 0,
+      "seconds": 1.517,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "touch_same_bytes": {
+      "exit": 0,
+      "seconds": 1.429,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "older_mtime_content_edit": {
+      "exit": 0,
+      "seconds": 9.703,
+      "need_recipes": 4,
+      "got_targets": 4
+    },
+    "restore_input": {
+      "exit": 0,
+      "seconds": 10.027,
+      "need_recipes": 4,
+      "got_targets": 4
+    },
+    "frame_time_unchanged": {
+      "exit": 0,
+      "seconds": 1.468,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "frame_time_changed": {
+      "exit": 0,
+      "seconds": 9.872,
+      "need_recipes": 4,
+      "got_targets": 4
+    },
+    "frame_time_restored": {
+      "exit": 0,
+      "seconds": 9.811,
+      "need_recipes": 4,
+      "got_targets": 4
+    },
+    "invalid_frame_failure": {
+      "exit": 1,
+      "seconds": 1.354,
+      "need_recipes": 1,
+      "got_targets": 0
+    },
+    "failure_recovery": {
+      "exit": 0,
+      "seconds": 1.464,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "post_write_generator_failure": {
+      "exit": 1,
+      "seconds": 1.333,
+      "need_recipes": 1,
+      "got_targets": 0
+    },
+    "post_write_failure_recovery": {
+      "exit": 0,
+      "seconds": 1.412,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "post_write_interruption": {
+      "terminated_by_sigterm": true,
+      "ready_marker_observed": true,
+      "seconds": 1.551
+    },
+    "post_write_interruption_recovery": {
+      "exit": 0,
+      "seconds": 1.368,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "source_deletion": {
+      "supported": false,
+      "reason": "Whiskers requires every src/svgs input; deletion fails before publication"
+    },
+    "source_deletion_recovery": {
+      "exit": 0,
+      "seconds": 1.416,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "atomic_failure": {
+      "published_roots_unchanged": true,
+      "state_unchanged": true,
+      "recovery_succeeded": true,
+      "generator_error": "helper wrote into its output staging tree then exited nonzero",
+      "interruption_preserved_old_outputs": true,
+      "interrupt_marker_was_in_need_directory_staging_output": true,
+      "interrupted_staging_removed_after_recovery": true,
+      "published_roots_compared_before_recovery": true,
+      "state_compared_before_recovery": true
+    },
+    "frame_time_metadata": {
+      "file": "dist/catppuccin-latte-mauve-cursors/cursors_scalable/wait/metadata.json",
+      "before_delay": 30,
+      "changed_delay": 31
+    },
+    "pristine_source_deletion": {
+      "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+      "command": "./build -f latte -a mauve",
+      "exit": 1,
+      "missing_source_rejected": true,
+      "failure": "Whiskers read_file cannot open src/svgs/wait-12.svg"
+    }
+  },
+  "pristine_source_deletion": {
+    "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+    "command": "./build -f latte -a mauve",
+    "exit": 1,
+    "missing_source_rejected": true,
+    "failure": "Whiskers read_file cannot open src/svgs/wait-12.svg"
+  },
+  "full_linux": {
+    "platform": "Linux x86_64",
+    "replacement": {
+      "commands": [
+        "just upstream all",
+        "just upstream zip"
+      ],
+      "all_seconds": 652,
+      "all_need_recipe_executions": 321,
+      "zip_seconds": 20,
+      "zip_need_recipe_executions": 64,
+      "themes": 64,
+      "release_archives": 64,
+      "flavours": [
+        "latte",
+        "frappe",
+        "macchiato",
+        "mocha"
+      ],
+      "accents_per_flavour": 16,
+      "scales": 11
+    },
+    "pristine": {
+      "commands": [
+        "dbus-run-session -- just all",
+        "just zip"
+      ],
+      "all_seconds": 178.7,
+      "zip_seconds": 10.19,
+      "themes": 64,
+      "release_archives": 64
+    },
+    "semantic_inventory_equal_for": [
+      "svgs",
+      "pngs",
+      "hl",
+      "dist",
+      "releases"
+    ],
+    "archive_comparison": "Recursive member names, contents, type, permissions and symlink semantics; only justified ZIP timestamp/encoding metadata ignored.",
+    "concurrency": {
+      "work_rule_limit": 2,
+      "two_theme_real_tool_smoke_passed": true,
+      "observation": "Need emitted overlapping independent theme jobs in pairs; each retains one Inkscape batch."
+    },
+    "timing_conclusion": "No speedup: replacement all and zip were slower in this environment.",
+    "environment": "Prepared real toolchain, Qt offscreen, isolated session bus; replacement Inkscape invocation uses a per-process INKSCAPE_APP_ID_TAG after a confirmed pre-render Gio DBus registration abort.",
+    "nix_unverified": true,
+    "need_executable": "target/debug/need (branch worktree), debug profile",
+    "timing_caveat": "Need was not run with an optimized profile; timings are environment-specific."
   }
 }
