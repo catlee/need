@@ -10,7 +10,7 @@ On Linux x86_64 with the prepared real toolchain, Qt offscreen, and an isolated 
 
 The `work/%/` rule has `@jobs(2)`; a real two-theme run showed overlapping independent theme jobs, each retaining its single Inkscape batch. The first untagged renderer failure was a Gio application-registration abort before rendering. The real command now sets a per-process `INKSCAPE_APP_ID_TAG`; the tagged two-theme and full run passed. It was not an output-content or memory failure.
 
-The prior four-flavour mauve comparison and four-archive sample remain separately labelled in `measured-results.json`; they are not substituted for the full 64-theme result. The verifier’s `--equivalence` now runs pristine `just all` + `just zip` and compares the complete 64-theme inventories. The parent will run this updated reproduction path independently after commit.
+The prior four-flavour mauve comparison and four-archive sample remain separately labelled in `measured-results.json`; they are not substituted for the full 64-theme result. An independent `--equivalence` run at commit `19fa1da` (before the bookkeeping-only `e82f725`) reproduced pristine `just all` in 173.033 s and `just zip` in 10.196 s; all 64 themes, 64 archives, and five public-root inventories matched. Tool versions are recorded under `independent_verification`.
 
 ## Lifecycle evidence
 

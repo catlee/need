@@ -362,8 +362,7 @@
     "Rendering from a checkout path containing spaces; lifecycle exercised a path with spaces on one theme.",
     "Selective cursor/scale regeneration: current graph rebuilds the selected theme batch.",
     "Transactional publication across work/pngs/hl/dist roots; each declared directory publishes atomically, but the roots are separate transactions.",
-    "Successful output removal after deleting a source SVG: pinned Whiskers rejects the missing required source before regeneration; both pristine and replacement rejection are measured.",
-    "Updated --equivalence full baseline reproduction path was not rerun after compacting it to all 64 themes; parent will run it independently after commit. The implementation and pristine full runs already completed and their semantic comparison passed."
+    "Successful output removal after deleting a source SVG: pinned Whiskers rejects the missing required source before regeneration; both pristine and replacement rejection are measured."
   ],
   "comparator_regression": {
     "passed": true,
@@ -571,5 +570,27 @@
     "nix_unverified": true,
     "need_executable": "target/debug/need (branch worktree), debug profile",
     "timing_caveat": "Need was not run with an optimized profile; timings are environment-specific."
+  },
+  "independent_verification": {
+    "full_equivalence": {
+      "pristine_just_all_seconds": 173.033,
+      "pristine_just_zip_seconds": 10.196,
+      "themes": 64,
+      "release_archives": 64,
+      "roots_equal": [
+        "svgs",
+        "pngs",
+        "hl",
+        "dist",
+        "releases"
+      ],
+      "comparison": "recursive member names, file contents, Unix type and mode, DOS attributes, comments, non-time extra fields, and symlink targets; ignores DOS/extended timestamps, ZIP64 size/offset fields, and compression encoding"
+    },
+    "tools": {
+      "inkscape": "Inkscape 1.4.4 (dcaf3e7d9e, 2026-05-05)",
+      "whiskers": "catppuccin-whiskers 2.9.0",
+      "xcursorgen": "xcursorgen version 1.0.9",
+      "python": "Python 3.12.13"
+    }
   }
 }
