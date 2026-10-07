@@ -582,6 +582,7 @@ pub(crate) fn build_inner(
             println!("{key}\n  stale\n{reasons}");
         }
     }
+    c.session.work_needed.store(true, Ordering::Relaxed);
     let recipe_outputs = if rule.options.atomic && !c.options.dry {
         temporary_outputs(&outputs, rule.kind)?
     } else {

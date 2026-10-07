@@ -49,7 +49,9 @@ need build/app
 ```
 
 `need` finds `needfile` in the current directory or an ancestor, creates output
-directories, and skips recipes whose outputs are current. `{{in}}` and
+directories, and skips recipes whose outputs are current. When nothing needs
+rebuilding, it reports `need: nothing to do; all targets are up to date` on
+stderr (except with `--explain` or `--output=silent`). `{{in}}` and
 `{{out}}` are shell-escaped. Use `{{in[0]}}` or `{{out[1]}}` when a recipe
 needs a particular input or output.
 

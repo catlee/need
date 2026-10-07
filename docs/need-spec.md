@@ -44,6 +44,8 @@ The current implementation includes the core artifact graph, including:
 - content-based freshness and persistent state under `.need/`
 - dry-run, explain, list, force, parallel jobs for dependencies and multiple
   command-line targets, and configurable output modes
+- a concise stderr status when no recipes need to run (including dry runs),
+  suppressed by `--explain` or global `silent` output
 - `--version` and `--help` command-line queries
 - `need outputs` for listing recorded successful output paths, `need clean`
   cleanup modes for removing state and/or those outputs, and `need logs TARGET`

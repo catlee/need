@@ -437,6 +437,14 @@ built build/foo.o
 cached build/bar.o
 ```
 
+When a successful build requires no recipes, `need` prints exactly one
+`need: nothing to do; all targets are up to date` line on stderr. This also
+applies to a dry run with no planned recipes and to `need get`. It is suppressed
+with `--explain` (which already reports freshness) or global `silent` output.
+The message covers all requested targets and their dependencies, including
+parallel builds, and leaves stdout available for Cargo metadata. Builds that
+run or plan any recipe, failed builds, and non-build commands do not print it.
+
 Internal status output SHOULD remain concise.
 
 A future independent verbosity setting may be added:

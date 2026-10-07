@@ -277,6 +277,12 @@ pub(crate) fn run_build(
     if ctx.options.cargo {
         emit_cargo_metadata(&ctx, &file);
     }
+    if !ctx.session.work_needed.load(Ordering::Relaxed)
+        && !ctx.options.explain
+        && ctx.options.output != OutputMode::Silent
+    {
+        eprintln!("need: nothing to do; all targets are up to date");
+    }
     Ok(())
 }
 
@@ -943,6 +949,34 @@ mod tests {
         path::{Path, PathBuf},
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    fn work_needed_tracks_stale_rules_across_parallel_builds() {
+        let root = temp_project("work-needed");
+        let text = "a:\n  touch {{out}}\nb:\n  touch {{out}}\n";
+        let targets = vec![
+            ProjectPath::new("a").unwrap(),
+            ProjectPath::new("b").unwrap(),
+        ];
+        let mut ctx = context(&root, text);
+        ctx.options.jobs = Jobs::Limited(std::num::NonZeroUsize::new(2).unwrap());
+        build_targets(&mut ctx, &targets).unwrap();
+        assert!(ctx.session.work_needed.load(Ordering::Relaxed));
+        let mut current = context(&root, text);
+        current.options.jobs = ctx.options.jobs;
+        current.session.state = ctx.session.state;
+        build_targets(&mut current, &targets).unwrap();
+        assert!(!current.session.work_needed.load(Ordering::Relaxed));
+        fs::remove_file(root.join("b")).unwrap();
+        let mut dry = context(&root, text);
+        dry.options.dry = true;
+        dry.options.jobs = current.options.jobs;
+        dry.session.state = current.session.state;
+        build_targets(&mut dry, &targets).unwrap();
+        assert!(dry.session.work_needed.load(Ordering::Relaxed));
+        assert!(!root.join("b").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn directory_declarations_validate_and_preserve_marker_through_variables() {

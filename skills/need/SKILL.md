@@ -310,3 +310,7 @@ including after pattern instantiation. This namespace is reserved for staging.
 Generated children inside owned trees may use that prefix; recovery preserves
 them. Recovery recognizes generated directory staging names and protects
 containers holding declared or recorded outputs.
+
+When all requested artifacts are current, builds (including `need get` and dry
+runs) report `need: nothing to do; all targets are up to date` on stderr.
+`--explain` and global `--output=silent` suppress this message.

@@ -3,7 +3,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     num::NonZeroUsize,
     path::PathBuf,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock, atomic::AtomicBool},
 };
 
 use crate::Result;
@@ -251,6 +251,7 @@ pub(crate) struct BuildSession {
     pub(crate) owners: Arc<Mutex<BTreeMap<ProjectPath, (String, OutputKind)>>>,
     pub(crate) directory_ownership: OnceLock<bool>,
     pub(crate) built: HashSet<ProjectPath>,
+    pub(crate) work_needed: Arc<AtomicBool>,
     pub(crate) requested: HashSet<ProjectPath>,
     pub(crate) cargo_deps: BTreeSet<String>,
     pub(crate) cargo_env: BTreeSet<String>,
