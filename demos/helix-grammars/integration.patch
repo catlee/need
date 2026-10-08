@@ -1,0 +1,2387 @@
+diff --git a/contrib/need-grammars/.gitignore b/contrib/need-grammars/.gitignore
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/.gitignore
+@@ -0,0 +1,8 @@
++/upstream/
++/work/
++/tools/
++/helper/target/
++/helper/src/upstream.rs
++/.need/
++**/__pycache__/
++/verification/reference/target/
+diff --git a/contrib/need-grammars/README.md b/contrib/need-grammars/README.md
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/README.md
+@@ -0,0 +1,83 @@
++# Helix grammar subset on Linux
++
++Need builds JSON, Python and YAML shared libraries from Helix 25.01's pinned
++Tree-sitter repositories. JSON has a parser only, Python adds a C scanner, and
++YAML adds a C++ scanner and generated schema code. Cargo builds the Rust tools;
++`just` provides workflows. The prototype pins its own Rust toolchain and isolates
++its Cargo workspaces so an applied patch does not inherit Helix 25.01's Rust 1.76
++workspace configuration.
++
++Requires native Linux GNU, the pinned Rust 1.97.1 toolchain, Python 3.11+, `just`, Git, a native
++GCC-compatible C++ driver, `which`, `sha256sum` and `nm`. Public upstream and
++crate downloads require network access. No system configuration is changed.
++
++From the Need checkout:
++
++```sh
++cargo build --locked
++NEED="$PWD/target/debug/need" just --justfile demos/helix-grammars/justfile verify
++```
++
++Or install Need and run these commands in this directory:
++
++```sh
++just prepare
++just build json python yaml
++just library json
++just verify
++```
++
++`just build` without names defaults to the three selected grammars. Arguments
++pass through `need get` without substring replacement. `NEED` selects the Need
++executable; otherwise it must be on `PATH`. `just clean` removes grammar outputs,
++reference runtime and Need state, retaining fetched sources and Cargo caches.
++
++`prepare.py` fetches Helix commit `dabfb6ceeae1da57fb93efcd254e917db49655e6`.
++The helper calls extracted upstream Git fetch functions for the revisions in
++that checkout's `languages.toml`; it does not replace Git security or transport
++logic. `extract.py` retains upstream compiler selection, scanner handling and
++platform branches, removes timestamp freshness, and adds a library destination
++argument. Native Linux GNU is the only supported execution platform. Local
++sources and non-root grammar subpaths are rejected.
++
++The needfile requires each parser and signs its complete `src/` tree, including
++local headers, optional scanner membership and YAML's included schema. This is
++conservative explicit tracking, not a compiler depfile: unrelated source-tree
++files can also cause rebuilds. It also signs the consumed language configuration,
++selection, pin, generated helper, extraction script and Cargo lockfile. Rust,
++Cargo, Python and rustfmt probes cover the helper generation/build stages.
++
++Libraries use one `@atomic` file output each. Need passes a real same-directory
++temporary library path, checks recipe success and output existence, then renames
++it into place. Compile failures and interruption preserve the old library.
++Atomic replacement is per file; it does not make multiple library replacements
++transactionally visible. Undeclared scanner object intermediates can survive an
++interruption and are overwritten/removed on recovery.
++
++`@jobs(2)` bounds simultaneous grammar recipes even with `-j8`. Each recipe
++retains upstream batching: C parser and optional C scanner compile/link together;
++a C++ scanner compiles to an object before linking the parser. Helper preparation
++runs serially before parallel grammar requests.
++
++The compiler helper isolates compilation/probes to `PATH`, `CC`, `CXX`, `CFLAGS`,
++`CXXFLAGS`, `TARGET` and optional trace output. Upstream `cc::Build::cpp(true)`
++selects **CXX** and consumes **CXXFLAGS**, including when it compiles C sources.
++**CC and CFLAGS are not consumed** by this upstream path; their explicit Need
++environment dependencies conservatively invalidate outputs. `TARGET` is passed
++to `cc` and must equal the helper's native host triple. Unset versus explicit
++native target can rebuild without changing library bytes. Cross compilation,
++compiler wrappers, per-target cc environment overrides and custom sysroots are
++outside this prototype. Fetching keeps the invoking Git environment.
++
++The shared compiler probe signs the selected driver path, arguments, driver
++environment, SHA-256 of its bytes, version and target machine. Failed probes
++fail the build. This does not sign every driver subprocess, system header or
++linker/runtime library; complete toolchain/sysroot tracking remains unmet.
++
++`verification/` contains the measurement harness, parser checks, unmodified
++upstream reference crate and integration/line-accounting report. `just verify`
++restores inputs after each mutation, checks actual compiler effects, saves raw
++logs/traces under `work/evidence/`, and regenerates that directory's results.
++See [RESULTS.md](RESULTS.md) and [evidence.json](evidence.json) for the recorded
++run and file ledger. The integration patch is additive and partial; it does not
++replace `hx --grammar build` or demonstrate project-wide code savings.
+diff --git a/contrib/need-grammars/extract.py b/contrib/need-grammars/extract.py
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/extract.py
+@@ -0,0 +1,60 @@
++"""Extract the pinned upstream functions, with a destination parameter for Need."""
++import pathlib
++import sys
++import subprocess
++
++source = pathlib.Path(sys.argv[1]).read_text()
++
++
++def section(start, end):
++    assert source.count(start) == source.count(end) == 1
++    return source[source.index(start):source.index(end)]
++
++
++def replace_once(text, old, new):
++    assert text.count(old) == 1, old
++    return text.replace(old, new)
++
++
++imports = '''use anyhow::{anyhow, Context, Result};
++use serde::{Deserialize, Serialize};
++use std::{fs, path::{Path, PathBuf}, process::Command};
++use tempfile::TempPath;
++const BUILD_TARGET: &str = env!("BUILD_TARGET");
++const REMOTE_NAME: &str = "origin";
++'''
++types = section('#[derive(Debug, Serialize, Deserialize)]\n#[serde(deny_unknown_fields)]',
++                'const BUILD_TARGET:')
++fetch = section('enum FetchStatus {', 'enum BuildStatus {')
++fetch = replace_once(fetch, 'enum FetchStatus {', 'pub enum FetchStatus {')
++fetch = replace_once(fetch, 'fn fetch_grammar(', 'pub fn fetch_grammar(')
++compile = section('fn build_tree_sitter_library(', 'fn needs_recompile(')
++compile = replace_once(compile, 'fn build_tree_sitter_library(',
++                       'pub fn build_tree_sitter_library(')
++compile = replace_once(compile, '    target: Option<&str>,',
++                       '    target: Option<&str>,\n    library_path: &Path,')
++start = compile.index('    let parser_lib_path =')
++end = compile.index('    // if we are running inside a buildscript')
++compile = compile[:start] + compile[end:]
++start = compile.index('    // if we are running inside a buildscript')
++end = compile.index('    let recompile =')
++compile = compile[:start] + compile[end:]
++# Need owns freshness; the reference runs the unmodified upstream crate.
++start = compile.index('    let recompile =')
++end = compile.index('    let mut config = cc::Build::new();')
++compile = compile[:start] + compile[end:]
++compile = replace_once(compile, ".arg(&library_path);", ".arg(library_path);")
++config_start = compile.index('    let mut config = cc::Build::new();')
++config_end = compile.index('    let mut command = Command::new(compiler.path());')
++config = compile[config_start:config_end]
++compiler_fn = 'pub fn compiler(target: Option<&str>) -> cc::Tool {\n' + config.replace(
++    '    let compiler = config.get_compiler();', '    config.get_compiler()') + '}\n'
++compile = replace_once(compile, config, '    let compiler = compiler(target);\n')
++compile = replace_once(compile, '    let compiler = compiler(target);',
++                       '    crate::trace("start", &grammar.grammar_id, library_path);\n    let compiler = compiler(target);')
++compile = replace_once(compile, '    Ok(BuildStatus::Built)',
++                       '    crate::trace("end", &grammar.grammar_id, library_path);\n    Ok(BuildStatus::Built)')
++text = imports + types + fetch + 'pub enum BuildStatus { Built }\n' + compiler_fn + compile
++text = '#![allow(dead_code)]\n' + text.replace('Path, PathBuf', 'Path')
++pathlib.Path(sys.argv[2]).write_text(text)
++subprocess.run(["rustfmt", "--edition", "2021", sys.argv[2]], check=True)
+diff --git a/contrib/need-grammars/helper/Cargo.lock b/contrib/need-grammars/helper/Cargo.lock
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/helper/Cargo.lock
+@@ -0,0 +1,330 @@
++# This file is automatically @generated by Cargo.
++# It is not intended for manual editing.
++version = 4
++
++[[package]]
++name = "anyhow"
++version = "1.0.95"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "34ac096ce696dc2fcabef30516bb13c0a68a11d30131d3df6f04711467681b04"
++
++[[package]]
++name = "bitflags"
++version = "2.13.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
++
++[[package]]
++name = "cc"
++version = "1.2.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "8d6dbb628b8f8555f86d0323c2eb39e3ec81901f4b83e091db8a6a76d316a333"
++dependencies = [
++ "shlex",
++]
++
++[[package]]
++name = "cfg-if"
++version = "1.0.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
++
++[[package]]
++name = "equivalent"
++version = "1.0.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
++
++[[package]]
++name = "errno"
++version = "0.3.14"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
++dependencies = [
++ "libc",
++ "windows-sys 0.61.2",
++]
++
++[[package]]
++name = "fastrand"
++version = "2.5.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
++
++[[package]]
++name = "hashbrown"
++version = "0.17.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
++
++[[package]]
++name = "helix-grammar-demo"
++version = "0.0.0"
++dependencies = [
++ "anyhow",
++ "cc",
++ "serde",
++ "tempfile",
++ "toml",
++]
++
++[[package]]
++name = "indexmap"
++version = "2.14.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
++dependencies = [
++ "equivalent",
++ "hashbrown",
++]
++
++[[package]]
++name = "libc"
++version = "0.2.190"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
++
++[[package]]
++name = "linux-raw-sys"
++version = "0.4.15"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d26c52dbd32dccf2d10cac7725f8eae5296885fb5703b261f7d0a0739ec807ab"
++
++[[package]]
++name = "memchr"
++version = "2.8.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
++
++[[package]]
++name = "once_cell"
++version = "1.21.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
++
++[[package]]
++name = "proc-macro2"
++version = "1.0.107"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
++dependencies = [
++ "unicode-ident",
++]
++
++[[package]]
++name = "quote"
++version = "1.0.47"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001"
++dependencies = [
++ "proc-macro2",
++]
++
++[[package]]
++name = "rustix"
++version = "0.38.44"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
++dependencies = [
++ "bitflags",
++ "errno",
++ "libc",
++ "linux-raw-sys",
++ "windows-sys 0.59.0",
++]
++
++[[package]]
++name = "serde"
++version = "1.0.217"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "02fc4265df13d6fa1d00ecff087228cc0a2b5f3c0e87e258d8b94a156e984c70"
++dependencies = [
++ "serde_derive",
++]
++
++[[package]]
++name = "serde_derive"
++version = "1.0.217"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "5a9bf7cf98d04a2b28aead066b7496853d4779c9cc183c440dbac457641e19a0"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn",
++]
++
++[[package]]
++name = "serde_spanned"
++version = "0.6.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "bf41e0cfaf7226dca15e8197172c295a782857fcb97fad1808a166870dee75a3"
++dependencies = [
++ "serde",
++]
++
++[[package]]
++name = "shlex"
++version = "1.3.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
++
++[[package]]
++name = "syn"
++version = "2.0.119"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "unicode-ident",
++]
++
++[[package]]
++name = "tempfile"
++version = "3.14.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "28cce251fcbc87fac86a866eeb0d6c2d536fc16d06f184bb61aeae11aa4cee0c"
++dependencies = [
++ "cfg-if",
++ "fastrand",
++ "once_cell",
++ "rustix",
++ "windows-sys 0.59.0",
++]
++
++[[package]]
++name = "toml"
++version = "0.8.19"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a1ed1f98e3fdc28d6d910e6737ae6ab1a93bf1985935a1193e68f93eeb68d24e"
++dependencies = [
++ "serde",
++ "serde_spanned",
++ "toml_datetime",
++ "toml_edit",
++]
++
++[[package]]
++name = "toml_datetime"
++version = "0.6.11"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "22cddaf88f4fbc13c51aebbf5f8eceb5c7c5a9da2ac40a13519eb5b0a0e8f11c"
++dependencies = [
++ "serde",
++]
++
++[[package]]
++name = "toml_edit"
++version = "0.22.20"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "583c44c02ad26b0c3f3066fe629275e50627026c51ac2e595cca4c230ce1ce1d"
++dependencies = [
++ "indexmap",
++ "serde",
++ "serde_spanned",
++ "toml_datetime",
++ "winnow",
++]
++
++[[package]]
++name = "unicode-ident"
++version = "1.0.26"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
++
++[[package]]
++name = "windows-link"
++version = "0.2.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
++
++[[package]]
++name = "windows-sys"
++version = "0.59.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
++dependencies = [
++ "windows-targets",
++]
++
++[[package]]
++name = "windows-sys"
++version = "0.61.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
++dependencies = [
++ "windows-link",
++]
++
++[[package]]
++name = "windows-targets"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9b724f72796e036ab90c1021d4780d4d3d648aca59e491e6b98e725b84e99973"
++dependencies = [
++ "windows_aarch64_gnullvm",
++ "windows_aarch64_msvc",
++ "windows_i686_gnu",
++ "windows_i686_gnullvm",
++ "windows_i686_msvc",
++ "windows_x86_64_gnu",
++ "windows_x86_64_gnullvm",
++ "windows_x86_64_msvc",
++]
++
++[[package]]
++name = "windows_aarch64_gnullvm"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "32a4622180e7a0ec044bb555404c800bc9fd9ec262ec147edd5989ccd0c02cd3"
++
++[[package]]
++name = "windows_aarch64_msvc"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "09ec2a7bb152e2252b53fa7803150007879548bc709c039df7627cabbd05d469"
++
++[[package]]
++name = "windows_i686_gnu"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "8e9b5ad5ab802e97eb8e295ac6720e509ee4c243f69d781394014ebfe8bbfa0b"
++
++[[package]]
++name = "windows_i686_gnullvm"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "0eee52d38c090b3caa76c563b86c3a4bd71ef1a819287c19d586d7334ae8ed66"
++
++[[package]]
++name = "windows_i686_msvc"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "240948bc05c5e7c6dabba28bf89d89ffce3e303022809e73deaefe4f6ec56c66"
++
++[[package]]
++name = "windows_x86_64_gnu"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "147a5c80aabfbf0c7d901cb5895d1de30ef2907eb21fbbab29ca94c5b08b1a78"
++
++[[package]]
++name = "windows_x86_64_gnullvm"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "24d5b23dc417412679681396f2b49f3de8c1473deb516bd34410872eff51ed0d"
++
++[[package]]
++name = "windows_x86_64_msvc"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
++
++[[package]]
++name = "winnow"
++version = "0.6.26"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1e90edd2ac1aa278a5c4599b1d89cf03074b610800f866d4026dc199d7929a28"
++dependencies = [
++ "memchr",
++]
+diff --git a/contrib/need-grammars/helper/Cargo.toml b/contrib/need-grammars/helper/Cargo.toml
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/helper/Cargo.toml
+@@ -0,0 +1,14 @@
++[package]
++name = "helix-grammar-demo"
++version = "0.0.0"
++edition = "2021"
++publish = false
++
++[dependencies]
++anyhow = "=1.0.95"
++cc = "=1.2.6"
++serde = { version = "=1.0.217", features = ["derive"] }
++toml = "=0.8.19"
++tempfile = "=3.14.0"
++
++[workspace]
+diff --git a/contrib/need-grammars/helper/build.rs b/contrib/need-grammars/helper/build.rs
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/helper/build.rs
+@@ -0,0 +1,6 @@
++fn main() {
++    println!(
++        "cargo:rustc-env=BUILD_TARGET={}",
++        std::env::var("HOST").unwrap()
++    );
++}
+diff --git a/contrib/need-grammars/helper/src/main.rs b/contrib/need-grammars/helper/src/main.rs
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/helper/src/main.rs
+@@ -0,0 +1,156 @@
++use anyhow::{bail, Context, Result};
++use std::{fs, io::Write, path::PathBuf, process::Command, time::SystemTime};
++
++#[allow(clippy::unnecessary_map_or, clippy::useless_borrows_in_formatting)]
++mod upstream;
++use upstream as grammar;
++
++fn runtime_dirs() -> Vec<PathBuf> {
++    vec![std::env::current_dir().unwrap().join("work/runtime")]
++}
++
++fn configs() -> Result<Vec<grammar::GrammarConfiguration>> {
++    #[derive(serde::Deserialize)]
++    struct Languages {
++        grammar: Vec<grammar::GrammarConfiguration>,
++    }
++    let selection = fs::read_to_string("selection.txt")?;
++    let languages: Languages = toml::from_str(&fs::read_to_string("upstream/languages.toml")?)?;
++    let selected: Vec<_> = languages
++        .grammar
++        .into_iter()
++        .filter(|g| selection.lines().any(|name| name == g.grammar_id))
++        .collect();
++    if selected.len() != selection.lines().count() {
++        bail!("selection.txt: unknown or duplicate grammar; help: use pinned Helix grammar names");
++    }
++    Ok(selected)
++}
++
++fn target() -> Result<String> {
++    let host = env!("BUILD_TARGET");
++    let target = std::env::var("TARGET").unwrap_or_else(|_| host.to_owned());
++    if !cfg!(target_os = "linux") || !host.ends_with("-linux-gnu") || target != host {
++        bail!("native Linux GNU only: TARGET={target}; help: unset TARGET or use {host}");
++    }
++    Ok(target)
++}
++
++fn trace(event: &str, name: &str, destination: &std::path::Path) {
++    if let Ok(path) = std::env::var("HELIX_TRACE") {
++        let mut file = fs::OpenOptions::new()
++            .create(true)
++            .append(true)
++            .open(path)
++            .unwrap();
++        let now = SystemTime::now()
++            .duration_since(SystemTime::UNIX_EPOCH)
++            .unwrap()
++            .as_nanos();
++        writeln!(
++            file,
++            "{now} {event} {name} {} {}",
++            std::process::id(),
++            destination.display()
++        )
++        .unwrap();
++    }
++}
++
++fn compile(config: grammar::GrammarConfiguration, output: PathBuf) -> Result<grammar::BuildStatus> {
++    let name = config.grammar_id.clone();
++    let mut source = runtime_dirs()[0].join("grammars/sources").join(&name);
++    match &config.source {
++        grammar::GrammarSource::Git { subpath: None, .. } => {}
++        grammar::GrammarSource::Git { subpath: Some(path), .. } if path == "." => {}
++        _ => bail!("upstream/languages.toml: this subset requires a Git source with root src/; help: restore the pinned grammar configuration"),
++    }
++    source.push("src");
++    let output = std::env::current_dir()?.join(output);
++    fs::create_dir_all(output.parent().unwrap())?;
++    grammar::build_tree_sitter_library(&source, config, Some(&target()?), &output).context(format!(
++        "grammar {name}: compilation failed; help: inspect compiler diagnostics and rerun"
++    ))
++}
++
++fn identity() -> Result<()> {
++    let compiler = grammar::compiler(Some(&target()?));
++    println!(
++        "path={:?}\nargs={:?}\nenv={:?}",
++        compiler.path(),
++        compiler.args(),
++        compiler.env()
++    );
++    let resolved = Command::new("which").arg(compiler.path()).output()?;
++    if !resolved.status.success() {
++        bail!("compiler missing; help: install a native C++ compiler or set CXX");
++    }
++    let path = String::from_utf8(resolved.stdout)?;
++    let hash = Command::new("sha256sum").arg(path.trim()).output()?;
++    if !hash.status.success() {
++        bail!(
++            "compiler hash probe failed: {}; help: check sha256sum and the compiler path",
++            String::from_utf8_lossy(&hash.stderr)
++        );
++    }
++    print!("{}", String::from_utf8(hash.stdout)?);
++    for flag in ["--version", "-dumpmachine"] {
++        let output = compiler.to_command().arg(flag).output()?;
++        if !output.status.success() {
++            bail!("compiler identity probe failed; help: use GCC or Clang directly in CXX");
++        }
++        print!(
++            "{}{}",
++            String::from_utf8(output.stdout)?,
++            String::from_utf8(output.stderr)?
++        );
++    }
++    Ok(())
++}
++
++fn main() -> Result<()> {
++    let args: Vec<_> = std::env::args().skip(1).collect();
++    if matches!(
++        args.first().map(String::as_str),
++        Some("compile" | "identity")
++    ) && std::env::var_os("HELIX_DEMO_INTERNAL").is_none()
++    {
++        let mut command = Command::new(std::env::current_exe()?);
++        command
++            .args(&args)
++            .env_clear()
++            .env("HELIX_DEMO_INTERNAL", "1");
++        for key in [
++            "PATH",
++            "CC",
++            "CXX",
++            "CFLAGS",
++            "CXXFLAGS",
++            "TARGET",
++            "HELIX_TRACE",
++        ] {
++            if let Some(value) = std::env::var_os(key) {
++                command.env(key, value);
++            }
++        }
++        let status = command.status()?;
++        std::process::exit(status.code().unwrap_or(1));
++    }
++    match args.first().map(String::as_str) {
++        Some("fetch") if args.len() == 1 => {
++            for config in configs()? {
++                grammar::fetch_grammar(config)?;
++            }
++        }
++        Some("compile") if args.len() == 3 => {
++            let config = configs()?
++                .into_iter()
++                .find(|g| g.grammar_id == args[1])
++                .context("unknown grammar; help: see selection.txt")?;
++            compile(config, PathBuf::from(&args[2]))?;
++        }
++        Some("identity") if args.len() == 1 => identity()?,
++        _ => bail!("usage: helper fetch|identity|compile NAME DEST; help: use just"),
++    }
++    Ok(())
++}
+diff --git a/contrib/need-grammars/helper/src/upstream.rs b/contrib/need-grammars/helper/src/upstream.rs
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/helper/src/upstream.rs
+@@ -0,0 +1,290 @@
++#![allow(dead_code)]
++use anyhow::{anyhow, Context, Result};
++use serde::{Deserialize, Serialize};
++use std::{fs, path::Path, process::Command};
++use tempfile::TempPath;
++const BUILD_TARGET: &str = env!("BUILD_TARGET");
++const REMOTE_NAME: &str = "origin";
++#[derive(Debug, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct GrammarConfiguration {
++    #[serde(rename = "name")]
++    pub grammar_id: String,
++    pub source: GrammarSource,
++}
++
++#[derive(Debug, Serialize, Deserialize)]
++#[serde(rename_all = "lowercase", untagged)]
++pub enum GrammarSource {
++    Local {
++        path: String,
++    },
++    Git {
++        #[serde(rename = "git")]
++        remote: String,
++        #[serde(rename = "rev")]
++        revision: String,
++        subpath: Option<String>,
++    },
++}
++
++pub enum FetchStatus {
++    GitUpToDate,
++    GitUpdated { revision: String },
++    NonGit,
++}
++
++pub fn fetch_grammar(grammar: GrammarConfiguration) -> Result<FetchStatus> {
++    if let GrammarSource::Git {
++        remote, revision, ..
++    } = grammar.source
++    {
++        let grammar_dir = crate::runtime_dirs()
++            .first()
++            .expect("No runtime directories provided") // guaranteed by post-condition
++            .join("grammars")
++            .join("sources")
++            .join(&grammar.grammar_id);
++
++        fs::create_dir_all(&grammar_dir).context(format!(
++            "Could not create grammar directory {:?}",
++            grammar_dir
++        ))?;
++
++        // create the grammar dir contains a git directory
++        if !grammar_dir.join(".git").exists() {
++            git(&grammar_dir, ["init"])?;
++        }
++
++        // ensure the remote matches the configured remote
++        if get_remote_url(&grammar_dir).map_or(true, |s| s != remote) {
++            set_remote(&grammar_dir, &remote)?;
++        }
++
++        // ensure the revision matches the configured revision
++        if get_revision(&grammar_dir).map_or(true, |s| s != revision) {
++            // Fetch the exact revision from the remote.
++            // Supported by server-side git since v2.5.0 (July 2015),
++            // enabled by default on major git hosts.
++            git(
++                &grammar_dir,
++                ["fetch", "--depth", "1", REMOTE_NAME, &revision],
++            )?;
++            git(&grammar_dir, ["checkout", &revision])?;
++
++            Ok(FetchStatus::GitUpdated { revision })
++        } else {
++            Ok(FetchStatus::GitUpToDate)
++        }
++    } else {
++        Ok(FetchStatus::NonGit)
++    }
++}
++
++// Sets the remote for a repository to the given URL, creating the remote if
++// it does not yet exist.
++fn set_remote(repository_dir: &Path, remote_url: &str) -> Result<String> {
++    git(
++        repository_dir,
++        ["remote", "set-url", REMOTE_NAME, remote_url],
++    )
++    .or_else(|_| git(repository_dir, ["remote", "add", REMOTE_NAME, remote_url]))
++}
++
++fn get_remote_url(repository_dir: &Path) -> Option<String> {
++    git(repository_dir, ["remote", "get-url", REMOTE_NAME]).ok()
++}
++
++fn get_revision(repository_dir: &Path) -> Option<String> {
++    git(repository_dir, ["rev-parse", "HEAD"]).ok()
++}
++
++// A wrapper around 'git' commands which returns stdout in success and a
++// helpful error message showing the command, stdout, and stderr in error.
++fn git<I, S>(repository_dir: &Path, args: I) -> Result<String>
++where
++    I: IntoIterator<Item = S>,
++    S: AsRef<std::ffi::OsStr>,
++{
++    let output = Command::new("git")
++        .args(args)
++        .current_dir(repository_dir)
++        .output()?;
++
++    if output.status.success() {
++        Ok(String::from_utf8_lossy(&output.stdout)
++            .trim_end()
++            .to_owned())
++    } else {
++        // TODO: figure out how to display the git command using `args`
++        Err(anyhow!(
++            "Git command failed.\nStdout: {}\nStderr: {}",
++            String::from_utf8_lossy(&output.stdout),
++            String::from_utf8_lossy(&output.stderr),
++        ))
++    }
++}
++
++pub enum BuildStatus {
++    Built,
++}
++pub fn compiler(target: Option<&str>) -> cc::Tool {
++    let mut config = cc::Build::new();
++    config
++        .cpp(true)
++        .opt_level(3)
++        .cargo_metadata(false)
++        .host(BUILD_TARGET)
++        .target(target.unwrap_or(BUILD_TARGET));
++    config.get_compiler()
++}
++pub fn build_tree_sitter_library(
++    src_path: &Path,
++    grammar: GrammarConfiguration,
++    target: Option<&str>,
++    library_path: &Path,
++) -> Result<BuildStatus> {
++    let header_path = src_path;
++    let parser_path = src_path.join("parser.c");
++    let mut scanner_path = src_path.join("scanner.c");
++
++    let scanner_path = if scanner_path.exists() {
++        Some(scanner_path)
++    } else {
++        scanner_path.set_extension("cc");
++        if scanner_path.exists() {
++            Some(scanner_path)
++        } else {
++            None
++        }
++    };
++    crate::trace("start", &grammar.grammar_id, library_path);
++    let compiler = compiler(target);
++    let mut command = Command::new(compiler.path());
++    command.current_dir(src_path);
++    for (key, value) in compiler.env() {
++        command.env(key, value);
++    }
++
++    command.args(compiler.args());
++    // used to delay dropping the temporary object file until after the compilation is complete
++    let _path_guard;
++
++    if compiler.is_like_msvc() {
++        command
++            .args(["/nologo", "/LD", "/I"])
++            .arg(header_path)
++            .arg("/Od")
++            .arg("/utf-8")
++            .arg("/std:c11");
++        if let Some(scanner_path) = scanner_path.as_ref() {
++            if scanner_path.extension() == Some("c".as_ref()) {
++                command.arg(scanner_path);
++            } else {
++                let mut cpp_command = Command::new(compiler.path());
++                cpp_command.current_dir(src_path);
++                for (key, value) in compiler.env() {
++                    cpp_command.env(key, value);
++                }
++                cpp_command.args(compiler.args());
++                let object_file =
++                    library_path.with_file_name(format!("{}_scanner.obj", &grammar.grammar_id));
++                cpp_command
++                    .args(["/nologo", "/LD", "/I"])
++                    .arg(header_path)
++                    .arg("/Od")
++                    .arg("/utf-8")
++                    .arg("/std:c++14")
++                    .arg(format!("/Fo{}", object_file.display()))
++                    .arg("/c")
++                    .arg(scanner_path);
++                let output = cpp_command
++                    .output()
++                    .context("Failed to execute C++ compiler")?;
++
++                if !output.status.success() {
++                    return Err(anyhow!(
++                        "Parser compilation failed.\nStdout: {}\nStderr: {}",
++                        String::from_utf8_lossy(&output.stdout),
++                        String::from_utf8_lossy(&output.stderr)
++                    ));
++                }
++                command.arg(&object_file);
++                _path_guard = TempPath::from_path(object_file);
++            }
++        }
++
++        command
++            .arg(parser_path)
++            .arg("/link")
++            .arg(format!("/out:{}", library_path.to_str().unwrap()));
++    } else {
++        command
++            .arg("-shared")
++            .arg("-fPIC")
++            .arg("-fno-exceptions")
++            .arg("-I")
++            .arg(header_path)
++            .arg("-o")
++            .arg(library_path);
++
++        if let Some(scanner_path) = scanner_path.as_ref() {
++            if scanner_path.extension() == Some("c".as_ref()) {
++                command.arg("-xc").arg("-std=c11").arg(scanner_path);
++            } else {
++                let mut cpp_command = Command::new(compiler.path());
++                cpp_command.current_dir(src_path);
++                for (key, value) in compiler.env() {
++                    cpp_command.env(key, value);
++                }
++                cpp_command.args(compiler.args());
++                let object_file =
++                    library_path.with_file_name(format!("{}_scanner.o", &grammar.grammar_id));
++                cpp_command
++                    .arg("-fPIC")
++                    .arg("-fno-exceptions")
++                    .arg("-I")
++                    .arg(header_path)
++                    .arg("-o")
++                    .arg(&object_file)
++                    .arg("-std=c++14")
++                    .arg("-c")
++                    .arg(scanner_path);
++                let output = cpp_command
++                    .output()
++                    .context("Failed to execute C++ compiler")?;
++                if !output.status.success() {
++                    return Err(anyhow!(
++                        "Parser compilation failed.\nStdout: {}\nStderr: {}",
++                        String::from_utf8_lossy(&output.stdout),
++                        String::from_utf8_lossy(&output.stderr)
++                    ));
++                }
++
++                command.arg(&object_file);
++                _path_guard = TempPath::from_path(object_file);
++            }
++        }
++        command.arg("-xc").arg("-std=c11").arg(parser_path);
++        if cfg!(all(
++            unix,
++            not(any(target_os = "macos", target_os = "illumos"))
++        )) {
++            command.arg("-Wl,-z,relro,-z,now");
++        }
++    }
++
++    let output = command
++        .output()
++        .context("Failed to execute C/C++ compiler")?;
++    if !output.status.success() {
++        return Err(anyhow!(
++            "Parser compilation failed.\nStdout: {}\nStderr: {}",
++            String::from_utf8_lossy(&output.stdout),
++            String::from_utf8_lossy(&output.stderr)
++        ));
++    }
++
++    crate::trace("end", &grammar.grammar_id, library_path);
++    Ok(BuildStatus::Built)
++}
+diff --git a/contrib/need-grammars/justfile b/contrib/need-grammars/justfile
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/justfile
+@@ -0,0 +1,29 @@
++set positional-arguments
++
++need := env("NEED", "need")
++
++prepare:
++  python3 prepare.py
++  "{{need}}" tools/helper
++  tools/helper fetch
++
++build *names:
++  #!/usr/bin/env sh
++  set -eu
++  if [ "$#" -eq 0 ]; then set -- json python yaml; fi
++  "{{need}}" tools/helper
++  "{{need}}" get -j8 'work/libraries/%.so: %' -- "$@"
++
++library name:
++  "{{need}}" tools/helper
++  "{{need}}" get -j8 'work/libraries/%.so: %' -- "$1"
++
++reference:
++  cargo build --locked --manifest-path verification/reference/Cargo.toml
++
++verify: prepare reference
++  python3 verification/verify.py "{{need}}"
++  python3 verification/report.py
++
++clean:
++  rm -rf work/libraries work/reference .need
+diff --git a/contrib/need-grammars/needfile b/contrib/need-grammars/needfile
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/needfile
+@@ -0,0 +1,20 @@
++need.output = grouped
++need.log.keep = 3
++
++@atomic
++@jobs(2)
++work/libraries/%.so: work/runtime/grammars/sources/%/src/parser.c \
++  tree(work/runtime/grammars/sources/%/src) \
++  tools/helper helper/Cargo.lock selection.txt pins.json upstream/languages.toml \
++  env(CC) env(CXX) env(CFLAGS) env(CXXFLAGS) env(TARGET) \
++  command(tools/helper identity)
++    tools/helper compile {{stem}} {{out}}
++
++@atomic
++tools/helper: helper/src/main.rs helper/build.rs rust-toolchain.toml helper/Cargo.toml helper/Cargo.lock \
++  helper/src/upstream.rs env(RUSTFLAGS) env(CARGO_ENCODED_RUSTFLAGS) command(rustc -vV) command(cargo --version)
++    set -e; cargo build --locked --manifest-path helper/Cargo.toml --target-dir helper/target
++    cp helper/target/debug/helix-grammar-demo {{out}}
++
++helper/src/upstream.rs: extract.py upstream/helix-loader/src/grammar.rs command(python3 --version) command(rustfmt --version)
++  python3 extract.py upstream/helix-loader/src/grammar.rs {{out}}
+diff --git a/contrib/need-grammars/pins.json b/contrib/need-grammars/pins.json
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/pins.json
+@@ -0,0 +1,3 @@
++{
++  "helix": "dabfb6ceeae1da57fb93efcd254e917db49655e6"
++}
+diff --git a/contrib/need-grammars/prepare.py b/contrib/need-grammars/prepare.py
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/prepare.py
+@@ -0,0 +1,18 @@
++"""Fetch the pinned Helix checkout; grammar fetching remains in upstream Rust."""
++import json
++import pathlib
++import subprocess
++
++root = pathlib.Path(__file__).resolve().parent
++pins = json.loads((root / "pins.json").read_text())
++checkout = root / "upstream"
++if not checkout.exists():
++    checkout.mkdir()
++    subprocess.run(["git", "init", str(checkout)], check=True)
++    subprocess.run(["git", "-C", str(checkout), "remote", "add", "origin",
++                    "https://github.com/helix-editor/helix"], check=True)
++subprocess.run(["git", "-C", str(checkout), "fetch", "--depth", "1", "origin",
++                pins["helix"]], check=True)
++subprocess.run(["git", "-C", str(checkout), "checkout", "--detach", pins["helix"]], check=True)
++assert subprocess.check_output(["git", "-C", str(checkout), "rev-parse", "HEAD"],
++                               text=True).strip() == pins["helix"]
+diff --git a/contrib/need-grammars/rust-toolchain.toml b/contrib/need-grammars/rust-toolchain.toml
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/rust-toolchain.toml
+@@ -0,0 +1,3 @@
++[toolchain]
++channel = "1.97.1"
++components = ["rustfmt", "clippy"]
+diff --git a/contrib/need-grammars/selection.txt b/contrib/need-grammars/selection.txt
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/selection.txt
+@@ -0,0 +1,3 @@
++json
++python
++yaml
+diff --git a/contrib/need-grammars/verification/reference/Cargo.lock b/contrib/need-grammars/verification/reference/Cargo.lock
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/verification/reference/Cargo.lock
+@@ -0,0 +1,604 @@
++# This file is automatically @generated by Cargo.
++# It is not intended for manual editing.
++version = 4
++
++[[package]]
++name = "aho-corasick"
++version = "1.1.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "8e60d3430d3a69478ad0993f19238d2df97c507009a52b3c10addcd7f6bcb916"
++dependencies = [
++ "memchr",
++]
++
++[[package]]
++name = "anyhow"
++version = "1.0.95"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "34ac096ce696dc2fcabef30516bb13c0a68a11d30131d3df6f04711467681b04"
++
++[[package]]
++name = "bitflags"
++version = "2.6.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b048fb63fd8b5923fc5aa7b340d8e156aec7ec02f0c78fa8a6ddc2613f6f71de"
++
++[[package]]
++name = "cc"
++version = "1.2.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "8d6dbb628b8f8555f86d0323c2eb39e3ec81901f4b83e091db8a6a76d316a333"
++dependencies = [
++ "shlex",
++]
++
++[[package]]
++name = "cfg-if"
++version = "1.0.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
++
++[[package]]
++name = "dunce"
++version = "1.0.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
++
++[[package]]
++name = "either"
++version = "1.13.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
++
++[[package]]
++name = "env_home"
++version = "0.1.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "c7f84e12ccf0a7ddc17a6c41c93326024c42920d7ee630d04950e6926645c0fe"
++
++[[package]]
++name = "equivalent"
++version = "1.0.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
++
++[[package]]
++name = "errno"
++version = "0.3.10"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
++dependencies = [
++ "libc",
++ "windows-sys 0.59.0",
++]
++
++[[package]]
++name = "etcetera"
++version = "0.8.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "136d1b5283a1ab77bd9257427ffd09d8667ced0570b6f938942bc7568ed5b943"
++dependencies = [
++ "cfg-if",
++ "home",
++ "windows-sys 0.48.0",
++]
++
++[[package]]
++name = "fastrand"
++version = "2.1.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e8c02a5121d4ea3eb16a80748c74f5549a5665e4c21333c6098f283870fbdea6"
++
++[[package]]
++name = "hashbrown"
++version = "0.14.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
++
++[[package]]
++name = "helix-grammar-reference"
++version = "0.0.0"
++dependencies = [
++ "anyhow",
++ "helix-loader",
++ "libloading",
++ "tree-sitter",
++]
++
++[[package]]
++name = "helix-loader"
++version = "25.1.0"
++dependencies = [
++ "anyhow",
++ "cc",
++ "dunce",
++ "etcetera",
++ "helix-stdx",
++ "libloading",
++ "log",
++ "once_cell",
++ "serde",
++ "tempfile",
++ "threadpool",
++ "toml",
++ "tree-sitter",
++]
++
++[[package]]
++name = "helix-stdx"
++version = "25.1.0"
++dependencies = [
++ "bitflags",
++ "dunce",
++ "etcetera",
++ "once_cell",
++ "regex-automata",
++ "regex-cursor",
++ "ropey",
++ "rustix",
++ "which",
++ "windows-sys 0.59.0",
++]
++
++[[package]]
++name = "hermit-abi"
++version = "0.3.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d231dfb89cfffdbc30e7fc41579ed6066ad03abda9e567ccafae602b97ec5024"
++
++[[package]]
++name = "home"
++version = "0.5.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e3d1354bf6b7235cb4a0576c2619fd4ed18183f689b12b006a0ee7329eeff9a5"
++dependencies = [
++ "windows-sys 0.52.0",
++]
++
++[[package]]
++name = "indexmap"
++version = "2.5.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "68b900aa2f7301e21c36462b170ee99994de34dff39a4a6a528e80e7376d07e5"
++dependencies = [
++ "equivalent",
++ "hashbrown",
++]
++
++[[package]]
++name = "libc"
++version = "0.2.169"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b5aba8db14291edd000dfcc4d620c7ebfb122c613afb886ca8803fa4e128a20a"
++
++[[package]]
++name = "libloading"
++version = "0.8.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "fc2f4eb4bc735547cfed7c0a4922cbd04a4655978c09b54f1f7b228750664c34"
++dependencies = [
++ "cfg-if",
++ "windows-targets 0.52.6",
++]
++
++[[package]]
++name = "linux-raw-sys"
++version = "0.4.14"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "78b3ae25bc7c8c38cec158d1f2757ee79e9b3740fbc7ccf0e59e4b08d793fa89"
++
++[[package]]
++name = "log"
++version = "0.4.22"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
++
++[[package]]
++name = "memchr"
++version = "2.7.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
++
++[[package]]
++name = "num_cpus"
++version = "1.16.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "4161fcb6d602d4d2081af7c3a45852d875a03dd337a6bfdd6e06407b61342a43"
++dependencies = [
++ "hermit-abi",
++ "libc",
++]
++
++[[package]]
++name = "once_cell"
++version = "1.20.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1261fe7e33c73b354eab43b1273a57c8f967d0391e80353e51f764ac02cf6775"
++
++[[package]]
++name = "proc-macro2"
++version = "1.0.86"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "5e719e8df665df0d1c8fbfd238015744736151d4445ec0836b8e628aae103b77"
++dependencies = [
++ "unicode-ident",
++]
++
++[[package]]
++name = "quote"
++version = "1.0.37"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b5b9d34b8991d19d98081b46eacdd8eb58c6f2b201139f7c5f643cc155a633af"
++dependencies = [
++ "proc-macro2",
++]
++
++[[package]]
++name = "regex"
++version = "1.11.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b544ef1b4eac5dc2db33ea63606ae9ffcfac26c1416a2806ae0bf5f56b201191"
++dependencies = [
++ "aho-corasick",
++ "memchr",
++ "regex-automata",
++ "regex-syntax",
++]
++
++[[package]]
++name = "regex-automata"
++version = "0.4.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "809e8dc61f6de73b46c85f4c96486310fe304c434cfa43669d7b40f711150908"
++dependencies = [
++ "aho-corasick",
++ "memchr",
++ "regex-syntax",
++]
++
++[[package]]
++name = "regex-cursor"
++version = "0.1.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ae4327b5fde3ae6fda0152128d3d59b95a5aad7be91c405869300091720f7169"
++dependencies = [
++ "log",
++ "memchr",
++ "regex-automata",
++ "regex-syntax",
++ "ropey",
++]
++
++[[package]]
++name = "regex-syntax"
++version = "0.8.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
++
++[[package]]
++name = "ropey"
++version = "1.6.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "93411e420bcd1a75ddd1dc3caf18c23155eda2c090631a85af21ba19e97093b5"
++dependencies = [
++ "smallvec",
++ "str_indices",
++]
++
++[[package]]
++name = "rustix"
++version = "0.38.42"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f93dc38ecbab2eb790ff964bb77fa94faf256fd3e73285fd7ba0903b76bedb85"
++dependencies = [
++ "bitflags",
++ "errno",
++ "libc",
++ "linux-raw-sys",
++ "windows-sys 0.59.0",
++]
++
++[[package]]
++name = "serde"
++version = "1.0.217"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "02fc4265df13d6fa1d00ecff087228cc0a2b5f3c0e87e258d8b94a156e984c70"
++dependencies = [
++ "serde_derive",
++]
++
++[[package]]
++name = "serde_derive"
++version = "1.0.217"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "5a9bf7cf98d04a2b28aead066b7496853d4779c9cc183c440dbac457641e19a0"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn",
++]
++
++[[package]]
++name = "serde_spanned"
++version = "0.6.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "eb5b1b31579f3811bf615c144393417496f152e12ac8b7663bf664f4a815306d"
++dependencies = [
++ "serde",
++]
++
++[[package]]
++name = "shlex"
++version = "1.3.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
++
++[[package]]
++name = "smallvec"
++version = "1.13.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
++
++[[package]]
++name = "str_indices"
++version = "0.4.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e9557cb6521e8d009c51a8666f09356f4b817ba9ba0981a305bd86aee47bd35c"
++
++[[package]]
++name = "syn"
++version = "2.0.87"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "25aa4ce346d03a6dcd68dd8b4010bcb74e54e62c90c573f394c46eae99aba32d"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "unicode-ident",
++]
++
++[[package]]
++name = "tempfile"
++version = "3.14.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "28cce251fcbc87fac86a866eeb0d6c2d536fc16d06f184bb61aeae11aa4cee0c"
++dependencies = [
++ "cfg-if",
++ "fastrand",
++ "once_cell",
++ "rustix",
++ "windows-sys 0.59.0",
++]
++
++[[package]]
++name = "threadpool"
++version = "1.8.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d050e60b33d41c19108b32cea32164033a9013fe3b46cbd4457559bfbf77afaa"
++dependencies = [
++ "num_cpus",
++]
++
++[[package]]
++name = "toml"
++version = "0.8.19"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a1ed1f98e3fdc28d6d910e6737ae6ab1a93bf1985935a1193e68f93eeb68d24e"
++dependencies = [
++ "serde",
++ "serde_spanned",
++ "toml_datetime",
++ "toml_edit",
++]
++
++[[package]]
++name = "toml_datetime"
++version = "0.6.8"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "0dd7358ecb8fc2f8d014bf86f6f638ce72ba252a2c3a2572f2a795f1d23efb41"
++dependencies = [
++ "serde",
++]
++
++[[package]]
++name = "toml_edit"
++version = "0.22.20"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "583c44c02ad26b0c3f3066fe629275e50627026c51ac2e595cca4c230ce1ce1d"
++dependencies = [
++ "indexmap",
++ "serde",
++ "serde_spanned",
++ "toml_datetime",
++ "winnow",
++]
++
++[[package]]
++name = "tree-sitter"
++version = "0.22.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "df7cc499ceadd4dcdf7ec6d4cbc34ece92c3fa07821e287aedecd4416c516dca"
++dependencies = [
++ "cc",
++ "regex",
++]
++
++[[package]]
++name = "unicode-ident"
++version = "1.0.12"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
++
++[[package]]
++name = "which"
++version = "7.0.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "fb4a9e33648339dc1642b0e36e21b3385e6148e289226f657c809dee59df5028"
++dependencies = [
++ "either",
++ "env_home",
++ "rustix",
++ "winsafe",
++]
++
++[[package]]
++name = "windows-sys"
++version = "0.48.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "677d2418bec65e3338edb076e806bc1ec15693c5d0104683f2efe857f61056a9"
++dependencies = [
++ "windows-targets 0.48.5",
++]
++
++[[package]]
++name = "windows-sys"
++version = "0.52.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
++dependencies = [
++ "windows-targets 0.52.6",
++]
++
++[[package]]
++name = "windows-sys"
++version = "0.59.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
++dependencies = [
++ "windows-targets 0.52.6",
++]
++
++[[package]]
++name = "windows-targets"
++version = "0.48.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9a2fa6e2155d7247be68c096456083145c183cbbbc2764150dda45a87197940c"
++dependencies = [
++ "windows_aarch64_gnullvm 0.48.5",
++ "windows_aarch64_msvc 0.48.5",
++ "windows_i686_gnu 0.48.5",
++ "windows_i686_msvc 0.48.5",
++ "windows_x86_64_gnu 0.48.5",
++ "windows_x86_64_gnullvm 0.48.5",
++ "windows_x86_64_msvc 0.48.5",
++]
++
++[[package]]
++name = "windows-targets"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9b724f72796e036ab90c1021d4780d4d3d648aca59e491e6b98e725b84e99973"
++dependencies = [
++ "windows_aarch64_gnullvm 0.52.6",
++ "windows_aarch64_msvc 0.52.6",
++ "windows_i686_gnu 0.52.6",
++ "windows_i686_gnullvm",
++ "windows_i686_msvc 0.52.6",
++ "windows_x86_64_gnu 0.52.6",
++ "windows_x86_64_gnullvm 0.52.6",
++ "windows_x86_64_msvc 0.52.6",
++]
++
++[[package]]
++name = "windows_aarch64_gnullvm"
++version = "0.48.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "2b38e32f0abccf9987a4e3079dfb67dcd799fb61361e53e2882c3cbaf0d905d8"
++
++[[package]]
++name = "windows_aarch64_gnullvm"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "32a4622180e7a0ec044bb555404c800bc9fd9ec262ec147edd5989ccd0c02cd3"
++
++[[package]]
++name = "windows_aarch64_msvc"
++version = "0.48.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "dc35310971f3b2dbbf3f0690a219f40e2d9afcf64f9ab7cc1be722937c26b4bc"
++
++[[package]]
++name = "windows_aarch64_msvc"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "09ec2a7bb152e2252b53fa7803150007879548bc709c039df7627cabbd05d469"
++
++[[package]]
++name = "windows_i686_gnu"
++version = "0.48.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a75915e7def60c94dcef72200b9a8e58e5091744960da64ec734a6c6e9b3743e"
++
++[[package]]
++name = "windows_i686_gnu"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "8e9b5ad5ab802e97eb8e295ac6720e509ee4c243f69d781394014ebfe8bbfa0b"
++
++[[package]]
++name = "windows_i686_gnullvm"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "0eee52d38c090b3caa76c563b86c3a4bd71ef1a819287c19d586d7334ae8ed66"
++
++[[package]]
++name = "windows_i686_msvc"
++version = "0.48.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "8f55c233f70c4b27f66c523580f78f1004e8b5a8b659e05a4eb49d4166cca406"
++
++[[package]]
++name = "windows_i686_msvc"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "240948bc05c5e7c6dabba28bf89d89ffce3e303022809e73deaefe4f6ec56c66"
++
++[[package]]
++name = "windows_x86_64_gnu"
++version = "0.48.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "53d40abd2583d23e4718fddf1ebec84dbff8381c07cae67ff7768bbf19c6718e"
++
++[[package]]
++name = "windows_x86_64_gnu"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "147a5c80aabfbf0c7d901cb5895d1de30ef2907eb21fbbab29ca94c5b08b1a78"
++
++[[package]]
++name = "windows_x86_64_gnullvm"
++version = "0.48.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "0b7b52767868a23d5bab768e390dc5f5c55825b6d30b86c844ff2dc7414044cc"
++
++[[package]]
++name = "windows_x86_64_gnullvm"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "24d5b23dc417412679681396f2b49f3de8c1473deb516bd34410872eff51ed0d"
++
++[[package]]
++name = "windows_x86_64_msvc"
++version = "0.48.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ed94fce61571a4006852b7389a063ab983c02eb1bb37b47f8272ce92d06d9538"
++
++[[package]]
++name = "windows_x86_64_msvc"
++version = "0.52.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
++
++[[package]]
++name = "winnow"
++version = "0.6.18"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "68a9bda4691f099d435ad181000724da8e5899daa10713c2d432552b9ccd3a6f"
++dependencies = [
++ "memchr",
++]
++
++[[package]]
++name = "winsafe"
++version = "0.0.19"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
+diff --git a/contrib/need-grammars/verification/reference/Cargo.toml b/contrib/need-grammars/verification/reference/Cargo.toml
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/verification/reference/Cargo.toml
+@@ -0,0 +1,13 @@
++[package]
++name = "helix-grammar-reference"
++version = "0.0.0"
++edition = "2021"
++publish = false
++
++[dependencies]
++helix-loader = { path = "../../upstream/helix-loader" }
++anyhow = "=1.0.95"
++libloading = "=0.8.6"
++tree-sitter = "=0.22.6"
++
++[workspace]
+diff --git a/contrib/need-grammars/verification/reference/src/main.rs b/contrib/need-grammars/verification/reference/src/main.rs
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/verification/reference/src/main.rs
+@@ -0,0 +1,24 @@
++use anyhow::{bail, Context, Result};
++
++fn parse(library: &str, name: &str, input: &str) -> Result<()> {
++    let library = unsafe { libloading::Library::new(library) }?;
++    let function: libloading::Symbol<unsafe extern "C" fn() -> tree_sitter::Language> =
++        unsafe { library.get(format!("tree_sitter_{name}").as_bytes()) }?;
++    let language = unsafe { function() };
++    let mut parser = tree_sitter::Parser::new();
++    parser.set_language(&language)?;
++    let tree = parser.parse(input, None).context("no parse tree")?;
++    if tree.root_node().has_error() {
++        bail!("parse contains errors: {}", tree.root_node().to_sexp());
++    }
++    println!("{}", tree.root_node().to_sexp());
++    Ok(())
++}
++
++fn main() -> Result<()> {
++    let args: Vec<_> = std::env::args().skip(1).collect();
++    if args.len() == 4 && args[0] == "parse" {
++        return parse(&args[1], &args[2], &args[3]);
++    }
++    helix_loader::grammar::build_grammars(std::env::var("TARGET").ok())
++}
+diff --git a/contrib/need-grammars/verification/report.py b/contrib/need-grammars/verification/report.py
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/verification/report.py
+@@ -0,0 +1,270 @@
++"""Publish the additive integration patch and count its complete project cost."""
++import difflib
++import hashlib
++import io
++import json
++import pathlib
++import subprocess
++import tokenize
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++UPSTREAM = ROOT / "upstream"
++PREFIX = "contrib/need-grammars/"
++PRODUCTION = [".gitignore", "justfile", "needfile", "pins.json", "selection.txt",
++              "prepare.py", "extract.py", "rust-toolchain.toml", "helper/Cargo.toml", "helper/Cargo.lock",
++              "helper/build.rs", "helper/src/main.rs", "helper/src/upstream.rs"]
++VERIFICATION = ["verification/verify.py", "verification/report.py",
++                "verification/reference/Cargo.toml", "verification/reference/Cargo.lock",
++                "verification/reference/src/main.rs"]
++PIPELINE = ["helix-loader/src/grammar.rs", "helix-loader/src/config.rs",
++            "helix-loader/Cargo.toml", "helix-loader/build.rs", "languages.toml", "Cargo.lock"]
++EXTENSIONS = {".rs", ".c", ".cc", ".cpp", ".h", ".py", ".sh", ".fish", ".ps1",
++              ".js", ".ts", ".tsx", ".lua", ".scm", ".nix", ".toml", ".json",
++              ".yml", ".yaml", ".css", ".html", ".snap"}
++SPECIAL = {"Cargo.lock", "justfile", "needfile", "Makefile", "Dockerfile",
++           ".gitignore", ".gitattributes", ".editorconfig"}
++RULE = ("Physical splitlines; Python uses tokenize to exclude comment/whitespace tokens while "
++        "counting nonblank string/docstring spans. Other files exclude blank lines, full-line //, "
++        "shell/Python/TOML/YAML #, Scheme ;, and /* blocks opened at first nonwhitespace. "
++        "Mixed code/comment lines and C/Rust # directives count; non-Python counting is prefix-based. "
++        "File-based production/test classification: tests or test directories, test.rs and "
++        "*_test.rs are verification; inline Rust tests stay in their containing file budget. "
++        "Locks/configuration and generated helper code count; documentation/assets/binaries "
++        "do not. Integration.patch is a serialization of counted sources, not counted twice.")
++
++
++def counts(text, path):
++    lines = text.splitlines()
++    if pathlib.Path(path).suffix == ".py":
++        code = set()
++        ignored = {tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT,
++                   tokenize.DEDENT, tokenize.ENDMARKER}
++        for token in tokenize.generate_tokens(io.StringIO(text).readline):
++            if token.type not in ignored:
++                code.update(number for number in range(token.start[0], token.end[0] + 1)
++                            if lines[number - 1].strip())
++        return {"total": len(lines), "nonblank_noncomment": len(code)}
++    count = 0
++    block = False
++    for line in lines:
++        value = line.strip()
++        if block:
++            if "*/" not in value:
++                continue
++            value = value.split("*/", 1)[1].strip()
++            block = False
++        while value.startswith("/*"):
++            if "*/" not in value:
++                block = True
++                value = ""
++                break
++            value = value.split("*/", 1)[1].strip()
++        if not value or value.startswith("//"):
++            continue
++        if value.startswith("#") and (pathlib.Path(path).suffix in
++                {".sh", ".fish", ".ps1", ".toml", ".yaml", ".yml", ".nix"} or
++                pathlib.Path(path).name in SPECIAL):
++            continue
++        if value.startswith(";") and pathlib.Path(path).suffix == ".scm":
++            continue
++        count += 1
++    return {"total": len(lines), "nonblank_noncomment": count}
++
++
++def verification(path):
++    parts = pathlib.Path(path).parts
++    return any(part in ("tests", "test", "verification") for part in parts) or \
++        pathlib.Path(path).name == "test.rs" or path.endswith("_test.rs")
++
++
++def add(a, b):
++    return {key: a[key] + b[key] for key in a}
++
++
++def summary(before, added):
++    zero = {key: 0 for key in before}
++    return {"before": before, "after": add(before, added), "existing_deleted": zero,
++            "replacement_added": added, "net_removed": {key: -value for key, value in added.items()}}
++
++
++pins = json.loads((ROOT / "pins.json").read_text())
++assert subprocess.check_output(["git", "-C", str(UPSTREAM), "rev-parse", "HEAD"], text=True).strip() == pins["helix"]
++assert not subprocess.check_output(["git", "-C", str(UPSTREAM), "status", "--porcelain"], text=True)
++tracked = subprocess.check_output(["git", "-C", str(UPSTREAM), "ls-files", "-z"]).decode().split("\0")
++historical = {"production": {"total": 0, "nonblank_noncomment": 0},
++              "verification": {"total": 0, "nonblank_noncomment": 0}}
++retained = []
++for path in sorted(filter(None, tracked)):
++    file = pathlib.Path(path)
++    if file.suffix not in EXTENSIONS and file.name not in SPECIAL:
++        continue
++    text = (UPSTREAM / path).read_text()
++    category = "verification" if verification(path) else "production"
++    count = counts(text, path)
++    historical[category] = add(historical[category], count)
++    retained.append({"path": path, "category": category, **count})
++
++root_justfile = '''set positional-arguments
++
++grammar-subset-prepare:
++  just --justfile contrib/need-grammars/justfile prepare
++
++grammar-subset *names:
++  #!/usr/bin/env sh
++  set -eu
++  just --justfile contrib/need-grammars/justfile build "$@"
++
++grammar-subset-verify:
++  just --justfile contrib/need-grammars/justfile verify
++'''
++assert not (UPSTREAM / "justfile").exists()
++files = {"justfile": (root_justfile, "production")}
++for category, paths in [("production", PRODUCTION), ("verification", VERIFICATION)]:
++    for path in paths:
++        files[PREFIX + path] = ((ROOT / path).read_text(), category)
++files[PREFIX + "README.md"] = ((ROOT / "README.md").read_text(), "documentation")
++patch = []
++ledger = []
++added = {category: {"total": 0, "nonblank_noncomment": 0} for category in historical}
++for path, (text, category) in sorted(files.items()):
++    patch.extend([f"diff --git a/{path} b/{path}\n", "new file mode 100644\n"])
++    patch.extend(difflib.unified_diff([], text.splitlines(keepends=True),
++                                    fromfile="/dev/null", tofile="b/" + path))
++    count = counts(text, path)
++    zero = {key: 0 for key in count}
++    ledger.append({"path": path, "category": category, "before": zero, "after": count,
++                   "existing_deleted": zero, "replacement_added": count,
++                   "net_removed": {key: -value for key, value in count.items()},
++                   "generated": path.endswith("helper/src/upstream.rs")})
++    if category in added:
++        added[category] = add(added[category], count)
++patch_text = "".join(patch)
++(ROOT / "integration.patch").write_text(patch_text)
++subprocess.run(["git", "-C", str(UPSTREAM), "apply", "--check", str(ROOT / "integration.patch")], check=True)
++
++project = {category: summary(historical[category], added[category]) for category in historical}
++project["combined"] = summary(add(historical["production"], historical["verification"]),
++                              add(added["production"], added["verification"]))
++pipeline_before = {"total": 0, "nonblank_noncomment": 0}
++for path in PIPELINE:
++    pipeline_before = add(pipeline_before, counts((UPSTREAM / path).read_text(), path))
++pipeline = {"production": summary(pipeline_before, added["production"]),
++            "verification": summary({key: 0 for key in pipeline_before}, added["verification"]),
++            "combined": summary(pipeline_before, add(added["production"], added["verification"]))}
++evidence = json.loads((ROOT / "work/evidence/results.json").read_text())
++evidence["code_removal"] = {"rule": RULE, "integration_prefix": PREFIX, "historical_revision": pins["helix"],
++    "patch_sha256": hashlib.sha256(patch_text.encode()).hexdigest(), "ledger": ledger,
++    "project": project, "converted_pipeline": pipeline, "pipeline_historical_files": PIPELINE,
++    "retained_project_files": retained, "deletable_existing_files": [],
++    "limitations": ["Additive opt-in subset; hx --grammar build and all general workflows retained.",
++                    "Zero historical code deletion; generated compiler/fetch copy counts as added code.",
++                    "No project-wide savings demonstrated; setup and verification have zero historical before."]}
++validation = ROOT / "work/evidence/integration-check.json"
++if validation.exists():
++    result = json.loads(validation.read_text())
++    if result["patch_sha256"] == evidence["code_removal"]["patch_sha256"]:
++        evidence["integration_validation"] = result
++(ROOT / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
++
++integration_note = ("The applied patch was exercised in a checkout and with a Need executable path "
++    "containing spaces; its opt-in workflow produced a real JSON library. The patch-specific "
++    "validation record is in `evidence.json`.\n\n" if "integration_validation" in evidence else
++    "The report asserts patch application against the pinned base; an applied-workflow "
++    "validation record has not yet been attached to this patch.\n\n")
++rows = {row["case"]: row for row in evidence["measurements"]}
++text = ["# Helix grammar demo results\n\n",
++        "This Linux subset improves content freshness and protects published libraries, but adds code. "
++        "No existing Helix file or task can be deleted on this evidence. The additive integration patch "
++        "leaves the general Rust API, grammar selection, fetching and platform workflows intact.\n\n",
++        "## Reproduce the integration\n\n",
++        f"The historical base is Helix `{pins['helix']}` (25.01). From a clean checkout of that revision, "
++        "apply this demo's `integration.patch` with `git apply`, then run `just grammar-subset-prepare` "
++        "and `just grammar-subset json`. Set `NEED` to an installed Need executable when necessary. "
++        "`just grammar-subset-verify` runs the actual upstream crate and verification harness. "
++        "`python3 verification/report.py` regenerates the patch, ledger and this report from the "
++        "demo directory after verification. `git apply --check` is asserted by the report.\n\n",
++        integration_note,
++        "## Build measurements\n\n",
++        f"Platform: `{evidence['platform']}`; {evidence['cpu_count']} logical CPUs. "
++        "One wall-clock observation per case, measured with `time.monotonic()`. Clean means all three "
++        "grammar libraries removed after pinned checkout and Cargo/helper preparation; downloading and "
++        "Rust compilation are excluded. The reference invokes the unmodified `helix-loader` API with "
++        "an isolated three-grammar user configuration. Reference compilation counts come from its "
++        "built-now summary; Need recipes come from `[need]` lines and real helper start/end events. "
++        "Reference concurrency was not instrumented. Need's measured peak is two grammar recipes with "
++        "global `-j8` and `@jobs(2)`; C/C++ scanner batching is preserved.\n\n",
++        "| Case | Upstream compiles / seconds | Need recipes / seconds |\n|---|---:|---:|\n"]
++for label, before, after in [("Clean", "upstream-clean", "need-clean"),
++                             ("Current", "upstream-current", "need-current"),
++                             ("JSON edit", "upstream-edit", "need-edit"),
++                             ("Narrow JSON clean", "upstream-narrow-clean", "need-narrow-clean"),
++                             ("Narrow JSON current", "upstream-narrow-current", "need-narrow-current"),
++                             ("Touch, identical bytes", "upstream-touch", "need-touch"),
++                             ("Changed bytes, timestamp 1", "upstream-older-content", "need-older-content")]:
++    a, b = rows[before], rows[after]
++    text.append(f"| {label} | {a['compiles']} / {a['seconds']:.4f} | {b['recipes']} / {b['seconds']:.4f} |\n")
++text += ["\nThese observations do not demonstrate a speedup. Need hashes complete source trees and probes "
++         "the driver; the upstream threadpool uses its default capacity. Raw logs and per-case trace "
++         "files are regenerated under `work/evidence/`.\n\n",
++         "## Freshness, parity and atomic publication\n\n",
++         "The verifier asserts matching three-library inventories, exported symbol tables and error-free "
++         "parse trees for real JSON, Python and YAML inputs against the unmodified upstream crate. "
++         "SHA-256 hashes and byte equality are recorded for each library; semantic parity does not "
++         "require binary equality. Python/YAML binaries differed in this run. Header edits, header "
++         "addition/removal and a consumed `languages.toml` configuration edit rebuild the affected "
++         "requested artifacts. Missing parser input fails without replacing the old library.\n\n",
++         "Removing Python's optional scanner triggers Need rebuilding; upstream's timestamp check skips "
++         "until its library is removed. Both clean links then have unresolved scanner symbols and "
++         "cannot load. This matches upstream behavior, not a valid scanner-free Python parser. "
++         "Restoring the scanner recovers matching exports and parse trees.\n\n",
++         "A real `CXXFLAGS=-DHELIX_DEMO_VALUE=17` changes an exported C function's return from 0 to 17 "
++         "and changes library bytes; the identical environment skips. `CXX`/`CXXFLAGS` are consumed by "
++         "upstream's C++ cc configuration even for C parser compilation. `CC`/`CFLAGS` are signed "
++         "conservatively but are not consumed. Native `TARGET` is passed to cc; repeating it skips, "
++         "and a foreign target fails before compilation. See README for the bounded environment and "
++         "the untracked full toolchain/sysroot limitation.\n\n",
++         "A genuine compiler `#error` preserves the old JSON library hash. SIGTERM after observing a "
++         "real YAML cc1/cc1plus process preserves its old hash, retains a new interrupted log, and "
++         "recovery compiles successfully. Traces record actual `.need-tmp-` destinations; no declared "
++         "partial library is published. The interruption occurs during compilation before a partial "
++         "linked library was observed. Publication is atomic per file, not a multi-library transaction.\n\n",
++         "## Code accounting\n\n", RULE + "\n\n",
++         "The project budget covers all pinned tracked source/config files with the extensions and "
++         "special filenames in `verification/report.py`; the complete retained-file inventory is in "
++         "`evidence.json`. The converted pipeline budget covers the six historical files listed below, "
++         "plus every added production/verification file. Both budgets retain the existing upstream "
++         "grammar engine. New setup and verification have historical before = 0. Generated compiler "
++         "and fetch code is a counted copy, not deleted code. No existing tests are removed.\n\n",
++         "| Scope | Before total / code | After total / code | Deleted total / code | Added total / code | Net removed total / code |\n",
++         "|---|---:|---:|---:|---:|---:|\n"]
++for scope, groups in [("Project", project), ("Converted pipeline", pipeline)]:
++    for category, values in groups.items():
++        cells = [f"{values[key]['total']} / {values[key]['nonblank_noncomment']}" for key in
++                 ("before", "after", "existing_deleted", "replacement_added", "net_removed")]
++        text.append(f"| {scope}: {category} | " + " | ".join(cells) + " |\n")
++text += ["\n`net removed = existing deleted - replacement added`; negative numbers mean added code. "
++         "Production includes the counted imported compiler/platform/fetch code, all setup, probes, "
++         "configuration and lockfiles. Verification includes the harness, reference Rust adapter and "
++         "its configuration/lockfile, plus this accounting script. The integration patch is an opt-in "
++         "prototype, not full upstream integration. Project-wide savings remain unmet.\n\n",
++         "### File-by-file integration ledger\n\n",
++         "| Added file (under contrib/need-grammars unless noted) | Budget | Deleted total / code | Added total / code |\n",
++         "|---|---|---:|---:|\n"]
++for item in ledger:
++    if item["category"] == "documentation":
++        continue
++    path = item["path"].removeprefix(PREFIX)
++    if item["path"] == "justfile":
++        path = "[upstream root] justfile"
++    count = item["replacement_added"]
++    text.append(f"| `{path}` | {item['category']} | 0 / 0 | {count['total']} / {count['nonblank_noncomment']} |\n")
++text += ["\nHistorical pipeline files retained unchanged (before = after; deletion = addition = 0):\n\n",
++         "| File | Total / code |\n|---|---:|\n"]
++for path in PIPELINE:
++    count = counts((UPSTREAM / path).read_text(), path)
++    text.append(f"| `{path}` | {count['total']} / {count['nonblank_noncomment']} |\n")
++text.append("\nAll other historical project files are also retained unchanged. No deletion can be "
++            "attributed to the subset: other platforms, grammars, Cargo callers and the `hx` API "
++            "still need the original engine. Full integration, complete toolchain tracking, "
++            "project-wide code savings and a speedup are not established.\n")
++(ROOT / "RESULTS.md").write_text("".join(text))
+diff --git a/contrib/need-grammars/verification/verify.py b/contrib/need-grammars/verification/verify.py
+new file mode 100644
+--- /dev/null
++++ b/contrib/need-grammars/verification/verify.py
+@@ -0,0 +1,341 @@
++"""Measure real pinned grammar builds; assertions fail rather than invent evidence."""
++import contextlib
++import hashlib
++import json
++import os
++import pathlib
++import re
++import shutil
++import signal
++import subprocess
++import sys
++import time
++import tomllib
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++os.chdir(ROOT)
++NEED = str(pathlib.Path(sys.argv[1]).resolve())
++NAMES = (ROOT / "selection.txt").read_text().splitlines()
++SOURCES = ROOT / "work/runtime/grammars/sources"
++LIBRARIES = ROOT / "work/libraries"
++REFERENCE = ROOT / "work/reference/config/helix/runtime/grammars"
++EVIDENCE = ROOT / "work/evidence"
++EVIDENCE.mkdir(parents=True, exist_ok=True)
++TRACE = EVIDENCE / "trace.txt"
++ENV = {"PATH": os.environ["PATH"], "HOME": os.environ["HOME"],
++       "CXX": shutil.which("c++"), "CXXFLAGS": "", "HELIX_TRACE": str(TRACE)}
++REF_ENV = {**ENV, "XDG_CONFIG_HOME": str(ROOT / "work/reference/config")}
++ROWS = []
++
++
++def digest(path):
++    return hashlib.sha256(path.read_bytes()).hexdigest()
++
++
++@contextlib.contextmanager
++def edited(path, content, timestamp=None):
++    original = path.read_bytes()
++    stat = path.stat()
++    try:
++        path.write_bytes(content)
++        if timestamp is not None:
++            os.utime(path, (timestamp, timestamp))
++        yield
++    finally:
++        path.write_bytes(original)
++        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
++
++
++def events():
++    return [line.split(maxsplit=4) for line in TRACE.read_text().splitlines()] if TRACE.exists() else []
++
++
++def run(label, command, env=ENV, success=True):
++    TRACE.unlink(missing_ok=True)
++    start = time.monotonic()
++    result = subprocess.run(command, env=env, text=True, stdout=subprocess.PIPE,
++                            stderr=subprocess.STDOUT)
++    elapsed = time.monotonic() - start
++    (EVIDENCE / (label + ".log")).write_text(result.stdout)
++    assert (result.returncode == 0) == success, (label, result.stdout)
++    trace = events()
++    active = peak = 0
++    for _, event, _, _, _ in sorted(trace, key=lambda item: int(item[0])):
++        active += 1 if event == "start" else -1
++        peak = max(peak, active)
++    compiled = [item[2] for item in trace if item[1] == "start"]
++    reference_count = re.search(r"(\d+) grammars built now", result.stdout)
++    count = int(reference_count[1]) if reference_count else len(compiled)
++    row = {"case": label, "recipes": len(re.findall(r"^\[need\]", result.stdout, re.M)),
++           "compiles": count, "seconds": round(elapsed, 4), "peak_grammars": peak,
++           "names": compiled, "exit": result.returncode, "command": command,
++           "environment": {key: env.get(key) for key in ["CC", "CXX", "CFLAGS", "CXXFLAGS", "TARGET"]}}
++    if label.startswith("upstream-"):
++        row["recipes"] = None
++        row["peak_grammars"] = None
++    if TRACE.exists():
++        shutil.copyfile(TRACE, EVIDENCE / (label + ".trace"))
++    ROWS.append(row)
++    print(json.dumps(row), flush=True)
++    if success:
++        assert active == 0, (label, trace)
++    return row
++
++
++def build(label, names=NAMES, env=ENV, success=True):
++    return run(label, [NEED, "get", "-j8", "work/libraries/%.so: %", "--", *names], env, success)
++
++
++def reference(label, names=NAMES):
++    config = ROOT / "work/reference/config/helix/languages.toml"
++    config.parent.mkdir(parents=True, exist_ok=True)
++    config.write_text("use-grammars = { only = " + json.dumps(list(names)) + " }\n")
++    return run(label, [str(ROOT / "verification/reference/target/debug/helix-grammar-reference")], REF_ENV)
++
++
++def probe(path, symbol):
++    # A fresh process avoids dlopen caching a library replaced at the same path.
++    return subprocess.check_output([sys.executable, "-c",
++        "import ctypes,sys; print(getattr(ctypes.CDLL(sys.argv[1]),sys.argv[2])())",
++        str(path), symbol], text=True).strip()
++
++
++def parity(label):
++    samples = {"json": '{"answer": [42, true, null]}',
++               "python": 'def answer():\n    return "hello"\n',
++               "yaml": 'answer:\n  - hello\n  - 42\n'}
++    assert sorted(p.name for p in LIBRARIES.glob("*.so")) == sorted(name + ".so" for name in NAMES)
++    assert sorted(p.name for p in REFERENCE.glob("*.so")) == sorted(name + ".so" for name in NAMES)
++    result = {}
++    for name, sample in samples.items():
++        paths = [REFERENCE / (name + ".so"), LIBRARIES / (name + ".so")]
++        trees = [subprocess.check_output([str(ROOT / "verification/reference/target/debug/helix-grammar-reference"), "parse", str(path), name, sample],
++                                        env=ENV, text=True).strip() for path in paths]
++        assert trees[0] == trees[1], (name, trees)
++        exports = [subprocess.check_output(["nm", "-D", "--defined-only", str(path)], text=True)
++                   for path in paths]
++        assert exports[0] == exports[1], (name, exports)
++        result[name] = {"reference_sha256": digest(paths[0]), "need_sha256": digest(paths[1]),
++                        "byte_identical": digest(paths[0]) == digest(paths[1]), "tree": trees[0]}
++    (EVIDENCE / (label + ".json")).write_text(json.dumps(result, indent=2) + "\n")
++
++
++# Preparation is measured separately by just; clean below means grammar outputs,
++# with checkouts, Cargo binaries and Need's helper state already available.
++assert (ROOT / "tools/helper").is_file(), "run just prepare"
++assert (ROOT / "verification/reference/target/debug/helix-grammar-reference").is_file(), "run just reference"
++shutil.rmtree(ROOT / "work/reference", ignore_errors=True)
++REFERENCE.mkdir(parents=True)
++(REFERENCE / "sources").symlink_to(SOURCES, target_is_directory=True)
++shutil.rmtree(LIBRARIES, ignore_errors=True)
++run("helper-current", [NEED, "tools/helper"])
++assert build("need-clean")["compiles"] == 3
++assert ROWS[-1]["peak_grammars"] == 2
++assert all(".need-tmp-" in event[4] for event in events())
++assert reference("upstream-clean")["compiles"] == 3
++parity("clean-parity")
++assert build("need-current")["recipes"] == 0
++assert reference("upstream-current")["compiles"] == 0
++
++parser = SOURCES / "json/src/parser.c"
++library = LIBRARIES / "json.so"
++with edited(parser, parser.read_bytes()):
++    os.utime(parser, (time.time() + 2, time.time() + 2))
++    assert build("need-touch")["recipes"] == 0
++    assert reference("upstream-touch")["compiles"] == 1
++
++edit = b'\nint helix_demo_edit(void) { return 57; }\n'
++with edited(parser, parser.read_bytes() + edit):
++    assert build("need-edit")["names"] == ["json"]
++    assert reference("upstream-edit")["compiles"] == 1
++    assert probe(library, "helix_demo_edit") == "57"
++    parity("edit-parity")
++    with edited(parser, parser.read_bytes().replace(b"return 57;", b"return 58;"), timestamp=1):
++        assert build("need-older-content")["names"] == ["json"]
++        assert reference("upstream-older-content")["compiles"] == 0
++        assert probe(library, "helix_demo_edit") == "58"
++        assert probe(REFERENCE / "json.so", "helix_demo_edit") == "57"
++assert build("need-restore")["names"] == ["json"]
++# Force a reference clean build; upstream timestamps cannot see the older restore.
++for path in REFERENCE.glob("*.so"):
++    path.unlink()
++reference("upstream-reset")
++parity("restored-parity")
++
++# A clean narrow request produces only the named grammar, then the other two.
++shutil.rmtree(LIBRARIES)
++assert build("need-narrow-clean", ["json"])["names"] == ["json"]
++assert sorted(p.name for p in LIBRARIES.glob("*.so")) == ["json.so"]
++assert build("need-narrow-current", ["json"])["recipes"] == 0
++assert build("need-remaining", ["python", "yaml"])["compiles"] == 2
++(REFERENCE / "json.so").unlink()
++assert reference("upstream-narrow-clean", ["json"])["compiles"] == 1
++assert reference("upstream-narrow-current", ["json"])["compiles"] == 0
++
++# Local header contents and membership both participate through tree(src).
++header = SOURCES / "python/src/tree_sitter/parser.h"
++with edited(header, header.read_bytes() + b"\n/* demo header edit */\n"):
++    assert build("need-header-edit")["names"] == ["python"]
++assert build("need-header-restore")["names"] == ["python"]
++extra = SOURCES / "json/src/demo-unused.h"
++try:
++    extra.write_text("/* inventory probe */\n")
++    assert build("need-header-add")["names"] == ["json"]
++finally:
++    extra.unlink(missing_ok=True)
++assert build("need-header-delete")["names"] == ["json"]
++
++# Consumed config changes must rebuild even when compilation would be equivalent.
++config = ROOT / "upstream/languages.toml"
++with edited(config, config.read_bytes().replace(
++        b'git = "https://github.com/tree-sitter/tree-sitter-json",',
++        b'git = "https://github.com/tree-sitter/tree-sitter-json", subpath = ".",', 1)):
++    assert build("need-config-edit", ["json"])["names"] == ["json"]
++build("need-config-restore")
++
++# The real cc-selected tool consumes CXXFLAGS for the C parser as upstream does.
++flag_source = b'''\n#ifndef HELIX_DEMO_VALUE
++#define HELIX_DEMO_VALUE 0
++#endif
++int helix_demo_flag(void) { return HELIX_DEMO_VALUE; }
++'''
++with edited(parser, parser.read_bytes() + flag_source):
++    assert build("need-env-default", ["json"])["compiles"] == 1
++    default_value = probe(library, "helix_demo_flag")
++    assert default_value == "0"
++    default_hash = digest(library)
++    flags = {**ENV, "CXXFLAGS": "-DHELIX_DEMO_VALUE=17"}
++    assert build("need-env-change", ["json"], flags)["compiles"] == 1
++    changed_value = probe(library, "helix_demo_flag")
++    assert changed_value == "17"
++    changed_hash = digest(library)
++    assert changed_hash != default_hash
++    assert build("need-env-current", ["json"], flags)["recipes"] == 0
++assert build("need-env-restore", ["json"])["compiles"] == 1
++assert build("need-env-restored-current", ["json"])["recipes"] == 0
++host = re.search(r"^host: (.+)$", subprocess.check_output(["rustc", "-vV"], text=True), re.M)[1]
++assert build("need-target-explicit", ["json"], {**ENV, "TARGET": host})["compiles"] == 1
++assert build("need-target-current", ["json"], {**ENV, "TARGET": host})["recipes"] == 0
++assert build("need-target-unsupported", ["json"], {**ENV, "TARGET": "aarch64-unknown-linux-gnu"}, False)["compiles"] == 0
++build("need-target-restore", ["json"])
++
++old_hash = digest(library)
++with edited(parser, parser.read_bytes() + b'\n#error helix_demo_compile_failure\n'):
++    failure = build("need-compile-failure", ["json"], success=False)
++    failure["published_sha256_before"] = old_hash
++    failure["published_sha256_after"] = digest(library)
++    assert digest(library) == old_hash
++    assert not list(LIBRARIES.glob(".need-tmp-*"))
++    parser.write_bytes(parser.read_bytes().replace(b'#error helix_demo_compile_failure', edit.strip()))
++    assert build("need-failure-recovery", ["json"])["compiles"] == 1
++build("need-failure-restore", ["json"])
++
++# Interrupt an actual YAML compiler, after cc1/cc1plus has started, without a wrapper.
++yaml_parser = SOURCES / "yaml/src/parser.c"
++yaml_library = LIBRARIES / "yaml.so"
++old_hash = digest(yaml_library)
++with edited(yaml_parser, yaml_parser.read_bytes() + b"\n/* interrupted build */\n"):
++    TRACE.unlink(missing_ok=True)
++    previous_interrupted = set((ROOT / ".need/logs").rglob("*.interrupted.stderr"))
++    with (EVIDENCE / "need-interrupted.log").open("w") as log:
++        started = time.monotonic()
++        process = subprocess.Popen([NEED, "-j8", "work/libraries/yaml.so"], env=ENV,
++                                   stdout=log, stderr=subprocess.STDOUT)
++        try:
++            deadline = time.monotonic() + 20
++            found = False
++            while time.monotonic() < deadline and process.poll() is None:
++                # GCC's frontends inherit the compiler's -o/input arguments.
++                for directory in pathlib.Path("/proc").glob("[0-9]*"):
++                    try:
++                        arguments = (directory / "cmdline").read_bytes().split(b"\0")
++                    except (FileNotFoundError, PermissionError, ProcessLookupError):
++                        continue
++                    if arguments and pathlib.Path(os.fsdecode(arguments[0])).name in ("cc1", "cc1plus"):
++                        if any(str(SOURCES / "yaml/src").encode() in arg for arg in arguments):
++                            compiler_arguments = [os.fsdecode(arg) for arg in arguments if arg]
++                            found = True
++                            break
++                if found:
++                    break
++                time.sleep(0.005)
++            assert found, "did not observe a real YAML compiler"
++            process.send_signal(signal.SIGTERM)
++            assert process.wait(timeout=10) != 0
++        finally:
++            if process.poll() is None:
++                process.kill()
++                process.wait()
++    interrupted_trace = events()
++    shutil.copyfile(TRACE, EVIDENCE / "need-interrupted.trace")
++    log_text = (EVIDENCE / "need-interrupted.log").read_text()
++    ROWS.append({"case": "need-interrupted", "recipes": len(re.findall(r"^\[need\]", log_text, re.M)),
++                 "compiles": len([event for event in interrupted_trace if event[1] == "start"]),
++                 "seconds": round(time.monotonic() - started, 4), "peak_grammars": 1,
++                 "names": ["yaml"], "exit": process.returncode,
++                 "observed_compiler_arguments": compiler_arguments,
++                 "published_sha256_before": old_hash, "published_sha256_after": digest(yaml_library)})
++    assert digest(yaml_library) == old_hash
++    assert not list(LIBRARIES.glob(".need-tmp-*"))
++    new_interrupted = set((ROOT / ".need/logs").rglob("*.interrupted.stderr")) - previous_interrupted
++    assert new_interrupted
++    ROWS[-1]["interrupted_logs"] = [str(path.relative_to(ROOT)) for path in sorted(new_interrupted)]
++    assert build("need-interrupt-recovery", ["yaml"])["compiles"] == 1
++build("need-interrupt-restore", ["yaml"])
++
++# Removing required parser input errors and preserves the published library.
++old_hash = digest(library)
++saved = parser.with_suffix(".saved")
++parser.rename(saved)
++try:
++    build("need-parser-delete", ["json"], success=False)
++    assert digest(library) == old_hash
++finally:
++    saved.rename(parser)
++assert build("need-parser-restored", ["json"])["recipes"] == 0
++
++# A removed optional scanner must really disappear from the link. Upstream's
++# timestamp check overlooks deletion until its library is explicitly removed.
++scanner = SOURCES / "python/src/scanner.c"
++saved = scanner.with_suffix(".saved")
++old_hash = digest(LIBRARIES / "python.so")
++scanner.rename(saved)
++try:
++    assert build("need-scanner-delete", ["python"])["compiles"] == 1
++    assert digest(LIBRARIES / "python.so") != old_hash
++    assert reference("upstream-scanner-delete-current", ["python"])["compiles"] == 0
++    (REFERENCE / "python.so").unlink()
++    assert reference("upstream-scanner-delete-clean", ["python"])["compiles"] == 1
++    # Unresolved scanner symbols are the upstream result as well; loading fails.
++    for path in [LIBRARIES / "python.so", REFERENCE / "python.so"]:
++        result = subprocess.run([str(ROOT / "verification/reference/target/debug/helix-grammar-reference"), "parse", str(path), "python", "pass\n"],
++                                env=ENV, text=True, capture_output=True)
++        assert result.returncode != 0 and "undefined symbol" in result.stderr, result.stderr
++finally:
++    saved.rename(scanner)
++build("need-scanner-restore", ["python"])
++(REFERENCE / "python.so").unlink()
++reference("upstream-scanner-restore", ["python"])
++parity("final-parity")
++assert build("need-final-current")["recipes"] == 0
++
++pins = json.loads((ROOT / "pins.json").read_text())
++assert subprocess.check_output(["git", "-C", "upstream", "rev-parse", "HEAD"], text=True).strip() == pins["helix"]
++languages = tomllib.loads((ROOT / "upstream/languages.toml").read_text())
++selected = [g for g in languages["grammar"] if g["name"] in NAMES]
++for grammar in selected:
++    path = SOURCES / grammar["name"]
++    assert subprocess.check_output(["git", "-C", str(path), "rev-parse", "HEAD"], text=True).strip() == grammar["source"]["rev"]
++    assert not subprocess.check_output(["git", "-C", str(path), "status", "--porcelain"], text=True)
++assert not subprocess.check_output(["git", "-C", "upstream", "status", "--porcelain"], text=True)
++report = {"helix": pins["helix"], "grammars": selected, "compiler": subprocess.check_output(
++          [str(ROOT / "tools/helper"), "identity"], env=ENV, text=True), "measurements": ROWS,
++          "parity": json.loads((EVIDENCE / "final-parity.json").read_text()),
++          "environment": {key: ENV.get(key) for key in ["CC", "CXX", "CFLAGS", "CXXFLAGS", "TARGET"]},
++          "platform": subprocess.check_output(["uname", "-srmo"], text=True).strip(),
++          "compiler_option_effect": {"option": "CXXFLAGS=-DHELIX_DEMO_VALUE=17",
++             "before_return": default_value, "after_return": changed_value,
++             "before_sha256": default_hash, "after_sha256": changed_hash},
++          "cpu_count": os.cpu_count(), "rustc": subprocess.check_output(["rustc", "-vV"], text=True)}
++(EVIDENCE / "results.json").write_text(json.dumps(report, indent=2) + "\n")
++print("Verified pinned sources, real compiler effects, deletion, atomic failure/interruption and upstream parity.")
+diff --git a/justfile b/justfile
+new file mode 100644
+--- /dev/null
++++ b/justfile
+@@ -0,0 +1,12 @@
++set positional-arguments
++
++grammar-subset-prepare:
++  just --justfile contrib/need-grammars/justfile prepare
++
++grammar-subset *names:
++  #!/usr/bin/env sh
++  set -eu
++  just --justfile contrib/need-grammars/justfile build "$@"
++
++grammar-subset-verify:
++  just --justfile contrib/need-grammars/justfile verify

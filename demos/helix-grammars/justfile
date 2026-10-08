@@ -1,0 +1,29 @@
+set positional-arguments
+
+need := env("NEED", "need")
+
+prepare:
+  python3 prepare.py
+  "{{need}}" tools/helper
+  tools/helper fetch
+
+build *names:
+  #!/usr/bin/env sh
+  set -eu
+  if [ "$#" -eq 0 ]; then set -- json python yaml; fi
+  "{{need}}" tools/helper
+  "{{need}}" get -j8 'work/libraries/%.so: %' -- "$@"
+
+library name:
+  "{{need}}" tools/helper
+  "{{need}}" get -j8 'work/libraries/%.so: %' -- "$1"
+
+reference:
+  cargo build --locked --manifest-path verification/reference/Cargo.toml
+
+verify: prepare reference
+  python3 verification/verify.py "{{need}}"
+  python3 verification/report.py
+
+clean:
+  rm -rf work/libraries work/reference .need

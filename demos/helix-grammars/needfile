@@ -1,0 +1,20 @@
+need.output = grouped
+need.log.keep = 3
+
+@atomic
+@jobs(2)
+work/libraries/%.so: work/runtime/grammars/sources/%/src/parser.c \
+  tree(work/runtime/grammars/sources/%/src) \
+  tools/helper helper/Cargo.lock selection.txt pins.json upstream/languages.toml \
+  env(CC) env(CXX) env(CFLAGS) env(CXXFLAGS) env(TARGET) \
+  command(tools/helper identity)
+    tools/helper compile {{stem}} {{out}}
+
+@atomic
+tools/helper: helper/src/main.rs helper/build.rs rust-toolchain.toml helper/Cargo.toml helper/Cargo.lock \
+  helper/src/upstream.rs env(RUSTFLAGS) env(CARGO_ENCODED_RUSTFLAGS) command(rustc -vV) command(cargo --version)
+    set -e; cargo build --locked --manifest-path helper/Cargo.toml --target-dir helper/target
+    cp helper/target/debug/helix-grammar-demo {{out}}
+
+helper/src/upstream.rs: extract.py upstream/helix-loader/src/grammar.rs command(python3 --version) command(rustfmt --version)
+  python3 extract.py upstream/helix-loader/src/grammar.rs {{out}}
