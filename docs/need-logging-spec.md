@@ -402,6 +402,10 @@ output mode
 ```
 
 Independent jobs MUST NOT share capture buffers or persistent log files.
+Parallel requests for the same output group share one execution and its capture
+context, including cold shared dependencies and forced aliases. Waiters receive
+the completed success or failure; a failed recipe is not retried or logged
+again by another waiter in the same invocation.
 
 ## 16. `stream` Under Concurrency
 

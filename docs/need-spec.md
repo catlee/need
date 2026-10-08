@@ -75,9 +75,13 @@ The current implementation includes the core artifact graph, including:
 - signal-aware recipe termination, interrupted logs, atomic state replacement,
   and startup cleanup of abandoned temporary artifacts
 
-Metadata-assisted BLAKE3 caching is implemented for regular-file hashes. The
-cache is persisted in `.need/state.json` and uses file size plus nanosecond mtime
-to avoid rehashing unchanged files.
+Metadata-assisted BLAKE3 caching is implemented for regular files, including
+directory artifact dependencies and published output checks. The cache persists
+in `.need/state.json` and uses size, nanosecond mtime, and Unix file identity
+and change time to avoid reading unchanged contents. Directory entries are still
+enumerated on every check. Parallel workers coalesce shared output groups,
+including forced aliases, into one completed result per invocation.
+
 ---
 
 ## 2. Design Goals
@@ -425,8 +429,13 @@ The directory fingerprint includes the root and descendants in deterministic raw
 relative-path order, entry kind, regular file contents, Unix permission bits,
 empty directories, and raw symlink target bytes. It MUST NOT follow symlinks or
 include timestamps or ownership. Sockets, devices, and FIFOs are errors. Missing
-or modified trees are stale. Staging and final fingerprints bypass the file hash
-cache. This does not promise a multi-open filesystem read snapshot.
+or modified trees are stale. Normal dependency and published-output checks reuse
+metadata-assisted regular-file hashes but still enumerate every entry. Staging
+validation, post-recipe input validation, and immediate final publication checks
+read contents freshly. Final checks refresh cache records for replaced trees,
+including files whose size and mtime were preserved. Files with pre-epoch or
+unavailable timestamps are read freshly for directory fingerprints. This does
+not promise a multi-open filesystem read snapshot.
 
 Before execution, `need` creates an empty unique sibling staging directory for
 every root and substitutes these paths for `{{out}}`. After the recipe succeeds,
@@ -1501,10 +1510,13 @@ metadata changed
 This avoids rehashing unchanged files on every build.
 
 `need` persists reusable records in `.need/state.json`. Each record is keyed by
-a stable canonical absolute path when available, with an absolute fallback, and
-stores the file size, modification time in nanoseconds since the Unix epoch,
-and BLAKE3 result. A record is reused only when both metadata values match;
-otherwise the content is hashed again. Symlink hashes retain their existing
+a stable canonical absolute path when available, with an absolute fallback.
+Non-UTF-8 paths use a lossless encoded key. Each record stores size, modification
+time in nanoseconds since the Unix epoch, and BLAKE3. On Unix it also stores
+device, inode, and nanosecond change time, so replacement or an edit preserving
+size and mtime cannot reuse an old hash. A record is reused only when all these
+metadata values match; older records lacking identity are refreshed once.
+Otherwise the content is hashed again. Symlink hashes retain their existing
 target semantics and are not stored as regular-file records. Metadata and
 timestamp failures identify the file and suggest a fix.
 
@@ -1623,11 +1635,12 @@ state replacement rules. Filesystem changes made by a recipe are not rolled
 back when the post-check fails, so the next invocation re-evaluates the rule
 from the unchanged last successful state.
 
-File output signatures use the same metadata-assisted hash cache as input files;
-directory output signatures are always recomputed:
+File outputs and regular files inside directory outputs use the same
+metadata-assisted hash cache as inputs during normal freshness checks.
+Directory membership, kinds, modes, and symlink targets are always recomputed:
 
 ```text
-size + mtime unchanged
+size + mtime + Unix identity/change time unchanged
     -> reuse cached output BLAKE3
 
 metadata changed
@@ -1987,6 +2000,17 @@ nodes and command-line targets, such as:
 ```sh
 need -j 8 build/app
 ```
+
+Workers share one result per output group per invocation. A group is claimed
+only after recursive dependencies finish, so dependency cycles retain their
+normal diagnostics without cross-worker lock cycles. Waiters receive the
+completed successful rule state (including dynamic outputs and discovered
+dependencies), or the same failure; failed and panicked executions are not
+retried within that invocation. Waits remain interruptible. Requested targets
+are resolved to group identities before workers start, so `--force` applies
+once even when a dependency worker reaches a requested static or remembered
+dynamic alias first. Worker hash-cache changes are merged without overwriting
+newer records with unchanged copies of the initial state.
 
 Each invocation acquires an exclusive OS-level advisory lock at `.need/lock`
 before loading build state and holds it until the invocation exits. This

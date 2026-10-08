@@ -2507,5 +2507,1464 @@
       "exit": 0,
       "needfile": "@atomic\nshared/:\n  echo run >> runs\n  sleep 0.2\n  touch {{out}}/item\n@atomic\na/: shared/\n  cp shared/item {{out}}/item\n@atomic\nb/: shared/\n  cp shared/item {{out}}/item\n"
     }
+  },
+  "directory_performance_issue_68": {
+    "issue": 68,
+    "base_commit": "e1223be8b30f447357a94eca9329e2462beca5e7",
+    "fixture": "Disposable reflink/copy of the pinned demo upstream checkout; source files unchanged between runs; warmed state before each measured series.",
+    "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+    "targets": [
+      "dist/catppuccin-mocha-blue-cursors/",
+      "dist/catppuccin-mocha-mauve-cursors/"
+    ],
+    "generated_regular_files": 4480,
+    "profiles": "Both binaries use Cargo release profile with Instant timers around directory fingerprinting and recipe execution. Profiling changes exist only in temporary copies, not committed engine code.",
+    "binary_sha256": {
+      "before": "d5080ccfafc2de6fd0ad9bdb42449b05f362fc495302a49f146c0e23f90766b8",
+      "after": "3be5f06436e11e7fd3a6764f1f8b28e4156c4888101f3f652e963743be67e02d"
+    },
+    "environment": {
+      "PATH_prefix": "/tmp/need-56-tools/bin:/tmp/need-56-tools/venv/bin",
+      "LD_LIBRARY_PATH": "/tmp/need-56-tools/usr/lib",
+      "QT_QPA_PLATFORM": "offscreen",
+      "DBUS_SESSION_BUS_ADDRESS": "unix:path=/tmp/need-no-session-bus",
+      "NO_AT_BRIDGE": "1"
+    },
+    "method": "Run before series, then after series in the same copied checkout. Each begins with an excluded warm-up, then three no-op requests, one forced theme, two forced themes at -j1, and two forced themes at -j2. The measured needfile retained @jobs(2) for the renderer in both series. Directory durations are cumulative timer durations, not exclusive wall time; parallel spans overlap.",
+    "limitations": [
+      "Warm filesystem caches; one machine; before/after series were sequential, not randomized or load-isolated.",
+      "Forced builds are single observations. Large recipe-duration variation is not explained by the directory cache; do not attribute the entire forced-build difference to it.",
+      "No full 64-theme performance or equivalence rerun; earlier full-output evidence predates this change.",
+      "The committed demo now uses @jobs(1), selected from the after-series concurrency comparison; raw -j2 measurements used the prior @jobs(2).",
+      "Alternating independent no-op replication showed a smaller gain than the initial series; retain both rather than treating the initial difference as a universal speedup."
+    ],
+    "renderer_jobs_selected": 1,
+    "before": [
+      {
+        "name": "warm",
+        "seconds": 11.233354682975914,
+        "exit": 0,
+        "tree": [
+          {
+            "seconds": 0.265741,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.089995,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001331,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001268,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.090243,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.019358,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.002729,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.016899,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.012352,
+            "path": "/tmp/need-68-demo/pngs/.need-tmp-dir-0-3735870-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.002503,
+            "path": "/tmp/need-68-demo/hl/.need-tmp-dir-0-3735870-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.015992,
+            "path": "/tmp/need-68-demo/dist/.need-tmp-dir-0-3735870-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001877,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.110042,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001635,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.096538,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.011404,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.00229,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.013278,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.08115,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001246,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.001161,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.081999,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.017393,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.002352,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.013597,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.016172,
+            "path": "/tmp/need-68-demo/pngs/.need-tmp-dir-1-3735870-catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.003429,
+            "path": "/tmp/need-68-demo/hl/.need-tmp-dir-1-3735870-catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.017537,
+            "path": "/tmp/need-68-demo/dist/.need-tmp-dir-1-3735870-catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.001219,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.079894,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001205,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.080521,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.011387,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.002297,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.01321,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-mauve-cursors"
+          }
+        ],
+        "recipe": [
+          {
+            "seconds": 4.676153,
+            "path": "pngs/catppuccin-mocha-blue-cursors hl/catppuccin-mocha-blue-cursors dist/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 4.827112,
+            "path": "pngs/catppuccin-mocha-mauve-cursors hl/catppuccin-mocha-mauve-cursors dist/catppuccin-mocha-mauve-cursors"
+          }
+        ]
+      },
+      {
+        "name": "noop",
+        "seconds": 0.7190196869778447,
+        "exit": 0,
+        "tree": [
+          {
+            "seconds": 0.146461,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.081221,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001213,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001155,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.081739,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.012391,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.002332,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.013407,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          }
+        ],
+        "recipe": []
+      },
+      {
+        "name": "noop",
+        "seconds": 0.6499502660008147,
+        "exit": 0,
+        "tree": [
+          {
+            "seconds": 0.079822,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.079639,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001201,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001126,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.079086,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.011627,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.002315,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.013337,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          }
+        ],
+        "recipe": []
+      },
+      {
+        "name": "noop",
+        "seconds": 0.7585906370077282,
+        "exit": 0,
+        "tree": [
+          {
+            "seconds": 0.158814,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.082815,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001242,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001209,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.081881,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.011577,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.002309,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.013249,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          }
+        ],
+        "recipe": []
+      },
+      {
+        "name": "force-one",
+        "seconds": 5.9976043599890545,
+        "exit": 0,
+        "tree": [
+          {
+            "seconds": 0.123184,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.080288,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001222,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001144,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.082693,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.011528,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.002318,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.01383,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.018437,
+            "path": "/tmp/need-68-demo/pngs/.need-tmp-dir-0-3737268-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.003624,
+            "path": "/tmp/need-68-demo/hl/.need-tmp-dir-0-3737268-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.016399,
+            "path": "/tmp/need-68-demo/dist/.need-tmp-dir-0-3737268-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001322,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.092864,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001372,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.098392,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.016179,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.003766,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.021411,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          }
+        ],
+        "recipe": [
+          {
+            "seconds": 4.996987,
+            "path": "pngs/catppuccin-mocha-blue-cursors hl/catppuccin-mocha-blue-cursors dist/catppuccin-mocha-blue-cursors"
+          }
+        ]
+      },
+      {
+        "name": "force-two-j1",
+        "seconds": 15.206979991984554,
+        "exit": 0,
+        "tree": [
+          {
+            "seconds": 0.099295,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.089196,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001376,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001277,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.09731,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.014393,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.00266,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.015494,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.0187,
+            "path": "/tmp/need-68-demo/pngs/.need-tmp-dir-0-3738191-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.003708,
+            "path": "/tmp/need-68-demo/hl/.need-tmp-dir-0-3738191-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.014563,
+            "path": "/tmp/need-68-demo/dist/.need-tmp-dir-0-3738191-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001204,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.083509,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001269,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.080117,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.011373,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.002285,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.013262,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.080271,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001311,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.001163,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.082774,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.011374,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.002307,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.013272,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.022891,
+            "path": "/tmp/need-68-demo/pngs/.need-tmp-dir-1-3738191-catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.004704,
+            "path": "/tmp/need-68-demo/hl/.need-tmp-dir-1-3738191-catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.025674,
+            "path": "/tmp/need-68-demo/dist/.need-tmp-dir-1-3738191-catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.002145,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.09398,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001924,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.105614,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.012982,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.002556,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.014804,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-mauve-cursors"
+          }
+        ],
+        "recipe": [
+          {
+            "seconds": 8.705659,
+            "path": "pngs/catppuccin-mocha-blue-cursors hl/catppuccin-mocha-blue-cursors dist/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 5.029817,
+            "path": "pngs/catppuccin-mocha-mauve-cursors hl/catppuccin-mocha-mauve-cursors dist/catppuccin-mocha-mauve-cursors"
+          }
+        ]
+      },
+      {
+        "name": "force-two-j2",
+        "seconds": 20.240767995011993,
+        "exit": 0,
+        "tree": [
+          {
+            "seconds": 0.201098,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.205575,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.089731,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001309,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.001233,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.088232,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001318,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001242,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.084294,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.084294,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.012454,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.014023,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.00246,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.002493,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.015099,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.015557,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.0152,
+            "path": "/tmp/need-68-demo/pngs/.need-tmp-dir-1-3740231-catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.002628,
+            "path": "/tmp/need-68-demo/hl/.need-tmp-dir-1-3740231-catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.015315,
+            "path": "/tmp/need-68-demo/dist/.need-tmp-dir-1-3740231-catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.001297,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.013876,
+            "path": "/tmp/need-68-demo/pngs/.need-tmp-dir-0-3740231-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.002599,
+            "path": "/tmp/need-68-demo/hl/.need-tmp-dir-0-3740231-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.016115,
+            "path": "/tmp/need-68-demo/dist/.need-tmp-dir-0-3740231-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.00133,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.092533,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001349,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.088508,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.00129,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.107707,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.012261,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.002451,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.014325,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.084821,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.011771,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.002335,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.01345,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          }
+        ],
+        "recipe": [
+          {
+            "seconds": 19.08826,
+            "path": "pngs/catppuccin-mocha-mauve-cursors hl/catppuccin-mocha-mauve-cursors dist/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 19.18032,
+            "path": "pngs/catppuccin-mocha-blue-cursors hl/catppuccin-mocha-blue-cursors dist/catppuccin-mocha-blue-cursors"
+          }
+        ]
+      }
+    ],
+    "after": [
+      {
+        "name": "warm",
+        "seconds": 0.7193698789924383,
+        "exit": 0,
+        "tree": [
+          {
+            "seconds": 0.106134,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.060338,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001577,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.000858,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.060213,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.017091,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.002943,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.012835,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.058576,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001503,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.000768,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.055906,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.015205,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.002687,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.012255,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-mauve-cursors"
+          }
+        ],
+        "recipe": []
+      },
+      {
+        "name": "noop",
+        "seconds": 0.5108372030081227,
+        "exit": 0,
+        "tree": [
+          {
+            "seconds": 0.05737,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.056712,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.000736,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.000709,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.055768,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.014214,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.002722,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.005899,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          }
+        ],
+        "recipe": []
+      },
+      {
+        "name": "noop",
+        "seconds": 0.4264429220347665,
+        "exit": 0,
+        "tree": [
+          {
+            "seconds": 0.051051,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.044135,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.000609,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.000586,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.044284,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.00954,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001713,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.003737,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          }
+        ],
+        "recipe": []
+      },
+      {
+        "name": "noop",
+        "seconds": 0.4105336890206672,
+        "exit": 0,
+        "tree": [
+          {
+            "seconds": 0.048053,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.047335,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.00062,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.000587,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.046243,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.009212,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001746,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.003659,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          }
+        ],
+        "recipe": []
+      },
+      {
+        "name": "force-one",
+        "seconds": 3.138378318049945,
+        "exit": 0,
+        "tree": [
+          {
+            "seconds": 0.050746,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.048434,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.000618,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.000623,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.046298,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.00972,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001845,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.003754,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.009014,
+            "path": "/tmp/need-68-demo/pngs/.need-tmp-dir-0-3750148-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001897,
+            "path": "/tmp/need-68-demo/hl/.need-tmp-dir-0-3750148-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.009352,
+            "path": "/tmp/need-68-demo/dist/.need-tmp-dir-0-3750148-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001329,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.083388,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.000653,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.048037,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.015324,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.002637,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.01063,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          }
+        ],
+        "recipe": [
+          {
+            "seconds": 2.533648,
+            "path": "pngs/catppuccin-mocha-blue-cursors hl/catppuccin-mocha-blue-cursors dist/catppuccin-mocha-blue-cursors"
+          }
+        ]
+      },
+      {
+        "name": "force-two-j1",
+        "seconds": 7.615190070006065,
+        "exit": 0,
+        "tree": [
+          {
+            "seconds": 0.048235,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.049304,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.00063,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.000616,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.04737,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.009491,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001752,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.003679,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.007956,
+            "path": "/tmp/need-68-demo/pngs/.need-tmp-dir-0-3750812-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001521,
+            "path": "/tmp/need-68-demo/hl/.need-tmp-dir-0-3750812-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.009283,
+            "path": "/tmp/need-68-demo/dist/.need-tmp-dir-0-3750812-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001245,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.099109,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.000734,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.053969,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.018761,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.003998,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.013899,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.055659,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.000653,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.00061,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.047025,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.008179,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.001624,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.003683,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.007739,
+            "path": "/tmp/need-68-demo/pngs/.need-tmp-dir-1-3750812-catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.001494,
+            "path": "/tmp/need-68-demo/hl/.need-tmp-dir-1-3750812-catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.009085,
+            "path": "/tmp/need-68-demo/dist/.need-tmp-dir-1-3750812-catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.001235,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.082129,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.000682,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.05178,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.013226,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.002247,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.010611,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-mauve-cursors"
+          }
+        ],
+        "recipe": [
+          {
+            "seconds": 3.91653,
+            "path": "pngs/catppuccin-mocha-blue-cursors hl/catppuccin-mocha-blue-cursors dist/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 2.753143,
+            "path": "pngs/catppuccin-mocha-mauve-cursors hl/catppuccin-mocha-mauve-cursors dist/catppuccin-mocha-mauve-cursors"
+          }
+        ]
+      },
+      {
+        "name": "force-two-j2",
+        "seconds": 17.775565904041287,
+        "exit": 0,
+        "tree": [
+          {
+            "seconds": 0.047044,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.067288,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.06747,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.000629,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.000627,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.000692,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.000691,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.047715,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.047531,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.009731,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.00985,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.001807,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001764,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.003953,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.003909,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.010768,
+            "path": "/tmp/need-68-demo/pngs/.need-tmp-dir-1-3752331-catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.002479,
+            "path": "/tmp/need-68-demo/hl/.need-tmp-dir-1-3752331-catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.011327,
+            "path": "/tmp/need-68-demo/dist/.need-tmp-dir-1-3752331-catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.001545,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.007825,
+            "path": "/tmp/need-68-demo/pngs/.need-tmp-dir-0-3752331-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001561,
+            "path": "/tmp/need-68-demo/hl/.need-tmp-dir-0-3752331-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.009625,
+            "path": "/tmp/need-68-demo/dist/.need-tmp-dir-0-3752331-catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.001251,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.097614,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001051,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.090965,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.001131,
+            "path": "/tmp/need-68-demo/svgs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.074697,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.020608,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.003637,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.01639,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 0.057849,
+            "path": "/tmp/need-68-demo/generated"
+          },
+          {
+            "seconds": 0.017825,
+            "path": "/tmp/need-68-demo/pngs/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.003287,
+            "path": "/tmp/need-68-demo/hl/catppuccin-mocha-blue-cursors"
+          },
+          {
+            "seconds": 0.015713,
+            "path": "/tmp/need-68-demo/dist/catppuccin-mocha-blue-cursors"
+          }
+        ],
+        "recipe": [
+          {
+            "seconds": 17.020853,
+            "path": "pngs/catppuccin-mocha-mauve-cursors hl/catppuccin-mocha-mauve-cursors dist/catppuccin-mocha-mauve-cursors"
+          },
+          {
+            "seconds": 17.106791,
+            "path": "pngs/catppuccin-mocha-blue-cursors hl/catppuccin-mocha-blue-cursors dist/catppuccin-mocha-blue-cursors"
+          }
+        ]
+      }
+    ],
+    "independent_noop_replication": {
+      "method": "Same fixture and profiling binaries; alternating B/A/B/A phases, four requests each, first request of each phase excluded as warm-up; six measured requests per binary. Supplied by independent reviewer.",
+      "raw": [
+        {
+          "phase": "before-repeat",
+          "trial": 0,
+          "warmup": true,
+          "seconds": 0.6991758230142295,
+          "directory_seconds": 0.306384
+        },
+        {
+          "phase": "before-repeat",
+          "trial": 1,
+          "warmup": false,
+          "seconds": 0.49930389202199876,
+          "directory_seconds": 0.211098
+        },
+        {
+          "phase": "before-repeat",
+          "trial": 2,
+          "warmup": false,
+          "seconds": 0.49618441704660654,
+          "directory_seconds": 0.215477
+        },
+        {
+          "phase": "before-repeat",
+          "trial": 3,
+          "warmup": false,
+          "seconds": 0.48468154604779556,
+          "directory_seconds": 0.199486
+        },
+        {
+          "phase": "after-repeat",
+          "trial": 0,
+          "warmup": true,
+          "seconds": 0.5080122129875235,
+          "directory_seconds": 0.23266799999999999
+        },
+        {
+          "phase": "after-repeat",
+          "trial": 1,
+          "warmup": false,
+          "seconds": 0.4373201699927449,
+          "directory_seconds": 0.162328
+        },
+        {
+          "phase": "after-repeat",
+          "trial": 2,
+          "warmup": false,
+          "seconds": 0.528138316993136,
+          "directory_seconds": 0.180419
+        },
+        {
+          "phase": "after-repeat",
+          "trial": 3,
+          "warmup": false,
+          "seconds": 0.4940121740219183,
+          "directory_seconds": 0.163805
+        },
+        {
+          "phase": "before-repeat-2",
+          "trial": 0,
+          "warmup": true,
+          "seconds": 0.45814713096478954,
+          "directory_seconds": 0.191657
+        },
+        {
+          "phase": "before-repeat-2",
+          "trial": 1,
+          "warmup": false,
+          "seconds": 0.45896995603106916,
+          "directory_seconds": 0.19503199999999998
+        },
+        {
+          "phase": "before-repeat-2",
+          "trial": 2,
+          "warmup": false,
+          "seconds": 0.4514805609942414,
+          "directory_seconds": 0.19129100000000002
+        },
+        {
+          "phase": "before-repeat-2",
+          "trial": 3,
+          "warmup": false,
+          "seconds": 0.45050119498046115,
+          "directory_seconds": 0.195567
+        },
+        {
+          "phase": "after-repeat-2",
+          "trial": 0,
+          "warmup": true,
+          "seconds": 0.4806771780131385,
+          "directory_seconds": 0.213752
+        },
+        {
+          "phase": "after-repeat-2",
+          "trial": 1,
+          "warmup": false,
+          "seconds": 0.4138999650022015,
+          "directory_seconds": 0.160227
+        },
+        {
+          "phase": "after-repeat-2",
+          "trial": 2,
+          "warmup": false,
+          "seconds": 0.4185501799802296,
+          "directory_seconds": 0.160425
+        },
+        {
+          "phase": "after-repeat-2",
+          "trial": 3,
+          "warmup": false,
+          "seconds": 0.4122005159733817,
+          "directory_seconds": 0.153232
+        }
+      ],
+      "summary": {
+        "before": {
+          "seconds": 0.47182575103943236,
+          "directory_seconds": 0.1975265
+        },
+        "after": {
+          "seconds": 0.42793517498648725,
+          "directory_seconds": 0.1613765
+        }
+      }
+    },
+    "independent_sigterm_probe": {
+      "source": "Independent reviewer report",
+      "scenario": "Two roots share one cold atomic directory dependency; SIGTERM during shared recipe.",
+      "recipe_count": 1,
+      "all_workers_exited_within_seconds": 5,
+      "published_roots": false,
+      "published_state": false
+    },
+    "demo_patch_validation": {
+      "integration_patch": {
+        "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+        "sha256": "b72b9cd4b229c04f0d7b50932bde9beb7a9842efd3db0b2b0e1cfbfad64a4f04",
+        "applied_to_pristine": true,
+        "ledger_reproduced": true,
+        "git_numstat_verified": true,
+        "patch_drift_rejected": true
+      },
+      "mappings": {
+        "themes": 64,
+        "roots": [
+          "svgs",
+          "pngs",
+          "hl",
+          "dist"
+        ],
+        "dry_run_only": true
+      },
+      "ledger_matches_previous": true
+    }
   }
 }

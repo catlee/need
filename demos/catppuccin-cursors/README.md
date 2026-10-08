@@ -14,13 +14,15 @@ This excerpt shows the output destinations; the patch contains the complete help
 
 ```make
 @atomic
-@jobs(2)
+@jobs(1)
 pngs/%/ hl/%/ dist/%/: svgs/%/ generated/
   set -eu
   scripts/build-cursors svgs/{{stem}} {{out[0]}} {{out[1]}} {{out[2]}}
   cp AUTHORS LICENSE svgs/{{stem}}/index.theme generated/hl/{{stem}}/manifest.hl {{out[2]}}/
   cp generated/hl/{{stem}}/manifest.hl {{out[1]}}/
 ```
+
+The demo limits renderer instances to one: two overlapping renderers were slower in the focused measurements on this machine. SVG copying and packaging can still use the existing parallel requests. Re-measure before raising that limit on another machine.
 
 Requesting any root builds the whole group once. All three staging trees are validated before publication. A failed or interrupted generator leaves the previous roots intact; each successful root replacement is atomic separately.
 

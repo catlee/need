@@ -273,6 +273,10 @@ backslash-newline continuations. The attribute must be nonempty and appear only
 once per rule.
 
 Use `@jobs(N)` to limit concurrent instances of a rule to positive integer `N`.
+Parallel workers build shared output groups once per invocation and share the
+completed state or failure. `--force` rebuilds each requested group once, even
+when a dependency worker reaches its static or remembered dynamic alias first.
+
 The global `-j`/`--jobs` setting remains the overall ceiling; the attribute
 only affects scheduling and does not change freshness signatures.
 
@@ -325,6 +329,13 @@ project root, `.need` trees, or symlinked parents.
 Preexisting file/symlink roots are rejected; a real unrecorded directory may be
 replaced. Fingerprints include contents, empty directories, Unix permissions,
 and raw symlink targets, without following links. Unsupported entry types fail.
+Normal directory dependency and output checks enumerate every entry and reuse
+metadata-assisted regular-file hashes. Raw paths and link targets stay lossless;
+pre-epoch timestamps fall back to fresh reads. Staging, post-recipe inputs, and
+immediate publication checks read contents freshly, and publication refreshes
+the cache. On Unix, file identity and change time also prevent reuse after
+replacements preserving size and mtime.
+
 `need clean --outputs-only` recursively removes explicitly recorded directory
 roots without following symlinks; legacy file records cannot authorize this.
 

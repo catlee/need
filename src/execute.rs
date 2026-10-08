@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, ExitStatus},
     sync::{
-        Mutex,
+        Condvar, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,
@@ -27,7 +27,7 @@ use crate::{
     parser::{canonical_exclusions, norm_rel},
 };
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum BuildError {
     Message(String),
     DependencyCycle(Vec<ProjectPath>),
@@ -70,6 +70,55 @@ impl From<&str> for BuildError {
 }
 
 type BuildResult<T> = std::result::Result<T, BuildError>;
+
+type GroupResult = BuildResult<Option<SavedRule>>;
+
+#[derive(Default)]
+pub(crate) struct GroupBuilds {
+    results: Mutex<HashMap<String, Option<GroupResult>>>,
+    ready: Condvar,
+}
+
+impl GroupBuilds {
+    pub(crate) fn run(&self, key: &str, execute: impl FnOnce() -> GroupResult) -> GroupResult {
+        let mut results = self
+            .results
+            .lock()
+            .map_err(|_| "group build cache poisoned")?;
+        loop {
+            match results.get(key) {
+                Some(Some(result)) => return result.clone(),
+                Some(None) => {
+                    if interrupted() {
+                        return Err("build interrupted while waiting for an output group\nhelp: rerun the build".into());
+                    }
+                    results = self
+                        .ready
+                        .wait_timeout(results, Duration::from_millis(50))
+                        .map_err(|_| "group build cache poisoned")?
+                        .0;
+                }
+                None => {
+                    results.insert(key.to_owned(), None);
+                    break;
+                }
+            }
+        }
+        drop(results);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(execute))
+            .unwrap_or_else(|_| {
+                Err(BuildError::from(
+                    "output group worker panicked\nhelp: rerun the build and report the panic",
+                ))
+            });
+        self.results
+            .lock()
+            .map_err(|_| "group build cache poisoned")?
+            .insert(key.to_owned(), Some(result.clone()));
+        self.ready.notify_all();
+        result
+    }
+}
 
 #[cfg(unix)]
 static INTERRUPTED: std::sync::OnceLock<std::sync::Arc<AtomicBool>> = std::sync::OnceLock::new();
@@ -182,6 +231,14 @@ pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> Bui
 }
 
 pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildResult<()> {
+    c.session.groups = Some(std::sync::Arc::new(GroupBuilds::default()));
+    let result = build_targets_inner(c, targets);
+    c.session.groups = None;
+    result
+}
+
+fn build_targets_inner(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildResult<()> {
+    c.session.requested.clear();
     c.session.requested.extend(targets.iter().cloned());
     if crate::directory::has_directory_ownership(c) {
         for target in targets {
@@ -196,8 +253,8 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildR
             }
         }
     }
+    c.session.requested_groups.clear();
     let mut unique_targets = Vec::new();
-    let mut groups = HashSet::new();
     for target in targets {
         let group = select_rule(c, target.as_str())
             .map(|selection| match selection {
@@ -205,7 +262,7 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildR
                 TargetMatch::Rule { outputs, .. } => group_key(&outputs),
             })
             .unwrap_or_else(|_| target.to_string());
-        if groups.insert(group) {
+        if c.session.requested_groups.insert(group) {
             unique_targets.push(target.clone());
         }
     }
@@ -241,6 +298,7 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildR
         })?;
         for (child, result) in results {
             result?;
+            merge_hashes(c, &base, &child);
             for (key, saved) in child.session.state.rules {
                 if base.session.state.rules.get(&key) != Some(&saved) {
                     c.session.state.rules.insert(key, saved);
@@ -404,7 +462,7 @@ pub(crate) fn build_inner(
                 if let Some(saved) = child.session.state.rules.get(&group) {
                     c.session.state.rules.insert(group, saved.clone());
                 }
-                c.session.state.hashes.extend(child.session.state.hashes);
+                merge_hashes(c, &base, &child);
                 c.session.cargo_deps.extend(child.session.cargo_deps);
                 c.session.cargo_env.extend(child.session.cargo_env);
                 c.session.built.extend(child.session.built);
@@ -456,298 +514,324 @@ pub(crate) fn build_inner(
             }
         }
     }
-    let recipe = interpolate(
-        &rule.recipe,
-        &inputs,
-        &outputs,
-        stem.as_deref(),
-        &c.project.vars,
-        &c.project.env_values,
-    )?;
-    let signature_deps = signature_dependencies(c, &deps)?;
-    let sig = input_signature(c, &rule, &recipe, &signature_deps)?;
-    let manifest = rule.options.outputs.clone();
-    let mut reasons = Vec::new();
-    if force {
-        reasons.push("forced rebuild".to_owned());
-    }
-    if saved.is_none() {
-        reasons.push("build state missing".to_owned());
-    } else if saved.as_ref().is_some_and(|x| x.signature != sig) {
-        reasons.push("recipe or dependency signature changed".to_owned());
-    }
-    let mut outsig = BTreeMap::new();
-    let known_dynamic = saved.as_ref().map_or(&[][..], |saved| &saved.dynamic);
-    for o in outputs.iter().chain(known_dynamic) {
-        let p = abs(c, o);
-        if rule.kind == OutputKind::Directory && p.is_dir() {
-            let h = crate::hash::hash_directory(&p)?;
-            if saved
-                .as_ref()
-                .is_some_and(|saved| saved.kind != rule.kind || saved.outputs.get(o) != Some(&h))
-            {
-                reasons.push(format!("output changed: {o}"));
-            }
-            outsig.insert(o.clone(), h);
-        } else if p.is_file() && rule.kind == OutputKind::File {
-            let h = cached_file_hash(c, &p)?;
-            if rule.options.allow_missing
-                && saved
+    // Resolve dependencies before claiming a group to keep recursive graph walks out of waits.
+    let groups = c.session.groups.clone();
+    let force = force || (c.options.force && c.session.requested_groups.contains(&key));
+    let execute = || {
+        let recipe = interpolate(
+            &rule.recipe,
+            &inputs,
+            &outputs,
+            stem.as_deref(),
+            &c.project.vars,
+            &c.project.env_values,
+        )?;
+        let signature_deps = signature_dependencies(c, &deps)?;
+        let sig = input_signature(c, &rule, &recipe, &signature_deps)?;
+        let manifest = rule.options.outputs.clone();
+        let mut reasons = Vec::new();
+        if force {
+            reasons.push("forced rebuild".to_owned());
+        }
+        if saved.is_none() {
+            reasons.push("build state missing".to_owned());
+        } else if saved.as_ref().is_some_and(|x| x.signature != sig) {
+            reasons.push("recipe or dependency signature changed".to_owned());
+        }
+        let mut outsig = BTreeMap::new();
+        let known_dynamic = saved.as_ref().map_or(&[][..], |saved| &saved.dynamic);
+        for o in outputs.iter().chain(known_dynamic) {
+            let p = abs(c, o);
+            if rule.kind == OutputKind::Directory && p.is_dir() {
+                let h = cached_directory_hash(c, &p)?;
+                if saved.as_ref().is_some_and(|saved| {
+                    saved.kind != rule.kind || saved.outputs.get(o) != Some(&h)
+                }) {
+                    reasons.push(format!("output changed: {o}"));
+                }
+                outsig.insert(o.clone(), h);
+            } else if p.is_file() && rule.kind == OutputKind::File {
+                let h = cached_file_hash(c, &p)?;
+                if rule.options.allow_missing
+                    && saved
+                        .as_ref()
+                        .is_some_and(|saved| saved.missing.contains(o))
+                {
+                    reasons.push(format!("output appeared: {o}"));
+                } else if saved.is_some()
+                    && saved.as_ref().and_then(|x| x.outputs.get(o)) != Some(&h)
+                {
+                    reasons.push(format!("output changed: {o}"));
+                }
+                outsig.insert(o.clone(), h);
+            } else if !rule.options.allow_missing
+                || !saved
                     .as_ref()
                     .is_some_and(|saved| saved.missing.contains(o))
             {
-                reasons.push(format!("output appeared: {o}"));
-            } else if saved.is_some() && saved.as_ref().and_then(|x| x.outputs.get(o)) != Some(&h) {
-                reasons.push(format!("output changed: {o}"));
-            }
-            outsig.insert(o.clone(), h);
-        } else if !rule.options.allow_missing
-            || !saved
-                .as_ref()
-                .is_some_and(|saved| saved.missing.contains(o))
-        {
-            reasons.push(format!("output missing: {o}"));
-        }
-    }
-    if let Some(path) = &manifest {
-        let manifest_state = saved.as_ref().and_then(|saved| saved.manifest.as_ref());
-        let p = abs(c, path);
-        if !p.is_file() {
-            reasons.push(format!("output manifest missing: {path}"));
-        } else if saved.is_some()
-            && manifest_state.is_none_or(|saved| {
-                saved.path.as_str() != path.as_str()
-                    || cached_file_hash(c, &p).ok().as_deref() != Some(&saved.hash)
-            })
-        {
-            reasons.push(format!("output manifest changed: {path}"));
-        }
-    }
-    let depfile = rule
-        .options
-        .depfile
-        .as_ref()
-        .map(|path| resolve_depfile_path(path, rule.pattern, stem.as_deref()))
-        .transpose()?;
-    if let Some(path) = &depfile
-        && saved.is_some()
-        && !abs(c, path).is_file()
-    {
-        reasons.push(format!("depfile missing: {path}"));
-    }
-    if let Some(path) = &depfile
-        && saved.is_some()
-        && abs(c, path).is_file()
-    {
-        parse_depfile(c, path)?;
-    }
-    let stale = !reasons.is_empty();
-    if !stale {
-        if c.options.explain {
-            let outcome = saved
-                .as_ref()
-                .filter(|saved| !saved.missing.is_empty())
-                .map(|saved| {
-                    format!(
-                        "\n  current but absent: {}",
-                        saved
-                            .missing
-                            .iter()
-                            .map(ProjectPath::as_str)
-                            .collect::<Vec<_>>()
-                            .join(" ")
-                    )
-                })
-                .unwrap_or_default();
-            if c.options.cargo {
-                eprintln!("{key}\n  current{outcome}");
-            } else {
-                println!("{key}\n  current{outcome}");
+                reasons.push(format!("output missing: {o}"));
             }
         }
-        c.session.built.extend(outputs.iter().cloned());
-        c.session.built.extend(known_dynamic.iter().cloned());
-        return Ok(());
-    }
-    if c.options.explain {
-        let reasons = reasons
-            .iter()
-            .map(|reason| format!("  {reason}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        if c.options.cargo {
-            eprintln!("{key}\n  stale\n{reasons}");
-        } else {
-            println!("{key}\n  stale\n{reasons}");
-        }
-    }
-    c.session.work_needed.store(true, Ordering::Relaxed);
-    let recipe_outputs = if rule.options.atomic && !c.options.dry {
-        temporary_outputs(&outputs, rule.kind)?
-    } else {
-        outputs.clone()
-    };
-    let mut temporary_outputs = TemporaryOutputs::new(
-        c,
-        if rule.options.atomic && !c.options.dry {
-            recipe_outputs.clone()
-        } else {
-            Vec::new()
-        },
-    );
-    let mut previous_outputs = if rule.options.allow_missing && !c.options.dry {
-        PreviousOutputs::new(c, saved.as_ref(), &outputs)?
-    } else {
-        PreviousOutputs::default()
-    };
-    let mut missing = Vec::new();
-    let rendered = interpolate(
-        &rule.recipe,
-        &inputs,
-        &recipe_outputs,
-        stem.as_deref(),
-        &c.project.vars,
-        &c.project.env_values,
-    )?;
-    if c.options.dry {
-        status_line(c, "want", &key, "\x1b[36m");
-        if c.options.cargo {
-            eprintln!("{}", rendered);
-        } else {
-            println!("{}", rendered);
-        }
-        c.session.built.extend(outputs.iter().cloned());
-        return Ok(());
-    }
-    for o in &recipe_outputs {
-        if let Some(p) = abs(c, o).parent() {
-            fs::create_dir_all(p).map_err(|e| e.to_string())?
-        }
-    }
-    if let Some(path) = &manifest
-        && let Some(parent) = abs(c, path).parent()
-    {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    if rule.kind == OutputKind::Directory {
-        for output in &recipe_outputs {
-            let staging = abs(c, output);
-            fs::create_dir(&staging).map_err(|error| format!("could not create directory staging output {}: {error}\nhelp: check access to the output parent", staging.display()))?;
-        }
-    }
-    status_line(c, "need", &key, "\x1b[33m");
-    let mode = rule.options.output.unwrap_or(c.options.output);
-    run_recipe(c, &key, &rendered, mode)?;
-    for (output, recipe_output) in outputs.iter().zip(&recipe_outputs) {
-        if rule.kind == OutputKind::Directory {
-            crate::hash::hash_directory(&abs(c, recipe_output))?;
-        } else if !abs(c, recipe_output).is_file() {
-            if rule.options.allow_missing {
-                missing.push(output.clone());
-            } else {
-                return Err(format!("recipe did not produce {output}").into());
-            }
-        }
-    }
-    let dynamic = if let Some(path) = &manifest {
-        let dynamic = read_output_manifest(c, path.as_str())?;
-        validate_dynamic_outputs(c, &key, &outputs, &dynamic)
-            .map_err(|error| format!("{}: {error}", rule.source))?;
-        for output in &dynamic {
-            let p = abs(c, output);
+        if let Some(path) = &manifest {
+            let manifest_state = saved.as_ref().and_then(|saved| saved.manifest.as_ref());
+            let p = abs(c, path);
             if !p.is_file() {
-                return Err(format!(
+                reasons.push(format!("output manifest missing: {path}"));
+            } else if saved.is_some()
+                && manifest_state.is_none_or(|saved| {
+                    saved.path.as_str() != path.as_str()
+                        || cached_file_hash(c, &p).ok().as_deref() != Some(&saved.hash)
+                })
+            {
+                reasons.push(format!("output manifest changed: {path}"));
+            }
+        }
+        let depfile = rule
+            .options
+            .depfile
+            .as_ref()
+            .map(|path| resolve_depfile_path(path, rule.pattern, stem.as_deref()))
+            .transpose()?;
+        if let Some(path) = &depfile
+            && saved.is_some()
+            && !abs(c, path).is_file()
+        {
+            reasons.push(format!("depfile missing: {path}"));
+        }
+        if let Some(path) = &depfile
+            && saved.is_some()
+            && abs(c, path).is_file()
+        {
+            parse_depfile(c, path)?;
+        }
+        let stale = !reasons.is_empty();
+        if !stale {
+            if c.options.explain {
+                let outcome = saved
+                    .as_ref()
+                    .filter(|saved| !saved.missing.is_empty())
+                    .map(|saved| {
+                        format!(
+                            "\n  current but absent: {}",
+                            saved
+                                .missing
+                                .iter()
+                                .map(ProjectPath::as_str)
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        )
+                    })
+                    .unwrap_or_default();
+                if c.options.cargo {
+                    eprintln!("{key}\n  current{outcome}");
+                } else {
+                    println!("{key}\n  current{outcome}");
+                }
+            }
+            return Ok(c.session.state.rules.get(&key).cloned());
+        }
+        if c.options.explain {
+            let reasons = reasons
+                .iter()
+                .map(|reason| format!("  {reason}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            if c.options.cargo {
+                eprintln!("{key}\n  stale\n{reasons}");
+            } else {
+                println!("{key}\n  stale\n{reasons}");
+            }
+        }
+        c.session.work_needed.store(true, Ordering::Relaxed);
+        let recipe_outputs = if rule.options.atomic && !c.options.dry {
+            temporary_outputs(&outputs, rule.kind)?
+        } else {
+            outputs.clone()
+        };
+        let mut temporary_outputs = TemporaryOutputs::new(
+            c,
+            if rule.options.atomic && !c.options.dry {
+                recipe_outputs.clone()
+            } else {
+                Vec::new()
+            },
+        );
+        let mut previous_outputs = if rule.options.allow_missing && !c.options.dry {
+            PreviousOutputs::new(c, saved.as_ref(), &outputs)?
+        } else {
+            PreviousOutputs::default()
+        };
+        let mut missing = Vec::new();
+        let rendered = interpolate(
+            &rule.recipe,
+            &inputs,
+            &recipe_outputs,
+            stem.as_deref(),
+            &c.project.vars,
+            &c.project.env_values,
+        )?;
+        if c.options.dry {
+            status_line(c, "want", &key, "\x1b[36m");
+            if c.options.cargo {
+                eprintln!("{}", rendered);
+            } else {
+                println!("{}", rendered);
+            }
+            return Ok(c.session.state.rules.get(&key).cloned());
+        }
+        for o in &recipe_outputs {
+            if let Some(p) = abs(c, o).parent() {
+                fs::create_dir_all(p).map_err(|e| e.to_string())?
+            }
+        }
+        if let Some(path) = &manifest
+            && let Some(parent) = abs(c, path).parent()
+        {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        if rule.kind == OutputKind::Directory {
+            for output in &recipe_outputs {
+                let staging = abs(c, output);
+                fs::create_dir(&staging).map_err(|error| format!("could not create directory staging output {}: {error}\nhelp: check access to the output parent", staging.display()))?;
+            }
+        }
+        status_line(c, "need", &key, "\x1b[33m");
+        let mode = rule.options.output.unwrap_or(c.options.output);
+        run_recipe(c, &key, &rendered, mode)?;
+        for (output, recipe_output) in outputs.iter().zip(&recipe_outputs) {
+            if rule.kind == OutputKind::Directory {
+                crate::hash::hash_directory(&abs(c, recipe_output))?;
+            } else if !abs(c, recipe_output).is_file() {
+                if rule.options.allow_missing {
+                    missing.push(output.clone());
+                } else {
+                    return Err(format!("recipe did not produce {output}").into());
+                }
+            }
+        }
+        let dynamic = if let Some(path) = &manifest {
+            let dynamic = read_output_manifest(c, path.as_str())?;
+            validate_dynamic_outputs(c, &key, &outputs, &dynamic)
+                .map_err(|error| format!("{}: {error}", rule.source))?;
+            for output in &dynamic {
+                let p = abs(c, output);
+                if !p.is_file() {
+                    return Err(format!(
                     "output manifest {path} lists missing output {output}\nhelp: write every listed output before the recipe exits"
                 ).into());
+                }
             }
-        }
-        dynamic
-    } else {
-        Vec::new()
-    };
-    let discovered = if let Some(path) = &depfile {
-        parse_depfile(c, path)?.into_iter().collect::<Vec<_>>()
-    } else {
-        Vec::new()
-    };
-    let post_signature_deps = signature_dependencies(c, &deps)?;
-    let post_sig = input_signature(c, &rule, &recipe, &post_signature_deps)?;
-    if post_sig != sig {
-        return Err(format!(
+            dynamic
+        } else {
+            Vec::new()
+        };
+        let discovered = if let Some(path) = &depfile {
+            parse_depfile(c, path)?.into_iter().collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let post_signature_deps = signature_dependencies(c, &deps)?;
+        c.session.fresh_hashes = true;
+        let post_sig = input_signature(c, &rule, &recipe, &post_signature_deps);
+        c.session.fresh_hashes = false;
+        let post_sig = post_sig?;
+        if post_sig != sig {
+            return Err(format!(
             "inputs changed while building {}\nhelp: rerun the build after the inputs stop changing",
             display_key(&key)
         )
         .into());
-    }
-    if interrupted() {
-        return Err(format!(
-            "build interrupted before publishing {}\nhelp: rerun the build",
-            display_key(&key)
-        )
-        .into());
-    }
-    if rule.kind == OutputKind::Directory {
-        crate::directory::register_outputs(c, &key, &outputs, rule.kind)
-            .map_err(|error| format!("{}: {error}", rule.source))?;
-        // Publication owns cleanup so a failed rollback can retain the old trees.
-        temporary_outputs.paths.clear();
-        crate::directory::publish(&c.project.root, &recipe_outputs, &outputs)
-            .map_err(|error| format!("{}: {error}", rule.source))?;
-    } else if rule.options.atomic {
-        publish_outputs(c, &recipe_outputs, &outputs, rule.options.allow_missing)?;
-    }
-    let mut saved_deps = deps;
-    saved_deps.extend(discovered.iter().cloned().map(Dependency::File));
-    let saved_signature_deps = signature_dependencies(c, &saved_deps)?;
-    let saved_sig = input_signature(c, &rule, &recipe, &saved_signature_deps)?;
-    for output in &outputs {
+        }
+        if interrupted() {
+            return Err(format!(
+                "build interrupted before publishing {}\nhelp: rerun the build",
+                display_key(&key)
+            )
+            .into());
+        }
         if rule.kind == OutputKind::Directory {
-            outsig.insert(
-                output.clone(),
-                crate::hash::hash_directory(&abs(c, output))?,
-            );
-        } else if abs(c, output).is_file() {
+            crate::directory::register_outputs(c, &key, &outputs, rule.kind)
+                .map_err(|error| format!("{}: {error}", rule.source))?;
+            // Publication owns cleanup so a failed rollback can retain the old trees.
+            temporary_outputs.paths.clear();
+            crate::directory::publish(&c.project.root, &recipe_outputs, &outputs)
+                .map_err(|error| format!("{}: {error}", rule.source))?;
+        } else if rule.options.atomic {
+            publish_outputs(c, &recipe_outputs, &outputs, rule.options.allow_missing)?;
+        }
+        let mut saved_deps = deps;
+        saved_deps.extend(discovered.iter().cloned().map(Dependency::File));
+        let saved_signature_deps = signature_dependencies(c, &saved_deps)?;
+        let saved_sig = input_signature(c, &rule, &recipe, &saved_signature_deps)?;
+        for output in &outputs {
+            if rule.kind == OutputKind::Directory {
+                outsig.insert(output.clone(), {
+                    c.session.fresh_hashes = true;
+                    let hash = cached_directory_hash(c, &abs(c, output));
+                    c.session.fresh_hashes = false;
+                    hash?
+                });
+            } else if abs(c, output).is_file() {
+                outsig.insert(output.clone(), cached_file_hash(c, &abs(c, output))?);
+            } else if rule.options.allow_missing {
+                missing.push(output.clone());
+            }
+        }
+        missing.sort();
+        missing.dedup();
+        for output in &dynamic {
             outsig.insert(output.clone(), cached_file_hash(c, &abs(c, output))?);
-        } else if rule.options.allow_missing {
-            missing.push(output.clone());
         }
-    }
-    missing.sort();
-    missing.dedup();
-    for output in &dynamic {
-        outsig.insert(output.clone(), cached_file_hash(c, &abs(c, output))?);
-    }
-    for output in known_dynamic
-        .iter()
-        .filter(|output| !dynamic.contains(*output))
-    {
-        let p = abs(c, output);
-        if fs::symlink_metadata(&p).is_ok() {
-            fs::remove_file(&p)
-                .map_err(|e| format!("could not remove obsolete dynamic output {output}: {e}"))?;
+        for output in known_dynamic
+            .iter()
+            .filter(|output| !dynamic.contains(*output))
+        {
+            let p = abs(c, output);
+            if fs::symlink_metadata(&p).is_ok() {
+                fs::remove_file(&p).map_err(|e| {
+                    format!("could not remove obsolete dynamic output {output}: {e}")
+                })?;
+            }
         }
+        status_line(c, "got", &key, "\x1b[32m");
+        let saved_manifest = manifest.as_ref().map(|path| SavedManifest {
+            path: path.clone(),
+            hash: cached_file_hash(c, &abs(c, path)).expect("validated output manifest"),
+        });
+        c.session.state.rules.insert(
+            key.clone(),
+            SavedRule {
+                kind: rule.kind,
+                signature: saved_sig,
+                outputs: outsig,
+                missing: missing.clone(),
+                dynamic: dynamic.clone(),
+                manifest: saved_manifest,
+                discovered,
+            },
+        );
+        previous_outputs.commit()?;
+        Ok(c.session.state.rules.get(&key).cloned())
+    };
+    let saved = if let Some(groups) = groups {
+        groups.run(&key, execute)?
+    } else {
+        execute()?
+    };
+    if let Some(saved) = saved {
+        c.session.built.extend(saved.dynamic.iter().cloned());
+        c.session.state.rules.insert(key, saved);
     }
-    status_line(c, "got", &key, "\x1b[32m");
-    let saved_manifest = manifest.as_ref().map(|path| SavedManifest {
-        path: path.clone(),
-        hash: cached_file_hash(c, &abs(c, path)).expect("validated output manifest"),
-    });
-    c.session.state.rules.insert(
-        key,
-        SavedRule {
-            kind: rule.kind,
-            signature: saved_sig,
-            outputs: outsig,
-            missing: missing.clone(),
-            dynamic: dynamic.clone(),
-            manifest: saved_manifest,
-            discovered,
-        },
-    );
-    previous_outputs.commit()?;
-    c.session.built.extend(outputs.iter().cloned());
-    c.session.built.extend(dynamic);
+    c.session.built.extend(outputs);
     Ok(())
+}
+
+fn merge_hashes(c: &mut BuildCtx, base: &BuildCtx, child: &BuildCtx) {
+    for (key, record) in &child.session.state.hashes {
+        if base.session.state.hashes.get(key) != Some(record) {
+            c.session.state.hashes.insert(key.clone(), record.clone());
+        }
+    }
 }
 
 fn temporary_outputs(outputs: &[ProjectPath], kind: OutputKind) -> Result<Vec<ProjectPath>> {
@@ -1821,7 +1905,7 @@ pub(crate) fn dependency_signature(c: &mut BuildCtx, dependency: &Dependency) ->
     {
         return match fs::symlink_metadata(&q) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok("MISSING".into()),
-            _ => crate::hash::hash_directory(&q),
+            _ => cached_directory_hash(c, &q),
         };
     }
     match fs::symlink_metadata(&q) {
@@ -1970,6 +2054,24 @@ fn cached_file_hash(c: &mut BuildCtx, path: &Path) -> Result<String> {
             path.display()
         ));
     }
+    regular_file_hash(c, path, &metadata)
+}
+
+fn cached_directory_hash(c: &mut BuildCtx, root: &Path) -> Result<String> {
+    crate::hash::hash_directory_with(root, |path| {
+        let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
+        if metadata
+            .modified()
+            .ok()
+            .is_none_or(|time| time < UNIX_EPOCH)
+        {
+            return hash_file(path);
+        }
+        regular_file_hash(c, path, &metadata)
+    })
+}
+
+fn regular_file_hash(c: &mut BuildCtx, path: &Path, metadata: &fs::Metadata) -> Result<String> {
     let modified = metadata.modified().map_err(|error| {
         format!(
             "could not read modification time for {}: {error}\nhelp: use a filesystem that provides file timestamps",
@@ -1985,11 +2087,34 @@ fn cached_file_hash(c: &mut BuildCtx, path: &Path) -> Result<String> {
             )
         })?
         .as_nanos();
-    let key = fs::canonicalize(path)
-        .unwrap_or_else(|_| path.to_path_buf())
-        .to_string_lossy()
-        .into_owned();
-    if let Some(record) = c.session.state.hashes.get(&key)
+    let canonical = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let key = match canonical.to_str() {
+        Some(path) => path.to_owned(),
+        None => format!(
+            "raw:{}",
+            canonical
+                .as_os_str()
+                .as_encoded_bytes()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        ),
+    };
+    #[cfg(unix)]
+    let identity = {
+        use std::os::unix::fs::MetadataExt;
+        Some([
+            metadata.dev(),
+            metadata.ino(),
+            metadata.ctime() as u64,
+            metadata.ctime_nsec() as u64,
+        ])
+    };
+    #[cfg(not(unix))]
+    let identity = None;
+    if !c.session.fresh_hashes
+        && let Some(record) = c.session.state.hashes.get(&key)
+        && record.identity == identity
         && record.size == metadata.len()
         && record.mtime_ns == mtime_ns
     {
@@ -2002,6 +2127,7 @@ fn cached_file_hash(c: &mut BuildCtx, path: &Path) -> Result<String> {
             size: metadata.len(),
             mtime_ns,
             blake3: blake3.clone(),
+            identity,
         },
     );
     Ok(blake3)

@@ -190,7 +190,7 @@ index 0000000..7f1494e
 +  cp -a generated/svgs/{{stem}}/. {{out}}
 +
 +@atomic
-+@jobs(2)
++@jobs(1)
 +pngs/%/ hl/%/ dist/%/: svgs/%/ generated/ scripts/build-cursors scripts/generate-metadata src/cursorList AUTHORS LICENSE default.nix requirements-need.txt source.lock env(CURSOR_FRAME_TIME) command(bash -o pipefail -c \\\\\\\'sha256sum -- \\\\\\\"$(command -v bash)\\\\\\\" \\\\\\\"$(command -v inkscape)\\\\\\\" \\\\\\\"$(command -v xcursorgen)\\\\\\\" \\\\\\\"$(command -v zip)\\\\\\\" \\\\\\\"$(command -v python3)\\\\\\\" | cut -d \\\\\\\" \\\\\\\" -f1\\\\\\\') command(python3 -c \\\\\\\'import hashlib; from pathlib import Path; from PySide6 import QtSvg; print(hashlib.sha256(Path(QtSvg.__file__).read_bytes()).hexdigest())\\\\\\\')
 +  set -eu
 +  scripts/build-cursors svgs/{{stem}} {{out[0]}} {{out[1]}} {{out[2]}}

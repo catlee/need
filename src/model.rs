@@ -176,6 +176,8 @@ pub(crate) struct HashRecord {
     pub(crate) size: u64,
     pub(crate) mtime_ns: u128,
     pub(crate) blake3: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) identity: Option<[u64; 4]>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
@@ -248,6 +250,9 @@ impl Jobs {
 #[derive(Clone, Default)]
 pub(crate) struct BuildSession {
     pub(crate) state: State,
+    pub(crate) groups: Option<Arc<crate::execute::GroupBuilds>>,
+    pub(crate) fresh_hashes: bool,
+    pub(crate) requested_groups: HashSet<String>,
     pub(crate) owners: Arc<Mutex<BTreeMap<ProjectPath, (String, OutputKind)>>>,
     pub(crate) directory_ownership: OnceLock<bool>,
     pub(crate) built: HashSet<ProjectPath>,

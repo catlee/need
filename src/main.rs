@@ -2840,6 +2840,303 @@ final: generated.txt generated/*
         fs::remove_dir_all(root).unwrap();
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn directory_cache_reuses_reads_and_preserves_entry_semantics() {
+        use std::os::unix::{
+            ffi::OsStringExt,
+            fs::{PermissionsExt, symlink},
+        };
+        let root = temp_project("directory-cache");
+        let tree = root.join("tree");
+        fs::create_dir(&tree).unwrap();
+        let raw = tree.join(std::ffi::OsString::from_vec(b"raw\xff".to_vec()));
+        let other = tree.join(std::ffi::OsString::from_vec(b"raw\xfe".to_vec()));
+        fs::write(&raw, "one").unwrap();
+        fs::write(&other, "two").unwrap();
+        let mut ctx = context(&root, "@atomic\ntree/:\n  true\n");
+        let dep = Dependency::File("tree".into());
+        let first = dependency_signature(&mut ctx, &dep).unwrap();
+        let reads = crate::hash::FILE_READS.with(|reads| reads.get());
+        assert_eq!(first, dependency_signature(&mut ctx, &dep).unwrap());
+        assert_eq!(reads, crate::hash::FILE_READS.with(|reads| reads.get()));
+        assert_eq!(ctx.session.state.hashes.len(), 2);
+        save_state(&root, &ctx.session.state).unwrap();
+        ctx.session.state = load_state(&root).unwrap();
+        assert_eq!(first, dependency_signature(&mut ctx, &dep).unwrap());
+        assert_eq!(reads, crate::hash::FILE_READS.with(|reads| reads.get()));
+
+        let old_time = fs::metadata(&raw).unwrap().modified().unwrap();
+        fs::write(&raw, "new").unwrap();
+        fs::File::open(&raw)
+            .unwrap()
+            .set_times(
+                fs::FileTimes::new().set_modified(old_time + std::time::Duration::from_secs(2)),
+            )
+            .unwrap();
+        let changed = dependency_signature(&mut ctx, &dep).unwrap();
+        assert_ne!(first, changed);
+        assert_eq!(changed, crate::hash::hash_directory(&tree).unwrap());
+        for change in 0..5 {
+            let before = dependency_signature(&mut ctx, &dep).unwrap();
+            match change {
+                0 => fs::create_dir(tree.join("empty")).unwrap(),
+                1 => fs::set_permissions(&raw, fs::Permissions::from_mode(0o600)).unwrap(),
+                2 => symlink(
+                    std::ffi::OsString::from_vec(b"target\xff".to_vec()),
+                    tree.join("link"),
+                )
+                .unwrap(),
+                3 => {
+                    fs::remove_file(tree.join("link")).unwrap();
+                    symlink(
+                        std::ffi::OsString::from_vec(b"target\xfe".to_vec()),
+                        tree.join("link"),
+                    )
+                    .unwrap();
+                }
+                _ => fs::remove_file(&other).unwrap(),
+            }
+            let after = dependency_signature(&mut ctx, &dep).unwrap();
+            assert_ne!(before, after);
+            assert_eq!(after, crate::hash::hash_directory(&tree).unwrap());
+        }
+        ctx.session.fresh_hashes = true;
+        let reads = crate::hash::FILE_READS.with(|reads| reads.get());
+        dependency_signature(&mut ctx, &dep).unwrap();
+        assert_eq!(reads + 1, crate::hash::FILE_READS.with(|reads| reads.get()));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn directory_cache_accepts_pre_epoch_files_and_metadata_preserving_replacements() {
+        let root = temp_project("directory-cache-replacement");
+        let tree = root.join("tree");
+        fs::create_dir(&tree).unwrap();
+        let path = tree.join("item");
+        fs::write(&path, "old").unwrap();
+        let mut ctx = context(&root, "@atomic\ntree/:\n  true\n");
+        let dep = Dependency::File("tree".into());
+        let first = dependency_signature(&mut ctx, &dep).unwrap();
+        let modified = fs::metadata(&path).unwrap().modified().unwrap();
+        let replacement = root.join("replacement");
+        fs::write(&replacement, "new").unwrap();
+        fs::File::open(&replacement)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        fs::rename(&replacement, &path).unwrap();
+        let replaced = dependency_signature(&mut ctx, &dep).unwrap();
+        assert_ne!(first, replaced);
+        assert_eq!(replaced, crate::hash::hash_directory(&tree).unwrap());
+        fs::File::open(&path)
+            .unwrap()
+            .set_times(
+                fs::FileTimes::new()
+                    .set_modified(std::time::UNIX_EPOCH - std::time::Duration::from_secs(2)),
+            )
+            .unwrap();
+        let reads = crate::hash::FILE_READS.with(|reads| reads.get());
+        assert_eq!(replaced, dependency_signature(&mut ctx, &dep).unwrap());
+        assert_eq!(replaced, dependency_signature(&mut ctx, &dep).unwrap());
+        assert_eq!(reads + 2, crate::hash::FILE_READS.with(|reads| reads.get()));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_publication_refreshes_preserved_metadata_cache_and_worker_merges() {
+        let root = temp_project("directory-publication-cache");
+        fs::write(root.join("source"), "old").unwrap();
+        let modified = fs::metadata(root.join("source"))
+            .unwrap()
+            .modified()
+            .unwrap();
+        let text = "@atomic\nshared/: source\n  cp -p source {{out}}/item\na: shared/\n  cp shared/item {{out}}\nb: shared/\n  cp shared/item {{out}}\n";
+        let targets = ["a", "b"].map(|s| ProjectPath::new(s).unwrap());
+        let mut ctx = context(&root, text);
+        ctx.options.jobs = Jobs::Limited(std::num::NonZeroUsize::new(2).unwrap());
+        build_targets(&mut ctx, &targets).unwrap();
+        assert!(
+            ctx.session
+                .state
+                .hashes
+                .contains_key(root.join("shared/item").to_str().unwrap())
+        );
+        let saved = ctx.session.state.clone();
+        fs::write(root.join("source"), "new").unwrap();
+        fs::File::open(root.join("source"))
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        let mut next = context(&root, text);
+        next.session.state = saved;
+        next.options.jobs = ctx.options.jobs;
+        build_targets(&mut next, &targets).unwrap();
+        assert_eq!(fs::read(root.join("a")).unwrap(), b"new");
+        assert_eq!(fs::read(root.join("b")).unwrap(), b"new");
+        let shared = ProjectPath::new("shared").unwrap();
+        assert_eq!(
+            next.session.state.rules["shared"].outputs[&shared],
+            crate::hash::hash_directory(&root.join("shared")).unwrap()
+        );
+        let mut current = context(&root, text);
+        assert_eq!(
+            next.session.state.hashes[root.join("shared/item").to_str().unwrap()].blake3,
+            hash_text("new")
+        );
+        current.session.state = next.session.state;
+        let reads = crate::hash::FILE_READS.with(|reads| reads.get());
+        build_targets(&mut current, &targets).unwrap();
+        assert_eq!(reads, crate::hash::FILE_READS.with(|reads| reads.get()));
+        assert!(!current.session.work_needed.load(Ordering::Relaxed));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn parallel_shared_cold_directory_succeeds_or_fails_once() {
+        for fail in [false, true] {
+            let root = temp_project("parallel-shared-directory");
+            let recipe = if fail { "exit 1" } else { "touch {{out}}/item" };
+            let text = format!(
+                "@atomic\nshared/:\n  echo run >> runs\n  sleep 0.1\n  {recipe}\n@atomic\na/: shared/\n  cp shared/item {{{{out}}}}/item\n@atomic\nb/: shared/\n  cp shared/item {{{{out}}}}/item\n"
+            );
+            let mut ctx = context(&root, &text);
+            ctx.options.jobs = Jobs::Limited(std::num::NonZeroUsize::new(2).unwrap());
+            let result = build_targets(
+                &mut ctx,
+                &[
+                    ProjectPath::new("a").unwrap(),
+                    ProjectPath::new("b").unwrap(),
+                ],
+            );
+            assert_eq!(result.is_err(), fail);
+            if let Err(error) = result {
+                assert!(error.to_string().contains("recipe failed"));
+                assert!(ctx.session.state.rules.is_empty());
+            } else {
+                assert_eq!(ctx.session.state.rules.len(), 3);
+            }
+            assert_eq!(fs::read_to_string(root.join("runs")).unwrap(), "run\n");
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn forced_requested_dependency_group_and_sibling_alias_run_once() {
+        for jobs in [
+            Jobs::default(),
+            Jobs::Limited(std::num::NonZeroUsize::new(2).unwrap()),
+        ] {
+            let root = temp_project("force-shared-alias");
+            let text = "shared sibling:\n  echo run >> runs\n  sleep 0.1\n  touch {{out}}\nparent: shared\n  cp shared {{out}}\n";
+            let mut initial = context(&root, text);
+            build(&mut initial, "parent", None).unwrap();
+            let mut ctx = context(&root, text);
+            ctx.session.state = initial.session.state;
+            ctx.options.force = true;
+            ctx.options.jobs = jobs;
+            build_targets(
+                &mut ctx,
+                &[
+                    ProjectPath::new("parent").unwrap(),
+                    ProjectPath::new("sibling").unwrap(),
+                ],
+            )
+            .unwrap();
+            assert_eq!(fs::read_to_string(root.join("runs")).unwrap(), "run\nrun\n");
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn parallel_shared_dynamic_state_and_discovered_dependencies_survive() {
+        let root = temp_project("shared-dynamic-state");
+        fs::write(root.join("input"), "old").unwrap();
+        let text = "@outputs-from(manifest)\n@depfile(shared.d)\nshared:\n  echo run >> runs\n  sleep 0.1\n  cp input {{out}}\n  cp input secondary\n  echo secondary > manifest\n  echo 'shared: input' > shared.d\na: shared\n  cp secondary {{out}}\nb: shared\n  cp secondary {{out}}\n";
+        let targets = ["a", "b"].map(|s| ProjectPath::new(s).unwrap());
+        let mut ctx = context(&root, text);
+        ctx.options.jobs = Jobs::Limited(std::num::NonZeroUsize::new(2).unwrap());
+        build_targets(&mut ctx, &targets).unwrap();
+        let saved = &ctx.session.state.rules["shared"];
+        assert_eq!(saved.discovered, ["input"]);
+        assert_eq!(saved.dynamic, [ProjectPath::new("secondary").unwrap()]);
+        assert!(saved.manifest.is_some());
+        fs::write(root.join("input"), "new").unwrap();
+        let mut next = context(&root, text);
+        next.session.state = ctx.session.state;
+        next.options.jobs = ctx.options.jobs;
+        build_targets(&mut next, &targets).unwrap();
+        for output in ["a", "b", "secondary"] {
+            assert_eq!(fs::read(root.join(output)).unwrap(), b"new");
+        }
+        assert_eq!(fs::read_to_string(root.join("runs")).unwrap(), "run\nrun\n");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn forced_requested_dynamic_dependency_runs_owner_once() {
+        for jobs in [
+            Jobs::default(),
+            Jobs::Limited(std::num::NonZeroUsize::new(2).unwrap()),
+        ] {
+            let root = temp_project("force-dynamic-alias");
+            let text = "@outputs-from(manifest)\nshared:\n  echo run >> runs\n  sleep 0.1\n  touch {{out}} secondary\n  echo secondary > manifest\nconsumer: shared\n  cp secondary {{out}}\n";
+            let mut initial = context(&root, text);
+            build(&mut initial, "consumer", None).unwrap();
+            let mut ctx = context(&root, text);
+            ctx.session.state = initial.session.state;
+            ctx.options.force = true;
+            ctx.options.jobs = jobs;
+            build_targets(
+                &mut ctx,
+                &[
+                    ProjectPath::new("consumer").unwrap(),
+                    ProjectPath::new("secondary").unwrap(),
+                ],
+            )
+            .unwrap();
+            assert_eq!(fs::read_to_string(root.join("runs")).unwrap(), "run\nrun\n");
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn shared_group_panic_wakes_waiters_and_never_retries() {
+        let groups = execute::GroupBuilds::default();
+        let (claimed_tx, claimed_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            let groups = &groups;
+            let owner = scope.spawn(move || {
+                groups.run("shared", || {
+                    claimed_tx.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                    panic!("test worker panic");
+                })
+            });
+            claimed_rx.recv().unwrap();
+            let waiter = scope.spawn(|| groups.run("shared", || panic!("waiter retried")));
+            release_tx.send(()).unwrap();
+            for result in [owner.join().unwrap(), waiter.join().unwrap()] {
+                assert!(
+                    result
+                        .err()
+                        .unwrap()
+                        .to_string()
+                        .contains("worker panicked")
+                );
+            }
+        });
+        assert!(
+            groups
+                .run("shared", || panic!("late waiter retried"))
+                .is_err()
+        );
+    }
+
     #[test]
     fn metadata_hash_cache_hits_and_invalidates_without_timing() {
         let root = temp_project("hash-cache");

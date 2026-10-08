@@ -54,7 +54,14 @@ fn walk_into(
     ancestors.remove(&identity);
     Ok(())
 }
+#[cfg(test)]
+thread_local! {
+    pub(crate) static FILE_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 pub(crate) fn hash_file(p: &Path) -> Result<String> {
+    #[cfg(test)]
+    FILE_READS.with(|reads| reads.set(reads.get() + 1));
     let mut f = fs::File::open(p).map_err(|e| e.to_string())?;
     let mut hasher = blake3::Hasher::new();
     let mut buffer = [0_u8; 8192];
@@ -77,6 +84,13 @@ pub(crate) fn hash_text(s: &str) -> String {
 
 // Length prefixes keep raw path and link bytes unambiguous.
 pub(crate) fn hash_directory(root: &Path) -> Result<String> {
+    hash_directory_with(root, hash_file)
+}
+
+pub(crate) fn hash_directory_with(
+    root: &Path,
+    mut file_hash: impl FnMut(&Path) -> Result<String>,
+) -> Result<String> {
     fn entry_error(path: &Path, error: impl std::fmt::Display) -> String {
         format!(
             "could not fingerprint directory entry {}: {error}\nhelp: check that the entry exists and is readable",
@@ -143,7 +157,7 @@ pub(crate) fn hash_directory(root: &Path) -> Result<String> {
             hasher.update(b"file");
             bytes(
                 &mut hasher,
-                hash_file(&path)
+                file_hash(&path)
                     .map_err(|error| entry_error(&path, error))?
                     .as_bytes(),
             );

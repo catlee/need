@@ -17,13 +17,28 @@ The run used this checkout's release-profile Need binary, Qt offscreen, real Whi
 | pristine `just all` | 288.541 | 0 |
 | pristine `just zip` | 15.65 | 0 |
 
-## Follow-up performance diagnosis
+## Directory cache and shared-build measurements (#68)
 
-Ordinary files and `tree(...)` dependencies use the size/mtime hash cache. Directory artifacts bypass it: `hash_directory` reads every file directly. A profiled no-op request for one theme took 2.729 s, with three scans of the 4,480-file `generated/` tree taking 1.640 s. A subsequent forced theme build took 7.255 s, of which its recipe took 5.914 s. Raw staging and publication validation should remain fresh; normal directory freshness and dependency checks should reuse metadata-assisted per-file hashes.
+Normal directory dependency and published-output checks now enumerate entries and reuse metadata-assisted per-file hashes. Staging validation, post-recipe input validation, and immediate publication checks still read contents freshly. Unix file identity/change time prevents stale reuse after replacement with preserved size and mtime. Parallel workers share the completed group state or failure instead of executing the same cold dependency twice.
 
-Parallelism also hurt this renderer in a narrow probe: forcing two themes took 12.636 s with one worker and 20.682 s with two. Serial recipe times were 5.164 and 5.364 s; overlapping recipe times grew to 19.369 and 19.385 s. This confirms contention in this environment, but does not identify the particular CPU, memory or I/O resource. The pristine renderer alone took 4.547 s in a separate one-theme probe.
+The focused measurement used a disposable copy of the same pinned upstream checkout, including the 4,480-file `generated/` tree and all 64 generated themes. The source inputs, real tools, environment, release profile, requested themes, and concurrency matched between the before and after series. Temporary binaries timed directory fingerprinting and recipe execution separately; the timers are not committed engine code. Each series began with an excluded warm-up, followed by three no-op requests and the forced probes below. Raw spans, binary hashes, environment, and limitations are in [measured-results.json](measured-results.json) under `directory_performance_issue_68`.
 
-A small reproduction also confirms that two parallel target workers each execute a cold shared directory dependency. This accounts for the extra generator execution (130 build recipes versus 129 unique groups). These are three distinct follow-ups: apply the existing hash cache to directory checks, deduplicate shared dependency execution across workers, and select renderer concurrency from measurements. The full 831/289-second comparison also overlapped lifecycle work, so its complete slowdown cannot be attributed from these probes alone. Raw probe results and the shared-dependency reproduction are recorded in [measured-results.json](measured-results.json).
+| Probe | Before wall s | After wall s | Before directory checks s | After directory checks s | Before recipe s | After recipe s |
+|---|---:|---:|---:|---:|---:|---:|
+| one theme, no-op (median of 3) | 0.719 | 0.426 | 0.340 | 0.157 | 0 | 0 |
+| one forced theme | 5.998 | 3.138 | 0.590 | 0.344 | 4.997 | 2.534 |
+| two forced themes, `-j1` | 15.207 | 7.615 | 1.031 | 0.669 | 8.706 / 5.030 | 3.917 / 2.753 |
+| two forced themes, `-j2` | 20.241 | 17.776 | 1.322 | 0.758 | 19.088 / 19.180 | 17.021 / 17.107 |
+
+Directory times are cumulative spans, not exclusive wall time; parallel spans overlap. The three `generated/` checks alone fell from a median 0.309 s to 0.142 s. Unit tests also count file reads: unchanged directory dependencies and published trees reuse hashes without opening regular-file contents.
+
+An independent replication alternated the same binaries B/A/B/A in the same fixture. Each phase ran four no-op requests and excluded its first as warm-up, leaving six measured checks per binary. Its medians were **0.472 → 0.428 s overall** and **0.198 → 0.161 s in directory checks**, approximately 9% and 19% reductions. The initial series showed a larger difference; the alternating warmed replication is better evidence of the smaller gain under these conditions. Both raw series are retained in `measured-results.json`.
+
+These runs used warm filesystem caches on one machine. Warm-up policy and system-load variance affect the results; neither series was load-isolated. The forced probes are single observations. Recipe durations varied substantially, so the entire forced-build improvement cannot be attributed to caching. The earlier issue observations (2.729 s no-op and 7.255 s forced) are separate runs and are not this comparison's baseline. No full 64-theme performance or equivalence rerun is claimed here.
+
+The after series still took longer with two renderer workers than one: 17.776 s versus 7.615 s. The demo now uses the existing `@jobs(1)` limit for its renderer rule. SVG copying and packaging retain their parallel requests. The raw comparison retained `@jobs(2)` in both series so `-j2` could actually overlap renderers. This is a conservative default for the measured environment; another machine should be measured before raising it. It does not establish a universal serial-rendering speedup.
+
+Regression tests cover shared cold directory success/failure, metadata-preserving publication, worker hash-state merging, static and remembered dynamic forced aliases, dynamic/discovered state, panic propagation, and CLI dependency cycles with a five-second deadline. A failed shared recipe runs once per invocation; waiters receive the failure. An independent SIGTERM probe with two roots sharing one cold atomic directory observed exactly one recipe, both workers exiting within five seconds, and no published roots or state.
 
 ## Lifecycle evidence
 

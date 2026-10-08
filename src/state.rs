@@ -209,6 +209,7 @@ mod tests {
                 size: 4,
                 mtime_ns: 12,
                 blake3: "hash".into(),
+                identity: None,
             },
         );
         save_state(&root, &state).unwrap();
