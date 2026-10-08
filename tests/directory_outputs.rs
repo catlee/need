@@ -149,13 +149,15 @@ fn pattern_directories_build_in_parallel_and_reject_nested_ownership() {
 
 #[test]
 fn sigterm_before_publication_preserves_tree_and_recovery_rebuilds() {
-    let root = project(RULE);
+    let rule =
+        "@atomic\nout/ secondary/: input\n  cp {{in}} {{out[0]}}/item; cp {{in}} {{out[1]}}/item\n";
+    let root = project(rule);
     fs::write(root.join("input"), "old").unwrap();
     success(&root, &[]);
     let state = fs::read(root.join(".need/state.json")).unwrap();
     fs::write(
         root.join("needfile"),
-        "@atomic\nout/: input\n  printf partial > {{out}}/item; touch marker; sleep 30\n",
+        "@atomic\nout/ secondary/: input\n  printf partial > {{out[0]}}/item; printf partial > {{out[1]}}/item; touch marker; sleep 30\n",
     )
     .unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_need"))
@@ -176,8 +178,9 @@ fn sigterm_before_publication_preserves_tree_and_recovery_rebuilds() {
     .unwrap();
     assert!(!child.wait().unwrap().success());
     assert_eq!(fs::read(root.join("out/item")).unwrap(), b"old");
+    assert_eq!(fs::read(root.join("secondary/item")).unwrap(), b"old");
     assert_eq!(fs::read(root.join(".need/state.json")).unwrap(), state);
-    fs::write(root.join("needfile"), RULE).unwrap();
+    fs::write(root.join("needfile"), rule).unwrap();
     success(&root, &[]);
     fs::remove_dir_all(root).unwrap();
 }

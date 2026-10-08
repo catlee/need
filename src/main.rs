@@ -870,18 +870,24 @@ fn resolve_rules(
         rule.options.atomic = parsed.options.atomic;
         rule.options.allow_missing = parsed.options.allow_missing;
         if rule.kind == OutputKind::Directory {
-            if rule.outputs.len() != 1
+            if output_words.iter().any(|word| !word.ends_with('/'))
                 || !rule.options.atomic
                 || rule.options.allow_missing
                 || rule.options.outputs.is_some()
             {
                 return Err(format!(
-                    "{}: directory outputs require exactly one output and @atomic; @allow-missing and @outputs-from are unsupported\nhelp: declare one trailing-slash output under @atomic",
+                    "{}: directory outputs require an all-directory group and @atomic; @allow-missing and @outputs-from are unsupported\nhelp: give every output a trailing slash under @atomic and remove unsupported attributes",
                     rule.source
                 ));
             }
-            validate_directory_path(&rule.outputs[0])
-                .map_err(|error| format!("{}: {error}", rule.source))?;
+            for (index, output) in rule.outputs.iter().enumerate() {
+                validate_directory_path(output)
+                    .map_err(|error| format!("{}: {error}", rule.source))?;
+                for other in &rule.outputs[..index] {
+                    check_output_overlap(output, rule.kind, other, rule.kind)
+                        .map_err(|error| format!("{}: {error}", rule.source))?;
+                }
+            }
         }
         if rule.options.allow_missing && rule.options.outputs.is_some() {
             return Err("@allow-missing cannot be combined with @outputs-from(...)
@@ -983,9 +989,11 @@ mod tests {
         for text in [
             "out/:\n  true\n",
             "@atomic\nout/ file:\n  true\n",
-            "@atomic\na/ b/:\n  true\n",
-            "@atomic\n@allow-missing\nout/:\n  true\n",
-            "@atomic\n@outputs-from(manifest)\nout/:\n  true\n",
+            "@atomic\na/ a/child/:\n  true\n",
+            "@atomic\na/ a/:\n  true\n",
+            "@atomic\na/ .need/cache/:\n  true\n",
+            "@atomic\n@allow-missing\na/ b/:\n  true\n",
+            "@atomic\n@outputs-from(manifest)\na/ b/:\n  true\n",
             "@atomic\n.need/cache/:\n  true\n",
             "@atomic\n./:\n  true\n",
             "@atomic\nout/:\n  true\nout/child:\n  true\n",
@@ -1005,6 +1013,253 @@ mod tests {
             select_rule(&ctx, "previews").unwrap(),
             select_rule(&ctx, "previews/").unwrap()
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_groups_coalesce_and_track_every_tree_log_and_cleanup() {
+        let root = temp_project("directory-groups");
+        fs::create_dir_all(root.join("svgs/theme")).unwrap();
+        fs::write(root.join("svgs/theme/input"), "source").unwrap();
+        let text = "@atomic\npngs/%/ hl/%/ dist/%/: tree(svgs/%)\n  echo run >> runs\n  for out in {{out}}; do cp svgs/{{stem}}/input \"$out/item\"; mkdir \"$out/empty\"; touch \"$out/.need-tmp-user-data\"; done\n";
+        let targets = ["dist/theme/", "pngs/theme", "hl/theme/"]
+            .map(|target| ProjectPath::new(target).unwrap());
+        let mut ctx = context(&root, text);
+        ctx.options.jobs = Jobs::Limited(std::num::NonZeroUsize::new(3).unwrap());
+        ctx.options.log_keep = 1;
+        build_targets(&mut ctx, &targets).unwrap();
+        assert_eq!(fs::read_to_string(root.join("runs")).unwrap(), "run\n");
+        let saved = ctx.session.state.clone();
+        let outputs = ["pngs/theme", "hl/theme", "dist/theme"]
+            .map(|output| ProjectPath::output(output).unwrap());
+        let key = group_key(&outputs);
+        assert_eq!(saved.rules[&key].outputs.len(), 3);
+        assert_eq!(saved.rules[&key].kind, OutputKind::Directory);
+        let log_dir = root.join(".need/logs").join(&hash_text(&key)[..16]);
+        assert_eq!(latest_log(&log_dir).unwrap().3, "success");
+        save_state(&root, &saved).unwrap();
+        for target in &targets {
+            show_logs(&root.join("needfile"), &root, target.as_str()).unwrap();
+        }
+        cleanup_recovery_files(&root, &ctx.project.rules).unwrap();
+        for output in &outputs {
+            assert!(
+                root.join(output.as_str())
+                    .join(".need-tmp-user-data")
+                    .is_file()
+            );
+        }
+        ctx.session.built.clear();
+        ctx.session.work_needed.store(false, Ordering::Relaxed);
+        build_targets(&mut ctx, &targets).unwrap();
+        assert!(!ctx.session.work_needed.load(Ordering::Relaxed));
+        for (index, output) in outputs.iter().enumerate() {
+            if index == 1 {
+                fs::remove_dir_all(root.join(output.as_str())).unwrap();
+            } else {
+                fs::write(root.join(output.as_str()).join("item"), "edited").unwrap();
+            }
+            ctx.session.built.clear();
+            build(
+                &mut ctx,
+                outputs[(index + 1) % outputs.len()].as_str(),
+                None,
+            )
+            .unwrap();
+            for output in &outputs {
+                assert_eq!(
+                    fs::read(root.join(output.as_str()).join("item")).unwrap(),
+                    b"source"
+                );
+            }
+        }
+        assert_eq!(
+            fs::read_to_string(root.join("runs")).unwrap(),
+            "run\n".repeat(4)
+        );
+        remove_recorded_outputs(&root).unwrap();
+        assert!(
+            outputs
+                .iter()
+                .all(|output| !root.join(output.as_str()).exists())
+        );
+        assert!(root.join("svgs/theme/input").is_file());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_group_force_requests_run_once_in_serial_and_parallel() {
+        let root = temp_project("directory-group-force");
+        let text = "@atomic\na/ b/:\n  echo run >> runs\n  touch {{out[0]}}/item {{out[1]}}/item\n";
+        let targets = ["b/", "a", "b"].map(|target| ProjectPath::new(target).unwrap());
+        let mut ctx = context(&root, text);
+        build_targets(&mut ctx, &targets).unwrap();
+        for jobs in [
+            Jobs::default(),
+            Jobs::Limited(std::num::NonZeroUsize::new(3).unwrap()),
+        ] {
+            ctx.options.jobs = jobs;
+            ctx.options.force = true;
+            build_targets(&mut ctx, &targets).unwrap();
+        }
+        assert_eq!(
+            fs::read_to_string(root.join("runs")).unwrap(),
+            "run\n".repeat(3)
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_groups_validate_all_staging_and_inputs_before_publication() {
+        let root = temp_project("directory-group-failures");
+        fs::write(root.join("input"), "old").unwrap();
+        let text =
+            "@atomic\na/ b/: input\n  cp {{in}} {{out[0]}}/item\n  cp {{in}} {{out[1]}}/item\n";
+        let mut ctx = context(&root, text);
+        build(&mut ctx, "b", None).unwrap();
+        let saved = ctx.session.state.clone();
+        for recipe in [
+            "printf partial > {{out[0]}}/item; exit 1",
+            "cp {{in}} {{out[0]}}/item; rmdir {{out[1]}}",
+            "cp {{in}} {{out[0]}}/item; mkfifo {{out[1]}}/pipe",
+            "cp {{in}} {{out[0]}}/item; cp {{in}} {{out[1]}}/item; printf changed > input",
+        ] {
+            let text = format!("@atomic\na/ b/: input\n  {recipe}\n");
+            let mut failed = context(&root, &text);
+            failed.session.state = saved.clone();
+            let error = build(&mut failed, "a", None).unwrap_err().to_string();
+            assert!(!error.contains('\0'), "{error}");
+            assert!(failed.session.state.rules == saved.rules);
+            for output in ["a/item", "b/item"] {
+                assert_eq!(fs::read(root.join(output)).unwrap(), b"old");
+            }
+            assert!(!fs::read_dir(&root).unwrap().any(|entry| {
+                entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".need-tmp-")
+            }));
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_group_publication_failure_rolls_back_existing_and_absent_roots() {
+        for existed in [false, true] {
+            let root = temp_project("directory-group-rollback");
+            let temporaries = [".need-tmp-dir-0-123-a", ".need-tmp-dir-0-123-b"]
+                .map(|output| ProjectPath::output(output).unwrap());
+            let outputs = ["a", "b"].map(|output| ProjectPath::output(output).unwrap());
+            if existed {
+                for output in &outputs {
+                    fs::create_dir(root.join(output.as_str())).unwrap();
+                    fs::write(
+                        root.join(output.as_str()).join("item"),
+                        format!("old-{output}"),
+                    )
+                    .unwrap();
+                }
+            }
+            fs::create_dir(root.join(temporaries[0].as_str())).unwrap();
+            fs::write(root.join(temporaries[0].as_str()).join("item"), "new-a").unwrap();
+            // The second rename fails after the first root has been published.
+            let error = directory::publish(&root, &temporaries, &outputs).unwrap_err();
+            assert!(error.contains("atomically publish directory") && error.contains("help:"));
+            if existed {
+                assert_eq!(fs::read(root.join("a/item")).unwrap(), b"old-a");
+            } else {
+                assert!(!root.join("a").exists());
+            }
+            if existed {
+                assert_eq!(fs::read(root.join("b/item")).unwrap(), b"old-b");
+            } else {
+                assert!(!root.join("b").exists());
+            }
+            assert!(
+                temporaries
+                    .iter()
+                    .all(|path| !root.join(path.as_str()).exists())
+            );
+            for (index, temporary) in temporaries.iter().enumerate() {
+                fs::create_dir(root.join(temporary.as_str())).unwrap();
+                fs::write(
+                    root.join(temporary.as_str()).join("item"),
+                    format!("new-{index}"),
+                )
+                .unwrap();
+            }
+            directory::publish(&root, &temporaries, &outputs).unwrap();
+            for (index, output) in outputs.iter().enumerate() {
+                assert_eq!(
+                    fs::read_to_string(root.join(output.as_str()).join("item")).unwrap(),
+                    format!("new-{index}")
+                );
+            }
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn directory_group_ownership_checks_secondary_patterns_and_instantiated_siblings() {
+        let root = temp_project("directory-group-owners");
+        for (text, target) in [
+            (
+                "@atomic\npngs/%/ hl/%/:\n  true\nchild: hl/theme/child\n  touch {{out}}\n",
+                "child",
+            ),
+            (
+                "@atomic\npngs/%/ hl/%/:\n  true\n@atomic\nhl/theme/child/:\n  true\n",
+                "hl/theme/child",
+            ),
+            ("@atomic\na/%/ %/:\n  true\n", "a/a"),
+            ("@atomic\na/%/ %/a/:\n  true\n", "a/a"),
+            ("@atomic\na/%/ other/%/:\n  true\n", "a/.need-tmp-theme"),
+        ] {
+            let mut ctx = context(&root, text);
+            let error = build(&mut ctx, target, None).unwrap_err().to_string();
+            assert!(
+                error.contains("overlaps") || error.contains("reserved"),
+                "{error}"
+            );
+        }
+        let ctx = context(&root, "@atomic\npngs/%/ hl/%/:\n  true\n");
+        let outputs = ["pngs/theme", "hl/theme"].map(|output| ProjectPath::output(output).unwrap());
+        directory::register_outputs(&ctx, &group_key(&outputs), &outputs, OutputKind::Directory)
+            .unwrap();
+        assert!(
+            directory::register_outputs(
+                &ctx.clone(),
+                "child",
+                &[ProjectPath::output("hl/theme/child").unwrap()],
+                OutputKind::File
+            )
+            .is_err()
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn directory_group_recovery_preserves_unrecorded_secondary_trees() {
+        let root = temp_project("directory-group-recovery");
+        for text in ["@atomic\na/ b/:\n  true\n", "@atomic\na/%/ b/%/:\n  true\n"] {
+            let ctx = context(&root, text);
+            let secondary = if ctx.project.rules[0].pattern {
+                "b/theme"
+            } else {
+                "b"
+            };
+            let generated = root.join(secondary).join(".need-tmp-dir-0-123-generated");
+            fs::create_dir_all(&generated).unwrap();
+            fs::write(generated.join("item"), "owned").unwrap();
+            save_state(&root, &State::default()).unwrap();
+            cleanup_recovery_files(&root, &ctx.project.rules).unwrap();
+            assert_eq!(fs::read(generated.join("item")).unwrap(), b"owned");
+        }
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1095,11 +1350,15 @@ mod tests {
         fs::write(root.join("out/item"), "old").unwrap();
         let error = directory::publish(
             &root,
-            &ProjectPath::output("missing-staging").unwrap(),
-            &ProjectPath::output("out").unwrap(),
+            &[ProjectPath::output("missing-staging").unwrap()],
+            &[ProjectPath::output("out").unwrap()],
         )
         .unwrap_err();
-        assert!(error.contains("atomically publish directory out") && error.contains("help:"));
+        assert!(
+            error.contains("atomically publish directory")
+                && error.contains("out")
+                && error.contains("help:")
+        );
         assert_eq!(fs::read(root.join("out/item")).unwrap(), b"old");
         fs::remove_dir_all(root).unwrap();
     }

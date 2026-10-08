@@ -196,14 +196,7 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildR
             }
         }
     }
-    if !c.options.jobs.is_parallel() || targets.len() <= 1 {
-        for target in targets {
-            build(c, target.as_str(), None)?;
-        }
-        return Ok(());
-    }
-
-    let mut parallel_targets = Vec::new();
+    let mut unique_targets = Vec::new();
     let mut groups = HashSet::new();
     for target in targets {
         let group = select_rule(c, target.as_str())
@@ -213,10 +206,16 @@ pub(crate) fn build_targets(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildR
             })
             .unwrap_or_else(|_| target.to_string());
         if groups.insert(group) {
-            parallel_targets.push(target.clone());
+            unique_targets.push(target.clone());
         }
     }
-    for batch in parallel_batches(&parallel_targets, c.options.jobs, |target| {
+    if !c.options.jobs.is_parallel() || unique_targets.len() <= 1 {
+        for target in unique_targets {
+            build(c, target.as_str(), None)?;
+        }
+        return Ok(());
+    }
+    for batch in parallel_batches(&unique_targets, c.options.jobs, |target| {
         rule_jobs(c, target.as_str())
     }) {
         let base = c.clone();
@@ -588,7 +587,7 @@ pub(crate) fn build_inner(
     } else {
         outputs.clone()
     };
-    let _temporary_outputs = TemporaryOutputs::new(
+    let mut temporary_outputs = TemporaryOutputs::new(
         c,
         if rule.options.atomic && !c.options.dry {
             recipe_outputs.clone()
@@ -631,8 +630,10 @@ pub(crate) fn build_inner(
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     if rule.kind == OutputKind::Directory {
-        let staging = abs(c, &recipe_outputs[0]);
-        fs::create_dir(&staging).map_err(|error| format!("could not create directory staging output {}: {error}\nhelp: check access to the output parent", staging.display()))?;
+        for output in &recipe_outputs {
+            let staging = abs(c, output);
+            fs::create_dir(&staging).map_err(|error| format!("could not create directory staging output {}: {error}\nhelp: check access to the output parent", staging.display()))?;
+        }
     }
     status_line(c, "need", &key, "\x1b[33m");
     let mode = rule.options.output.unwrap_or(c.options.output);
@@ -673,19 +674,25 @@ pub(crate) fn build_inner(
     let post_sig = input_signature(c, &rule, &recipe, &post_signature_deps)?;
     if post_sig != sig {
         return Err(format!(
-            "inputs changed while building {key}\nhelp: rerun the build after the inputs stop changing"
+            "inputs changed while building {}\nhelp: rerun the build after the inputs stop changing",
+            display_key(&key)
         )
         .into());
     }
     if interrupted() {
-        return Err(
-            format!("build interrupted before publishing {key}\nhelp: rerun the build").into(),
-        );
+        return Err(format!(
+            "build interrupted before publishing {}\nhelp: rerun the build",
+            display_key(&key)
+        )
+        .into());
     }
     if rule.kind == OutputKind::Directory {
         crate::directory::register_outputs(c, &key, &outputs, rule.kind)
             .map_err(|error| format!("{}: {error}", rule.source))?;
-        crate::directory::publish(&c.project.root, &recipe_outputs[0], &outputs[0])?;
+        // Publication owns cleanup so a failed rollback can retain the old trees.
+        temporary_outputs.paths.clear();
+        crate::directory::publish(&c.project.root, &recipe_outputs, &outputs)
+            .map_err(|error| format!("{}: {error}", rule.source))?;
     } else if rule.options.atomic {
         publish_outputs(c, &recipe_outputs, &outputs, rule.options.allow_missing)?;
     }
@@ -1160,7 +1167,7 @@ pub(crate) fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode
     let capture = Capture::new(c)?;
     if interrupted() {
         write_log_files(c, key, &capture, LogStatus::Interrupted)?;
-        return Err(format!("recipe interrupted for {key}"));
+        return Err(format!("recipe interrupted for {}", display_key(key)));
     }
     let mut command = Command::new("sh");
     #[cfg(unix)]
@@ -1225,7 +1232,7 @@ pub(crate) fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode
     was_interrupted |= interrupted();
     if was_interrupted {
         write_log_files(c, key, &capture, LogStatus::Interrupted)?;
-        return Err(format!("recipe interrupted for {key}"));
+        return Err(format!("recipe interrupted for {}", display_key(key)));
     }
     let success = status.success();
     if mode == OutputMode::Grouped && (!capture.is_empty(true)? || !capture.is_empty(false)?) {
@@ -1247,7 +1254,8 @@ pub(crate) fn run_recipe(c: &BuildCtx, key: &str, recipe: &str, mode: OutputMode
     }
     if !success {
         return Err(format!(
-            "recipe failed for {key} ({}).",
+            "recipe failed for {} ({}).",
+            display_key(key),
             exit_status(&status)
         ));
     }

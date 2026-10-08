@@ -68,6 +68,37 @@ font.fnt font.json: source.otf
 
 `need` treats these outputs as one build group. If any output is missing or changed, the recipe runs and must recreate all of them.
 
+### Directory output groups
+
+Use a trailing slash on every output and put `@atomic` before the rule:
+
+```make
+@atomic
+pngs/%/ hl/%/ dist/%/: svgs/%/
+  ./generate {{in}} {{out[0]}} {{out[1]}} {{out[2]}}
+```
+
+Need creates an empty sibling staging directory for each root. `{{out[n]}}`
+selects these destinations in declaration order. The generator runs once for
+requests to any members, including `--force`. Every tree contributes to
+freshness; a missing or modified root rebuilds the group. Need validates every
+staged tree and rechecks inputs before publishing any root. Failed or interrupted
+recipes preserve all old roots.
+
+Each root publishes atomically and separately; the group is not a filesystem
+transaction. Old roots remain available until all publications succeed, and a
+handled publication failure rolls earlier roots back, restoring initially absent
+roots to absence. Cleanup or state-write failures do not record success, but
+leave published roots in place. A crash during publication can leave mixed
+versions; recovery removes staging trees and checks freshness on the next run.
+
+Directory groups cannot mix files and directories or use `@allow-missing` or
+`@outputs-from`. Roots own their whole subtrees; duplicate or nested roots are
+rejected even within one group. Child paths do not implicitly build their root.
+Directory publication requires Linux GNU and `renameat2` exchange/no-replace
+support. `need logs` accepts any member, and `need clean --outputs-only`
+recursively removes all recorded roots without following symlinks.
+
 ### Dynamic outputs
 
 Use `@outputs-from(PATH)` immediately before the rule when a recipe discovers additional output files. The recipe

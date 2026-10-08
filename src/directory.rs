@@ -71,7 +71,10 @@ pub(crate) fn register_outputs(
         .owners
         .lock()
         .map_err(|_| "output ownership lock poisoned".to_string())?;
-    for output in outputs {
+    for (index, output) in outputs.iter().enumerate() {
+        for other in &outputs[..index] {
+            check_output_overlap(output, kind, other, kind)?;
+        }
         if kind == OutputKind::Directory {
             validate_destination(&c.project.root, output)?;
         }
@@ -81,21 +84,32 @@ pub(crate) fn register_outputs(
             .iter()
             .filter(|rule| rule.kind == OutputKind::Directory && rule.pattern)
         {
-            let pattern = crate::map::PercentPattern::new(rule.outputs[0].as_str()).unwrap();
-            for ancestor in Path::new(output.as_str())
-                .ancestors()
-                .filter(|path| !path.as_os_str().is_empty())
+            for pattern in rule
+                .outputs
+                .iter()
+                .filter_map(|output| crate::map::PercentPattern::new(output.as_str()))
             {
-                let ancestor = ancestor.to_string_lossy();
-                if pattern.capture(&ancestor).is_some()
-                    && (ancestor.as_ref() != output.as_str()
-                        || kind != OutputKind::Directory
-                        || key != ancestor.as_ref())
+                for ancestor in Path::new(output.as_str())
+                    .ancestors()
+                    .filter(|path| !path.as_os_str().is_empty())
                 {
-                    return Err(format!(
-                        "output {output} overlaps directory pattern owner {ancestor} ({})\nhelp: choose disjoint output subtrees",
-                        rule.source
-                    ));
+                    let ancestor = ancestor.to_string_lossy();
+                    if let Some(stem) = pattern.capture(&ancestor) {
+                        let owner_outputs = rule
+                            .outputs
+                            .iter()
+                            .map(|output| ProjectPath::output(&output.as_str().replace('%', stem)))
+                            .collect::<Result<Vec<_>>>()?;
+                        if ancestor.as_ref() != output.as_str()
+                            || kind != OutputKind::Directory
+                            || key != crate::execute::group_key(&owner_outputs)
+                        {
+                            return Err(format!(
+                                "output {output} overlaps directory pattern owner {ancestor} ({})\nhelp: choose disjoint output subtrees",
+                                rule.source
+                            ));
+                        }
+                    }
                 }
             }
         }
@@ -161,40 +175,83 @@ pub(crate) fn remove_temporary(path: &Path) -> Result<()> {
     })
 }
 
-pub(crate) fn publish(root: &Path, temporary: &ProjectPath, output: &ProjectPath) -> Result<()> {
-    validate_destination(root, output)?;
-    let staging = root.join(temporary.as_str());
-    let destination = root.join(output.as_str());
+pub(crate) fn publish(
+    root: &Path,
+    temporaries: &[ProjectPath],
+    outputs: &[ProjectPath],
+) -> Result<()> {
+    let mut published = Vec::new();
+    let result = (|| {
+        for (temporary, output) in temporaries.iter().zip(outputs) {
+            validate_destination(root, output)?;
+            let staging = root.join(temporary.as_str());
+            let destination = root.join(output.as_str());
+            let exists = match fs::symlink_metadata(&destination) {
+                Ok(_) => true,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+                Err(error) => {
+                    return Err(format!(
+                        "could not inspect directory destination {}: {error}\nhelp: check access to the output parent",
+                        destination.display()
+                    ));
+                }
+            };
+            rename_directory(&staging, &destination, exists)?;
+            published.push((staging, destination, exists));
+        }
+        Ok(())
+    })();
+    if let Err(mut error) = result {
+        let mut rollback_failed = false;
+        for (staging, destination, existed) in published.iter().rev() {
+            let rollback = if *existed {
+                rename_directory(staging, destination, true)
+            } else {
+                rename_directory(destination, staging, false)
+            };
+            if let Err(rollback_error) = rollback {
+                rollback_failed = true;
+                error.push_str(&format!(
+                    "\nrollback failed: {rollback_error}\nhelp: inspect {} and restore any old tree at {} before retrying",
+                    destination.display(), staging.display()
+                ));
+            }
+        }
+        // Keep old trees available for manual recovery if rollback itself fails.
+        if rollback_failed {
+            return Err(error);
+        }
+        for temporary in temporaries {
+            if let Err(cleanup_error) = remove_temporary(&root.join(temporary.as_str())) {
+                error.push_str(&format!("\n{cleanup_error}"));
+            }
+        }
+        return Err(error);
+    }
+    for temporary in temporaries {
+        remove_temporary(&root.join(temporary.as_str()))?;
+    }
+    Ok(())
+}
+
+fn rename_directory(staging: &Path, destination: &Path, exchange: bool) -> Result<()> {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
         use nix::fcntl::{RenameFlags, renameat2};
-        let exists = match fs::symlink_metadata(&destination) {
-            Ok(_) => true,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
-            Err(error) => {
-                return Err(format!(
-                    "could not inspect directory destination {}: {error}\nhelp: check access to the output parent",
-                    destination.display()
-                ));
-            }
-        };
-        let flag = if exists {
+        let flag = if exchange {
             RenameFlags::RENAME_EXCHANGE
         } else {
             RenameFlags::RENAME_NOREPLACE
         };
-        renameat2(nix::fcntl::AT_FDCWD, &staging, nix::fcntl::AT_FDCWD, &destination, flag)
-            .map_err(|error| format!("could not atomically publish directory {output}: {error}\nhelp: use Linux GNU and a filesystem supporting renameat2 exchange/no-replace"))?;
-        if exists {
-            remove_temporary(&staging)?;
-        }
-        Ok(())
+        renameat2(nix::fcntl::AT_FDCWD, staging, nix::fcntl::AT_FDCWD, destination, flag)
+            .map_err(|error| format!("could not atomically publish directory {}: {error}\nhelp: use Linux GNU and a filesystem supporting renameat2 exchange/no-replace", destination.display()))
     }
     #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
     {
-        let _ = (staging, destination);
+        let _ = (staging, exchange);
         Err(format!(
-            "cannot atomically publish directory {output} on this platform\nhelp: use Linux GNU and a filesystem supporting renameat2 exchange/no-replace"
+            "cannot atomically publish directory {} on this platform\nhelp: use Linux GNU and a filesystem supporting renameat2 exchange/no-replace",
+            destination.display()
         ))
     }
 }

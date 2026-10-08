@@ -1,0 +1,12 @@
+set positional-arguments
+export PATH := justfile_directory() / '../../target/debug' + ':' + env('PATH')
+revision := trim(read('upstream.lock'))
+
+setup:
+  git init upstream
+  git -C upstream fetch --depth=1 https://github.com/catppuccin/cursors.git {{revision}}
+  git -C upstream checkout --detach FETCH_HEAD
+  if ! git -C upstream apply --reverse --check ../upstream.patch 2>/dev/null; then git -C upstream apply --check ../upstream.patch && git -C upstream apply ../upstream.patch; fi
+
+upstream +args:
+  just --justfile upstream/justfile "$@"

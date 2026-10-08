@@ -65,7 +65,8 @@ The current implementation includes the core artifact graph, including:
 - compiler depfiles through `@depfile(...)`, including persisted discovered
   dependencies and Make-style escaping/continuations
 - opt-in atomic publication for declared file outputs through `@atomic`
-- explicit trailing-slash directory artifacts with atomic whole-tree publication
+- explicit trailing-slash directory artifacts and all-directory output groups
+  with atomic publication per tree and rollback on handled publication failure
 - partial declared output sets through `@allow-missing`, including persisted
   absent-output outcomes and subset cleanup
 - explicit command-output freshness probes through `command(...)`
@@ -292,7 +293,7 @@ Directory creation is infrastructure, not part of the dependency graph.
 
 ## 8. Multiple Outputs
 
-A rule may declare multiple output files.
+A rule may declare multiple output files or an all-directory output group (section 8.2).
 
 Example:
 
@@ -390,17 +391,29 @@ previews/: tree(src)
 The trailing slash is preserved through variable expansion before output path
 normalization. It declares the output kind, not a distinct path identity:
 `previews` and `previews/` select the same root. Pattern rules support directory
-outputs too. A directory rule MUST have exactly one output and `@atomic`, and
-MUST NOT use `@allow-missing` or `@outputs-from(...)`.
+outputs too. A directory rule MUST have `@atomic`, MUST declare only
+trailing-slash outputs, and MUST NOT use `@allow-missing` or `@outputs-from(...)`.
+Multiple roots form one output group: requesting or forcing any members runs
+one recipe, `{{out}}` lists staging directories in declaration order, and
+`{{out[n]}}` selects one. Every tree is checked for freshness; a missing or
+modified member makes the group stale. Mixed file/directory groups are rejected.
+
+```make
+@atomic
+pngs/%/ hl/%/ dist/%/: svgs/%/
+  ./generate {{in}} {{out[0]}} {{out[1]}} {{out[2]}}
+```
 
 The root is one whole-graph artifact. Plain dependencies on the root build its
 producer and fingerprint the tree; child paths do not implicitly build the root.
 `tree(...)` stays freshness-only. Each root owns its entire subtree. Concrete
 declared, remembered, requested, and resolved outputs MUST NOT overlap a directory
-owner. Ancestors matching directory patterns count as owners, even before an
-instance has built. Parallel workers share concrete ownership checks. The project
-root, `.need` output trees, symlinked parents, and existing file/symlink roots are
-rejected. An existing unrecorded real directory may be replaced.
+owner, including duplicate or nested roots within the same group. Disjoint
+sibling roots are allowed. Ancestors matching any member of directory patterns
+count as owners, even before an instance has built. Parallel workers share
+concrete ownership checks. The project root, `.need` output trees, symlinked
+parents, and existing file/symlink roots are rejected. An existing unrecorded
+real directory may be replaced.
 
 Directory output paths MUST NOT contain components beginning `.need-tmp-`,
 including after pattern instantiation. This namespace is reserved for staging.
@@ -415,20 +428,32 @@ include timestamps or ownership. Sockets, devices, and FIFOs are errors. Missing
 or modified trees are stale. Staging and final fingerprints bypass the file hash
 cache. This does not promise a multi-open filesystem read snapshot.
 
-Before execution, `need` creates an empty unique sibling staging directory and
-substitutes it for `{{out}}`. After the recipe succeeds, it validates the complete
-staging tree and rechecks dependencies before publication. On Linux GNU,
-`renameat2(RENAME_EXCHANGE)` exchanges staging with an existing destination;
-`RENAME_NOREPLACE` publishes to an absent destination. Unsupported platforms or
+Before execution, `need` creates an empty unique sibling staging directory for
+every root and substitutes these paths for `{{out}}`. After the recipe succeeds,
+it validates every complete staging tree and rechecks dependencies before any
+publication. On Linux GNU, `renameat2(RENAME_EXCHANGE)` exchanges staging with
+an existing destination; `RENAME_NOREPLACE` publishes to an absent destination.
+Unsupported platforms or
 filesystems fail with an actionable diagnostic; there is no non-atomic fallback.
-Failure or interruption before publication leaves the old tree untouched.
+Failure or interruption before publication leaves every old tree untouched.
 
-After exchange, `need` removes the old tree at the staging path, fingerprints the
-final root, then records successful state. Cleanup or state-write failure MUST
-NOT commit new successful state. Recovery removes abandoned staging directories
-without following symlinks, then reevaluates freshness. A crash after publication
-but before state commit is recoverable; if published contents match the previous
-successful fingerprint, that state may still be current.
+Each root publishes atomically and separately, in declaration order. The group
+is not a multi-root filesystem transaction; readers can observe a mixture of
+versions during publication. Old roots remain at staging paths until every
+publication succeeds. On a handled publication failure, `need` rolls earlier
+roots back in reverse order, exchanging existing roots back and moving initially
+absent roots back to staging, then removes staging trees. No successful state is
+committed. If rollback itself fails, the diagnostic identifies the affected
+paths and retained staging trees for manual restoration before retrying.
+
+After every publication succeeds, `need` removes the old trees at staging paths,
+fingerprints every final root, then records successful state. Cleanup or
+state-write failure MUST NOT commit new successful state; it does not undo
+published roots. Recovery removes abandoned staging directories without following
+symlinks, then reevaluates freshness. A crash during publication may leave mixed
+root versions. A crash after publication but before state commit is recoverable;
+if published contents match the previous successful fingerprint, that state may
+still be current.
 
 Persisted rule records include an output kind, defaulting to file for older
 state. Directory kind contributes to input signatures; existing file signatures

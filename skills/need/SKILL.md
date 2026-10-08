@@ -291,14 +291,37 @@ The staging directory already exists and is empty; write the tree beneath
 `{{out}}`. Need validates it and rechecks inputs before atomically publishing.
 Old trees survive failure or interruption before publication; replacement removes
 stale children. Linux GNU with `renameat2` exchange/no-replace support is required;
-there is no fallback. Variables and patterns work. Exactly one output is allowed;
-`@allow-missing` and `@outputs-from` are unsupported.
+there is no fallback. Variables and patterns work. Multiple directory outputs
+can share one rule:
+
+```make
+@atomic
+pngs/%/ hl/%/ dist/%/: svgs/%/
+  ./generate {{in}} {{out[0]}} {{out[1]}} {{out[2]}}
+```
+
+Give every output a trailing slash. Mixed file/directory groups, `@allow-missing`,
+and `@outputs-from` are unsupported. Need creates every staging directory before
+running the recipe, validates all trees, and rechecks inputs before publishing
+any root. Requests for any members, including `--force`, run one recipe; a
+missing or modified tree makes the whole group stale. `need logs` accepts any
+member and uses the group's shared execution log.
+
+Each root publishes atomically and separately, not as a multi-root filesystem
+transaction. Readers can observe mixed versions. Old roots are retained until
+all publications succeed; handled publication failures roll earlier roots back,
+including restoring initially absent roots to absence. Rollback failure retains
+staging trees and reports paths for manual restoration before retrying. Cleanup
+or state-write failure leaves published roots in place without recording success.
+A crash during publication may leave mixed versions; recovery removes staging
+trees and reevaluates freshness.
 
 `need previews` and `need previews/` select the same artifact. A plain root
 dependency builds and fingerprints the whole tree. Child requests do not build
 the parent; `tree(...)` remains freshness-only. Directory outputs exclusively
 own their subtree, including against directory pattern ancestors. Do not declare
-overlapping outputs, the project root, `.need` trees, or symlinked parents.
+overlapping outputs (including duplicate or nested roots within one group), the
+project root, `.need` trees, or symlinked parents.
 Preexisting file/symlink roots are rejected; a real unrecorded directory may be
 replaced. Fingerprints include contents, empty directories, Unix permissions,
 and raw symlink targets, without following links. Unsupported entry types fail.

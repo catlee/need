@@ -1,0 +1,2511 @@
+{
+  "session": "headless",
+  "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+  "tools": {
+    "inkscape": "Inkscape 1.4.4 (dcaf3e7d9e, 2026-05-05)",
+    "whiskers": "catppuccin-whiskers 2.9.0",
+    "xcursorgen": "xcursorgen version 1.0.9",
+    "python": "Python 3.12.13"
+  },
+  "need_binary_sha256": "7570390249507faeefabda72cf61653fc05fd06145d5f57ee3f3afbceed0d8b1",
+  "code_removal": {
+    "counting_rule": "UTF-8 source/configuration including SVG; exclude README.md, CHANGELOG.md, AUTHORS, LICENSE and .webp. Nonblank/noncomment excludes blank and leading-# lines; docstrings/inline/XML comments count. Patch is transport: count applied source once, plus delivered demo helpers separately.",
+    "ledger": [
+      {
+        "file": ".editorconfig",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 34,
+          "nonblank_noncomment": 19
+        },
+        "after": {
+          "total": 34,
+          "nonblank_noncomment": 19
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": ".github/workflows/build.yml",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 38,
+          "nonblank_noncomment": 36
+        },
+        "after": {
+          "total": 38,
+          "nonblank_noncomment": 36
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": ".github/workflows/release.yml",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 36,
+          "nonblank_noncomment": 32
+        },
+        "after": {
+          "total": 36,
+          "nonblank_noncomment": 32
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": ".gitignore",
+        "category": "production",
+        "scope": true,
+        "before": {
+          "total": 6,
+          "nonblank_noncomment": 6
+        },
+        "after": {
+          "total": 9,
+          "nonblank_noncomment": 8
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 3,
+          "nonblank_noncomment": 2
+        }
+      },
+      {
+        "file": ".release-please-manifest.json",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 3,
+          "nonblank_noncomment": 3
+        },
+        "after": {
+          "total": 3,
+          "nonblank_noncomment": 3
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "assets/gen_assets",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 142,
+          "nonblank_noncomment": 137
+        },
+        "after": {
+          "total": 142,
+          "nonblank_noncomment": 137
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "build",
+        "category": "production",
+        "scope": true,
+        "before": {
+          "total": 70,
+          "nonblank_noncomment": 53
+        },
+        "after": {
+          "total": 19,
+          "nonblank_noncomment": 13
+        },
+        "deleted": {
+          "total": 60,
+          "nonblank_noncomment": 49
+        },
+        "added": {
+          "total": 9,
+          "nonblank_noncomment": 9
+        }
+      },
+      {
+        "file": "default.nix",
+        "category": "production",
+        "scope": true,
+        "before": {
+          "total": 61,
+          "nonblank_noncomment": 52
+        },
+        "after": {
+          "total": 79,
+          "nonblank_noncomment": 70
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 18,
+          "nonblank_noncomment": 18
+        }
+      },
+      {
+        "file": "flake.lock",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 26,
+          "nonblank_noncomment": 26
+        },
+        "after": {
+          "total": 26,
+          "nonblank_noncomment": 26
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "flake.nix",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 26,
+          "nonblank_noncomment": 23
+        },
+        "after": {
+          "total": 26,
+          "nonblank_noncomment": 23
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "justfile",
+        "category": "production",
+        "scope": true,
+        "before": {
+          "total": 19,
+          "nonblank_noncomment": 10
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 12
+        },
+        "deleted": {
+          "total": 2,
+          "nonblank_noncomment": 2
+        },
+        "added": {
+          "total": 5,
+          "nonblank_noncomment": 4
+        }
+      },
+      {
+        "file": "needfile",
+        "category": "production",
+        "scope": true,
+        "before": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "after": {
+          "total": 29,
+          "nonblank_noncomment": 25
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 29,
+          "nonblank_noncomment": 25
+        }
+      },
+      {
+        "file": "release-please-config.json",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "renovate.json",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 6,
+          "nonblank_noncomment": 6
+        },
+        "after": {
+          "total": 6,
+          "nonblank_noncomment": 6
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "requirements-need.txt",
+        "category": "production",
+        "scope": true,
+        "before": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "after": {
+          "total": 1,
+          "nonblank_noncomment": 1
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 1,
+          "nonblank_noncomment": 1
+        }
+      },
+      {
+        "file": "scripts/build-cursors",
+        "category": "production",
+        "scope": true,
+        "before": {
+          "total": 97,
+          "nonblank_noncomment": 72
+        },
+        "after": {
+          "total": 74,
+          "nonblank_noncomment": 57
+        },
+        "deleted": {
+          "total": 55,
+          "nonblank_noncomment": 46
+        },
+        "added": {
+          "total": 32,
+          "nonblank_noncomment": 31
+        }
+      },
+      {
+        "file": "scripts/create_zips",
+        "category": "production",
+        "scope": true,
+        "before": {
+          "total": 19,
+          "nonblank_noncomment": 14
+        },
+        "after": {
+          "total": 13,
+          "nonblank_noncomment": 12
+        },
+        "deleted": {
+          "total": 16,
+          "nonblank_noncomment": 12
+        },
+        "added": {
+          "total": 10,
+          "nonblank_noncomment": 10
+        }
+      },
+      {
+        "file": "scripts/generate-metadata",
+        "category": "production",
+        "scope": true,
+        "before": {
+          "total": 120,
+          "nonblank_noncomment": 96
+        },
+        "after": {
+          "total": 120,
+          "nonblank_noncomment": 96
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "shell.nix",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 9,
+          "nonblank_noncomment": 9
+        },
+        "after": {
+          "total": 9,
+          "nonblank_noncomment": 9
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "source.lock",
+        "category": "production",
+        "scope": true,
+        "before": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "after": {
+          "total": 1,
+          "nonblank_noncomment": 1
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 1,
+          "nonblank_noncomment": 1
+        }
+      },
+      {
+        "file": "src/cursorList",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 113,
+          "nonblank_noncomment": 113
+        },
+        "after": {
+          "total": 113,
+          "nonblank_noncomment": 113
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgo.config.mjs",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 7,
+          "nonblank_noncomment": 7
+        },
+        "after": {
+          "total": 7,
+          "nonblank_noncomment": 7
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/alias.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/all-scroll.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/bottom_left_corner.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/bottom_right_corner.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/bottom_side.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/cell.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/center_ptr.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/col-resize.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/color-picker.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/context-menu.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 29,
+          "nonblank_noncomment": 29
+        },
+        "after": {
+          "total": 29,
+          "nonblank_noncomment": 29
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/copy.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 29,
+          "nonblank_noncomment": 29
+        },
+        "after": {
+          "total": 29,
+          "nonblank_noncomment": 29
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/crosshair.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/default.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/dnd-move.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/dnd-no-drop.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/down-arrow.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/draft.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 17,
+          "nonblank_noncomment": 17
+        },
+        "after": {
+          "total": 17,
+          "nonblank_noncomment": 17
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/help.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/left-arrow.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/left_side.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/no-drop.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/not-allowed.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/openhand.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/pencil.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/pirate.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/pointer.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/progress-01.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/progress-02.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/progress-03.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/progress-04.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/progress-05.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/progress-06.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/progress-07.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/progress-08.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/progress-09.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/progress-10.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/progress-11.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/progress-12.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "after": {
+          "total": 28,
+          "nonblank_noncomment": 28
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/right-arrow.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/right_ptr.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/right_side.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/row-resize.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/size_bdiag.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 18,
+          "nonblank_noncomment": 18
+        },
+        "after": {
+          "total": 18,
+          "nonblank_noncomment": 18
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/size_fdiag.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 18,
+          "nonblank_noncomment": 18
+        },
+        "after": {
+          "total": 18,
+          "nonblank_noncomment": 18
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/size_hor.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/size_ver.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/text.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/top_left_corner.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/top_right_corner.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/top_side.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/up-arrow.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/vertical-text.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "after": {
+          "total": 16,
+          "nonblank_noncomment": 16
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/wait-01.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/wait-02.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/wait-03.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/wait-04.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/wait-05.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/wait-06.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/wait-07.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/wait-08.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/wait-09.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/wait-10.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/wait-11.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/wait-12.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/wayland-cursor.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/x-cursor.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "after": {
+          "total": 22,
+          "nonblank_noncomment": 22
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/zoom-in.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 17,
+          "nonblank_noncomment": 17
+        },
+        "after": {
+          "total": 17,
+          "nonblank_noncomment": 17
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/svgs/zoom-out.svg",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 17,
+          "nonblank_noncomment": 17
+        },
+        "after": {
+          "total": 17,
+          "nonblank_noncomment": 17
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/templates/index.theme.tera",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 11,
+          "nonblank_noncomment": 11
+        },
+        "after": {
+          "total": 11,
+          "nonblank_noncomment": 11
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/templates/manifest.hl.tera",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 12,
+          "nonblank_noncomment": 12
+        },
+        "after": {
+          "total": 12,
+          "nonblank_noncomment": 12
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "src/templates/svgs.tera",
+        "category": "production",
+        "scope": false,
+        "before": {
+          "total": 31,
+          "nonblank_noncomment": 29
+        },
+        "after": {
+          "total": 31,
+          "nonblank_noncomment": 29
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        }
+      },
+      {
+        "file": "demo/.gitignore",
+        "category": "production",
+        "scope": true,
+        "before": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "after": {
+          "total": 4,
+          "nonblank_noncomment": 4
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 4,
+          "nonblank_noncomment": 4
+        }
+      },
+      {
+        "file": "demo/justfile",
+        "category": "production",
+        "scope": true,
+        "before": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "after": {
+          "total": 12,
+          "nonblank_noncomment": 10
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 12,
+          "nonblank_noncomment": 10
+        }
+      },
+      {
+        "file": "demo/upstream.lock",
+        "category": "production",
+        "scope": true,
+        "before": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "after": {
+          "total": 1,
+          "nonblank_noncomment": 1
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 1,
+          "nonblank_noncomment": 1
+        }
+      },
+      {
+        "file": "demo/verify.py",
+        "category": "verification",
+        "scope": true,
+        "before": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "after": {
+          "total": 707,
+          "nonblank_noncomment": 673
+        },
+        "deleted": {
+          "total": 0,
+          "nonblank_noncomment": 0
+        },
+        "added": {
+          "total": 707,
+          "nonblank_noncomment": 673
+        }
+      }
+    ],
+    "summary": {
+      "project": {
+        "production": {
+          "before": {
+            "total": 2317,
+            "nonblank_noncomment": 2197
+          },
+          "after": {
+            "total": 2309,
+            "nonblank_noncomment": 2204
+          },
+          "deleted": {
+            "total": 133,
+            "nonblank_noncomment": 109
+          },
+          "added": {
+            "total": 125,
+            "nonblank_noncomment": 116
+          },
+          "net_code_removed": {
+            "total": 8,
+            "nonblank_noncomment": -7
+          }
+        },
+        "verification": {
+          "before": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "after": {
+            "total": 707,
+            "nonblank_noncomment": 673
+          },
+          "deleted": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "added": {
+            "total": 707,
+            "nonblank_noncomment": 673
+          },
+          "net_code_removed": {
+            "total": -707,
+            "nonblank_noncomment": -673
+          }
+        },
+        "combined": {
+          "before": {
+            "total": 2317,
+            "nonblank_noncomment": 2197
+          },
+          "after": {
+            "total": 3016,
+            "nonblank_noncomment": 2877
+          },
+          "deleted": {
+            "total": 133,
+            "nonblank_noncomment": 109
+          },
+          "added": {
+            "total": 832,
+            "nonblank_noncomment": 789
+          },
+          "net_code_removed": {
+            "total": -699,
+            "nonblank_noncomment": -680
+          }
+        }
+      },
+      "converted_pipeline": {
+        "production": {
+          "before": {
+            "total": 392,
+            "nonblank_noncomment": 303
+          },
+          "after": {
+            "total": 384,
+            "nonblank_noncomment": 310
+          },
+          "deleted": {
+            "total": 133,
+            "nonblank_noncomment": 109
+          },
+          "added": {
+            "total": 125,
+            "nonblank_noncomment": 116
+          },
+          "net_code_removed": {
+            "total": 8,
+            "nonblank_noncomment": -7
+          }
+        },
+        "verification": {
+          "before": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "after": {
+            "total": 707,
+            "nonblank_noncomment": 673
+          },
+          "deleted": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "added": {
+            "total": 707,
+            "nonblank_noncomment": 673
+          },
+          "net_code_removed": {
+            "total": -707,
+            "nonblank_noncomment": -673
+          }
+        },
+        "combined": {
+          "before": {
+            "total": 392,
+            "nonblank_noncomment": 303
+          },
+          "after": {
+            "total": 1091,
+            "nonblank_noncomment": 983
+          },
+          "deleted": {
+            "total": 133,
+            "nonblank_noncomment": 109
+          },
+          "added": {
+            "total": 832,
+            "nonblank_noncomment": 789
+          },
+          "net_code_removed": {
+            "total": -699,
+            "nonblank_noncomment": -680
+          }
+        }
+      }
+    },
+    "removable_files_or_tasks": [],
+    "excluded_delivered_files": {
+      "documentation": [
+        "README.md",
+        "RESULTS.md",
+        "repository README demo link"
+      ],
+      "measurement_data": [
+        "measured-results.json",
+        "evidence.json"
+      ],
+      "patch_transport": [
+        "upstream.patch"
+      ],
+      "ignored_generated_or_installed": [
+        "upstream/",
+        ".need/",
+        "generated/",
+        "theme/",
+        ".venv/",
+        "__pycache__/"
+      ]
+    },
+    "partial_conversion": false,
+    "project_wide_savings_proven": false
+  },
+  "integration_patch": {
+    "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+    "sha256": "b136e871e8678e2a8476e45aefb9ce13b6b11ae2f4c2df4ccf99513f8dfc1f66",
+    "applied_to_pristine": true,
+    "ledger_reproduced": true,
+    "git_numstat_verified": true,
+    "patch_drift_rejected": true
+  },
+  "mappings": {
+    "themes": 64,
+    "roots": [
+      "svgs",
+      "pngs",
+      "hl",
+      "dist"
+    ],
+    "dry_run_only": true
+  },
+  "full_equivalence": {
+    "builds": {
+      "replacement": {
+        "all": {
+          "seconds": 831.11,
+          "need_recipes": 130
+        },
+        "zip": {
+          "seconds": 22.615,
+          "need_recipes": 64
+        }
+      },
+      "pristine": {
+        "all": {
+          "seconds": 288.541,
+          "need_recipes": 0
+        },
+        "zip": {
+          "seconds": 15.65,
+          "need_recipes": 0
+        }
+      }
+    },
+    "themes": 64,
+    "release_archives": 64,
+    "roots_equal": [
+      "svgs",
+      "pngs",
+      "hl",
+      "dist",
+      "releases"
+    ],
+    "comparison": "recursive member names, file contents, Unix type and mode, DOS attributes, comments, non-time extra fields, and symlink targets; ignores DOS/extended timestamps, ZIP64 size/offset fields, and compression encoding"
+  },
+  "lifecycle": {
+    "clean": {
+      "exit": 0,
+      "seconds": 0.009,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "narrow_png_target": {
+      "exit": 0,
+      "seconds": 21.33,
+      "need_recipes": 3,
+      "got_targets": 3
+    },
+    "reset": {
+      "exit": 0,
+      "seconds": 0.068,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "build_after_clean": {
+      "exit": 0,
+      "seconds": 45.907,
+      "need_recipes": 19,
+      "got_targets": 19
+    },
+    "current_build": {
+      "exit": 0,
+      "seconds": 5.222,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "touch_same_bytes": {
+      "exit": 0,
+      "seconds": 2.682,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "older_mtime_content_edit": {
+      "exit": 0,
+      "seconds": 31.506,
+      "need_recipes": 1,
+      "got_targets": 1
+    },
+    "restore_input": {
+      "exit": 0,
+      "seconds": 29.231,
+      "need_recipes": 1,
+      "got_targets": 1
+    },
+    "frame_time_unchanged": {
+      "exit": 0,
+      "seconds": 4.65,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "frame_time_changed": {
+      "exit": 0,
+      "seconds": 26.35,
+      "need_recipes": 1,
+      "got_targets": 1
+    },
+    "frame_time_restored": {
+      "exit": 0,
+      "seconds": 24.936,
+      "need_recipes": 1,
+      "got_targets": 1
+    },
+    "invalid_frame_failure": {
+      "exit": 1,
+      "seconds": 4.682,
+      "need_recipes": 1,
+      "got_targets": 0
+    },
+    "failure_recovery": {
+      "exit": 0,
+      "seconds": 5.366,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "post_write_generator_failure": {
+      "exit": 1,
+      "seconds": 5.393,
+      "need_recipes": 1,
+      "got_targets": 0
+    },
+    "post_write_failure_recovery": {
+      "exit": 0,
+      "seconds": 3.013,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "post_write_interruption": {
+      "terminated_by_sigterm": false,
+      "ready_marker_observed": true,
+      "seconds": 2.089
+    },
+    "post_write_interruption_recovery": {
+      "exit": 0,
+      "seconds": 4.75,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "source_deletion": {
+      "supported": false,
+      "reason": "Whiskers requires every src/svgs input; deletion fails before publication"
+    },
+    "source_deletion_recovery": {
+      "exit": 0,
+      "seconds": 5.254,
+      "need_recipes": 0,
+      "got_targets": 0
+    },
+    "atomic_failure": {
+      "published_roots_unchanged": true,
+      "state_unchanged": true,
+      "recovery_succeeded": true,
+      "generator_error": "helper wrote into its output staging tree then exited nonzero",
+      "interruption_preserved_old_outputs": true
+    },
+    "frame_time_metadata": {
+      "file": "dist/catppuccin-latte-mauve-cursors/cursors_scalable/wait/metadata.json",
+      "before_delay": 30,
+      "changed_delay": 31
+    },
+    "pristine_source_deletion": {
+      "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+      "command": "./build -f latte -a mauve",
+      "exit": 1,
+      "missing_source_rejected": true,
+      "failure": "Whiskers read_file cannot open src/svgs/wait-12.svg"
+    }
+  },
+  "verification_context": {
+    "platform": "Linux x86_64 GNU",
+    "need_profile": "release",
+    "timing": "Single observations; lifecycle verification overlapped the replacement build. Not a controlled benchmark.",
+    "engine_tests": {
+      "unit_passed": 138,
+      "integration_passed": 50,
+      "blocked": "Existing Unix socket fingerprint test: sandbox denies socket binding (EPERM)."
+    },
+    "checks_passed": [
+      "cargo fmt --check",
+      "cargo clippy --all-targets --all-features -- -D warnings",
+      "Ruff check and format",
+      "Need skill validation"
+    ],
+    "nix": "Not verified. default.nix still pins Need before directory output groups; update the pin before packaging.",
+    "subsequent_unrestricted_checks": {
+      "unit_passed": 139,
+      "integration_passed": 50,
+      "just_check": "passed"
+    }
+  },
+  "engine_change": {
+    "base_commit": "8462ae8859697b3280f10caeffeb67c708ecf74f",
+    "production_lines": {
+      "added": 142,
+      "deleted": 69,
+      "net_added": 73
+    },
+    "test_lines": {
+      "added": 265,
+      "deleted": 9,
+      "net_added": 256
+    },
+    "counting_rule": "Physical changed Rust lines; separate main.rs at #[cfg(test)]; documentation excluded."
+  },
+  "followup_profile": {
+    "context": "Temporary release binary with timers around directory hashing and recipe execution; sequential probes after the full comparison. Single observations, not a controlled benchmark.",
+    "current": {
+      "exit": 0,
+      "seconds": 2.7286927899695,
+      "directory_hashes": {
+        "generated": {
+          "calls": 3,
+          "seconds": 1.640089
+        },
+        "other_trees": {
+          "calls": 5,
+          "seconds": 0.222933
+        }
+      },
+      "recipes": []
+    },
+    "forced": {
+      "exit": 0,
+      "seconds": 7.254937432007864,
+      "directory_hashes": {
+        "generated": {
+          "calls": 5,
+          "seconds": 0.56297
+        },
+        "other_trees": {
+          "calls": 13,
+          "seconds": 0.173973
+        }
+      },
+      "recipes": [
+        {
+          "seconds": 5.91446,
+          "group": "pngs/catppuccin-mocha-mauve-cursors hl/catppuccin-mocha-mauve-cursors dist/catppuccin-mocha-mauve-cursors"
+        }
+      ]
+    },
+    "renderer_comparison": {
+      "pristine_renderer": {
+        "exit": 0,
+        "seconds": 4.547170463018119
+      },
+      "jobs_1": {
+        "exit": 0,
+        "seconds": 12.63603889598744,
+        "recipe_seconds": [
+          5.164093,
+          5.363644
+        ]
+      },
+      "jobs_2": {
+        "exit": 0,
+        "seconds": 20.681600690993946,
+        "recipe_seconds": [
+          19.368877,
+          19.384678
+        ]
+      }
+    },
+    "generated_tree": {
+      "files": 4480,
+      "entries_excluding_root": 4610,
+      "bytes_rounded_mb": 23.83
+    },
+    "shared_dependency_probe": {
+      "jobs": 2,
+      "requested_roots": [
+        "a/",
+        "b/"
+      ],
+      "shared_recipe_runs": 2,
+      "exit": 0,
+      "needfile": "@atomic\nshared/:\n  echo run >> runs\n  sleep 0.2\n  touch {{out}}/item\n@atomic\na/: shared/\n  cp shared/item {{out}}/item\n@atomic\nb/: shared/\n  cp shared/item {{out}}/item\n"
+    }
+  }
+}

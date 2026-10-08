@@ -167,9 +167,26 @@ on replacement. `need previews` and `need previews/` select the same artifact.
 A plain dependency on the declared root builds it and fingerprints its complete
 tree. Child requests do not build the parent, and `tree(...)` remains freshness-only.
 
-Directory rules support variables and patterns, require exactly one output, and
-cannot use `@allow-missing` or `@outputs-from`. Each tree owns its subtree;
-overlapping outputs, `.need`, the project root, and symlinked parents are rejected.
+A rule can produce several directory trees with one generator invocation:
+
+```make
+@atomic
+pngs/%/ hl/%/ dist/%/: svgs/%/
+  ./generate {{in}} {{out[0]}} {{out[1]}} {{out[2]}}
+```
+
+Every output must have a trailing slash. Requests for any members, including
+`--force`, run one recipe; a missing or modified tree makes the whole group stale.
+Need stages and validates all trees and rechecks inputs before publishing any.
+Each root publishes atomically and separately, so readers can observe mixed
+versions during publication. Handled publication failures roll earlier roots
+back, including roots that were initially absent. Cleanup or state-write failures
+do not record success; a crash during publication can leave mixed versions.
+
+Directory rules support variables and patterns and cannot use `@allow-missing`
+or `@outputs-from`. Each tree owns its subtree; duplicate or nested roots within
+one group, overlapping outputs, `.need`, the project root, and symlinked parents
+are rejected.
 Directory output path components beginning `.need-tmp-` are reserved for staging;
 generated children inside the tree may use that prefix.
 Fingerprints track files, empty directories, Unix permissions, and symlink targets
@@ -200,6 +217,13 @@ input.
 Use `--file PATH` to choose a needfile and `--root PATH` to put outputs, state,
 and logs under a separate project root. `{{needfile.dir}}` still refers to the
 checked-in needfile directory.
+
+## Demo
+
+The [Catppuccin cursors demo](demos/catppuccin-cursors/README.md) replaces custom
+build orchestration with a needfile while retaining the upstream generators.
+It includes a runnable integration patch and measurements of output equivalence,
+freshness, failure recovery, and code reduction.
 
 ## Agent skill
 

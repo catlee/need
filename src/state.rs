@@ -100,11 +100,13 @@ fn cleanup_atomic_temporary_outputs(
             .iter()
             .filter(|rule| rule.kind == crate::model::OutputKind::Directory)
             .any(|rule| {
-                !rule.pattern && rule.outputs[0].as_str() == relative
-                    || rule.pattern
-                        && !name.starts_with(".need-tmp-")
-                        && crate::map::PercentPattern::new(rule.outputs[0].as_str())
-                            .is_some_and(|pattern| pattern.capture(&relative).is_some())
+                rule.outputs.iter().any(|output| {
+                    !rule.pattern && output.as_str() == relative
+                        || rule.pattern
+                            && !name.starts_with(".need-tmp-")
+                            && crate::map::PercentPattern::new(output.as_str())
+                                .is_some_and(|pattern| pattern.capture(&relative).is_some())
+                })
             });
         if owned.contains(&path) || declared {
             continue;
