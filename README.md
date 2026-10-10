@@ -74,6 +74,13 @@ Command bodies preserve shell quotes and backslashes: write
 `command(test -f "tool with spaces")`, including in variable values. Remove extra
 escaping used only for older Need versions. See [command probes](docs/needfile.md#command-output-probes)
 for structural parsing limits.
+
+Track an executable with `tool(inkscape)` or add an explicit literal probe with
+`tool(inkscape, probe=--version)`. Need hashes the selected launcher and its
+resolved target contents; probes can observe delegated tool versions. These
+freshness dependencies stay out of `{{in}}` and do not automatically track
+libraries, packages, or the whole toolchain. See [tool dependencies](docs/needfile.md#tool-dependencies).
+
 `tree(path)` does not follow symlinks unless given `follow-symlinks=true`.
 
 `stat(path)` tracks one entry without following symlinks: presence, file type,

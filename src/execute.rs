@@ -490,7 +490,7 @@ pub(crate) fn build_inner(
                     (Some(path.as_str()), false, false)
                 }
                 Dependency::Env(_) | Dependency::String(_) => (None, false, false),
-                Dependency::Command(_) => (None, false, false),
+                Dependency::Command(_) | Dependency::Tool(_, _) => (None, false, false),
             };
             if let Some(path) = path {
                 if should_build {
@@ -1409,7 +1409,7 @@ pub(crate) fn record_cargo_dependency(c: &mut BuildCtx, dependency: &Dependency)
         | Dependency::Stat(path) => {
             c.session.cargo_deps.insert(path.clone());
         }
-        Dependency::String(_) | Dependency::Command(_) => {}
+        Dependency::String(_) | Dependency::Command(_) | Dependency::Tool(_, _) => {}
     }
 }
 
@@ -1526,6 +1526,7 @@ pub(crate) fn resolve_dependency(
         Dependency::Env(name) => Ok(Dependency::Env(name.clone())),
         Dependency::String(value) => Ok(Dependency::String(value.clone())),
         Dependency::Command(command) => Ok(Dependency::Command(command.clone())),
+        Dependency::Tool(_, _) => Ok(dependency.clone()),
     }
 }
 
@@ -1889,6 +1890,7 @@ pub(crate) fn dependency_signature(c: &mut BuildCtx, dependency: &Dependency) ->
         }
         Dependency::String(value) => return Ok(hash_text(value)),
         Dependency::Command(command) => return command_signature(c, command),
+        Dependency::Tool(name, probe) => return tool_signature(c, name, probe.as_deref()),
     };
     if matches!(dependency, Dependency::Mtime(_)) {
         let metadata = match fs::metadata(abs(c, path)) {
@@ -1985,6 +1987,71 @@ fn stat_signature(path: &Path) -> Result<String> {
         "stat dependency {} is unsupported on this platform\nhelp: use a Unix platform to track exact filesystem mode bits",
         path.display()
     ))
+}
+
+fn tool_signature(c: &mut BuildCtx, name: &str, probe: Option<&str>) -> Result<String> {
+    let candidates = if Path::new(name).components().count() > 1 || Path::new(name).is_absolute() {
+        vec![c.project.root.join(name)]
+    } else {
+        let path = c
+            .project
+            .env_values
+            .get("PATH")
+            .map(std::ffi::OsString::from)
+            .or_else(|| std::env::var_os("PATH"))
+            .unwrap_or_default();
+        std::env::split_paths(&path)
+            .map(|entry| c.project.root.join(entry).join(name))
+            .collect()
+    };
+    let selected = candidates.into_iter().find(|path| {
+        fs::metadata(path).is_ok_and(|metadata| {
+            #[cfg(unix)]
+            {
+                metadata.is_file()
+                    && nix::unistd::access(path, nix::unistd::AccessFlags::X_OK).is_ok()
+            }
+            #[cfg(not(unix))]
+            { metadata.is_file() }
+        })
+    }).ok_or_else(|| format!("could not resolve tool dependency {name:?}\nhelp: install the executable or correct the project's PATH or explicit tool path"))?;
+    let resolved = fs::canonicalize(&selected).map_err(|error| {
+        format!(
+            "could not resolve tool {}: {error}\nhelp: check the executable and its symlink target",
+            selected.display()
+        )
+    })?;
+    let contents = cached_file_hash(c, &resolved)?;
+    let mut signature = blake3::Hasher::new();
+    for bytes in [
+        selected.as_os_str().as_encoded_bytes(),
+        resolved.as_os_str().as_encoded_bytes(),
+        contents.as_bytes(),
+    ] {
+        signature.update(&(bytes.len() as u64).to_le_bytes());
+        signature.update(bytes);
+    }
+    if let Some(argument) = probe {
+        let mut probes = c
+            .session
+            .tool_probes
+            .lock()
+            .map_err(|_| "tool probe cache poisoned".to_string())?;
+        let key = (selected.clone(), argument.to_owned());
+        let result = probes.entry(key).or_insert_with(|| {
+            let output = Command::new(&selected).arg(argument).current_dir(&c.project.root)
+                .envs(&c.project.env_values).output().map_err(|error| format!(
+                    "could not run tool probe {}: {error}\nhelp: check the executable and probe argument", selected.display()))?;
+            let status = exit_status(&output.status);
+            if !output.status.success() {
+                return Err(format!("tool probe failed: {} {argument:?} ({status})\n--- stdout ---\n{}\n--- stderr ---\n{}\nhelp: check that the tool supports the probe argument and runs successfully",
+                    selected.display(), String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr)));
+            }
+            Ok(hash_command_output(argument, &output.stdout, &output.stderr, &status))
+        }).clone()?;
+        signature.update(result.as_bytes());
+    }
+    Ok(signature.finalize().to_hex().to_string())
 }
 
 fn command_signature(c: &mut BuildCtx, command: &str) -> Result<String> {

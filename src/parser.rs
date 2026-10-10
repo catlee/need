@@ -302,7 +302,7 @@ fn display_path(path: &Path) -> String {
 }
 
 fn unquote_dependency(raw: &str) -> String {
-    if raw.starts_with("command(") {
+    if raw.starts_with("command(") || raw.starts_with("tool(") {
         raw.to_owned()
     } else {
         unquote(raw)
@@ -311,6 +311,9 @@ fn unquote_dependency(raw: &str) -> String {
 
 pub(crate) fn parse_dependency(raw: &str) -> Result<ParsedDependency> {
     let raw = unquote_dependency(raw);
+    if raw.starts_with("tool(") {
+        return parse_tool(&raw).map(|(name, probe)| ParsedDependency::Tool(name, probe));
+    }
     if let Some(value) = raw.strip_prefix("tree(").and_then(|x| x.strip_suffix(')')) {
         return parse_tree_options(value)
             .map(|(path, follow, exclusions)| ParsedDependency::Tree(path, follow, exclusions));
@@ -360,6 +363,9 @@ pub(crate) fn parse_dependency(raw: &str) -> Result<ParsedDependency> {
 
 pub(crate) fn parse_expanded_dependency(raw: &str) -> Result<Dependency> {
     let raw = unquote_dependency(raw);
+    if raw.starts_with("tool(") {
+        return parse_tool(&raw).map(|(name, probe)| Dependency::Tool(name, probe));
+    }
     if let Some(value) = raw.strip_prefix("tree(").and_then(|x| x.strip_suffix(')')) {
         return parse_tree_options(value).and_then(|(path, follow, exclusions)| {
             Ok(Dependency::Tree(
@@ -394,7 +400,7 @@ pub(crate) fn parse_expanded_dependency(raw: &str) -> Result<Dependency> {
     Ok(Dependency::File(raw))
 }
 
-fn parse_tree_options(value: &str) -> Result<(String, bool, Vec<String>)> {
+fn expression_arguments(value: &str) -> Vec<&str> {
     let mut quote = None;
     let mut start = 0;
     let mut arguments = Vec::new();
@@ -408,7 +414,10 @@ fn parse_tree_options(value: &str) -> Result<(String, bool, Vec<String>)> {
         match character {
             '\\' => {
                 escaped = characters.peek().is_some_and(|(_, next)| {
-                    next.is_whitespace() || *next == '\\' || matches!(*next, '\'' | '"')
+                    next.is_whitespace()
+                        || *next == '\\'
+                        || quote == Some(*next)
+                        || (quote.is_none() && matches!(*next, '\'' | '"'))
                 })
             }
             '\'' | '"' if quote == Some(character) => quote = None,
@@ -421,6 +430,42 @@ fn parse_tree_options(value: &str) -> Result<(String, bool, Vec<String>)> {
         }
     }
     arguments.push(&value[start..]);
+    arguments
+}
+
+fn tool_argument(value: &str) -> Result<String> {
+    let words = split_words(value.trim())?;
+    if words.len() != 1 || words[0].is_empty() {
+        return Err("invalid tool() argument\nhelp: supply one nonempty name or probe argument; quote spaces and commas".into());
+    }
+    Ok(words.into_iter().next().unwrap())
+}
+
+fn parse_tool(raw: &str) -> Result<(String, Option<String>)> {
+    let body = raw
+        .strip_prefix("tool(")
+        .and_then(|s| s.strip_suffix(')'))
+        .ok_or("malformed tool() expression\nhelp: use tool(NAME) or tool(NAME, probe=ARG)")?;
+    let arguments = expression_arguments(body);
+    let name = tool_argument(arguments[0])?;
+    let mut probe = None;
+    for option in &arguments[1..] {
+        let Some((key, value)) = option.trim().split_once('=') else {
+            return Err("invalid tool() option\nhelp: use one optional probe=ARG option".into());
+        };
+        if key.trim() != "probe" || probe.is_some() {
+            return Err(
+                "unknown or duplicate tool() option\nhelp: use one optional probe=ARG option"
+                    .into(),
+            );
+        }
+        probe = Some(tool_argument(value)?);
+    }
+    Ok((name, probe))
+}
+
+fn parse_tree_options(value: &str) -> Result<(String, bool, Vec<String>)> {
+    let arguments = expression_arguments(value);
     let path = unquote(arguments[0].trim());
     let mut follow = false;
     let mut exclusions = Vec::new();
@@ -475,7 +520,7 @@ pub(crate) fn canonical_exclusions(values: Vec<String>) -> Result<Vec<String>> {
 
 fn parse_dependency_template(raw: &str) -> Result<ParsedDependency> {
     let raw = unquote_dependency(raw);
-    if raw.starts_with("tree(") {
+    if raw.starts_with("tree(") || raw.starts_with("tool(") {
         parse_dependency(&raw)
     } else if raw.contains("{{") {
         Ok(ParsedDependency::Deferred(raw))
@@ -719,7 +764,7 @@ pub(crate) fn split_words(s: &str) -> Result<Vec<String>> {
                     || quote.is_some_and(|matching| next == matching)
                     || (quote.is_none() && matches!(next, '\'' | '"'));
                 if escapable {
-                    if cur.starts_with("tree(") {
+                    if cur.starts_with("tree(") || cur.starts_with("tool(") {
                         cur.push(c);
                     }
                     cur.push(next);
@@ -729,13 +774,13 @@ pub(crate) fn split_words(s: &str) -> Result<Vec<String>> {
                 }
             }
             '\'' | '"' if quote == Some(c) => {
-                if cur.starts_with("tree(") {
+                if cur.starts_with("tree(") || cur.starts_with("tool(") {
                     cur.push(c);
                 }
                 quote = None;
             }
             '\'' | '"' if quote.is_none() => {
-                if cur.starts_with("tree(") {
+                if cur.starts_with("tree(") || cur.starts_with("tool(") {
                     cur.push(c);
                 }
                 quote = Some(c);
@@ -827,6 +872,27 @@ impl VariableResolver {
         self.stack.push(name.to_string());
         let mut resolved = Vec::new();
         for word in value {
+            if word.starts_with("tool(") {
+                let (name, probe) = parse_tool(&word)?;
+                let mut argument = |value: &str| -> Result<String> {
+                    let words = self.expand_word(value)?;
+                    if words.len() != 1 || words[0].is_empty() {
+                        return Err("invalid tool() expansion\nhelp: supply exactly one nonempty token for the name and probe".into());
+                    }
+                    // Keep expanded literals intact when spliced dependencies are parsed later.
+                    Ok(format!(
+                        "\"{}\"",
+                        words[0].replace('\\', "\\\\").replace('"', "\\\"")
+                    ))
+                };
+                let name = argument(&name)?;
+                let probe = probe.as_deref().map(&mut argument).transpose()?;
+                resolved.push(match probe {
+                    Some(probe) => format!("tool({name}, probe={probe})"),
+                    None => format!("tool({name})"),
+                });
+                continue;
+            }
             resolved.extend(self.expand_word(&word)?);
         }
         self.stack.pop();
@@ -1002,6 +1068,28 @@ mod tests {
             .iter()
             .map(|(name, value)| ((*name).into(), split_words(value).unwrap()))
             .collect()
+    }
+
+    #[test]
+    fn tool_options_use_needfile_escaping_once() {
+        for expression in [
+            "tool(inkscape, probe=--version)",
+            "tool(inkscape, probe=\"--version\")",
+            "tool(inkscape, probe = '--version')",
+        ] {
+            let words = split_words(expression).unwrap();
+            assert_eq!(words.len(), 1);
+            assert_eq!(
+                parse_expanded_dependency(&words[0]).unwrap(),
+                Dependency::Tool("inkscape".into(), Some("--version".into()))
+            );
+        }
+        let expression = r#"tool(compiler, probe='a\", b\\c')"#;
+        let words = split_words(expression).unwrap();
+        assert_eq!(
+            parse_expanded_dependency(&words[0]).unwrap(),
+            Dependency::Tool("compiler".into(), Some("a\\\", b\\c".into()))
+        );
     }
 
     #[test]

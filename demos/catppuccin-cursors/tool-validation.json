@@ -1,0 +1,59 @@
+{
+  "scope": "Tool dependency follow-up only; no renderer or performance rerun",
+  "integration_patch": {
+    "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+    "sha256": "6b5685ffc39b36535f4fa1f50874d2fe1801eb3ae5d3908c73503ed20b6f507e",
+    "applied_to_pristine": true,
+    "ledger_reproduced": true,
+    "git_numstat_verified": true,
+    "patch_drift_rejected": true
+  },
+  "mappings": {
+    "themes": 64,
+    "roots": [
+      "svgs",
+      "pngs",
+      "hl",
+      "dist"
+    ],
+    "dry_run_only": true
+  },
+  "tool_probes": {
+    "bash": {
+      "argument": "--version",
+      "status": 0,
+      "first_line": "GNU bash, version 5.3.15(1)-release (x86_64-pc-linux-gnu)"
+    },
+    "whiskers": {
+      "argument": "--version",
+      "status": 0,
+      "first_line": "catppuccin-whiskers 2.9.0"
+    },
+    "inkscape": {
+      "argument": "--version",
+      "status": 0,
+      "first_line": "Inkscape 1.4.4 (dcaf3e7d9e, 2026-05-05)"
+    },
+    "xcursorgen": {
+      "argument": "-V",
+      "status": 0,
+      "first_line": "xcursorgen version 1.0.9"
+    },
+    "zip": {
+      "argument": "-v",
+      "status": 0,
+      "first_line": "Copyright (c) 1990-2008 Info-ZIP - Type 'zip \"-L\"' for software license."
+    },
+    "python3": {
+      "argument": "--version",
+      "status": 0,
+      "first_line": "Python 3.12.13"
+    }
+  },
+  "smoke": {
+    "artifact_build": true,
+    "second_invocation_current": true,
+    "successful_probes_quiet": true
+  },
+  "need_binary_sha256": "02105978a30be0d8f8999cf6e36f61256ba4a359eded240e0de26322b7bec0d3"
+}

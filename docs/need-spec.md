@@ -70,6 +70,7 @@ The current implementation includes the core artifact graph, including:
 - partial declared output sets through `@allow-missing`, including persisted
   absent-output outcomes and subset cleanup
 - explicit command-output freshness probes through `command(...)`
+- executable and optional literal-argument probes through `tool(...)`
 - per-rule concurrency limits through `@jobs(N)`
 - pre/post input-fingerprint validation around recipe execution
 - signal-aware recipe termination, interrupted logs, atomic state replacement,
@@ -733,6 +734,43 @@ runner such as `just`. Until implemented, use an explicit `string(...)`,
 `env(...)`, or generated file dependency as appropriate.
 
 ---
+
+## 10.5 Tool dependencies
+
+`tool(NAME)` tracks the executable selected through the effective `PATH`,
+including `.env` overrides. `tool(NAME, probe=--version)` also runs one explicit
+probe argument. Quoted and unquoted options are equivalent; quote spaces or
+commas, for example `tool(compiler, probe="version, details")`. Need passes that
+one literal argument directly to the selected executable without a shell or
+argument splitting. It never guesses a default probe.
+
+Tool dependencies affect freshness only: they add no graph edge and stay out
+of `{{in}}`. Names and probes support normal variables, token-list splicing and
+multiline assignments, with exactly one nonempty token per field. Automatic
+variables such as `{{in}}`, `{{out}}`, indexed inputs/outputs, and `{{stem}}` are
+not allowed. Empty fields, malformed expressions, and unknown or duplicate
+options are errors. Whitespace around options and `=` is allowed.
+
+Need resolves tools again on every invocation. Relative and empty `PATH`
+entries start at the project root. An explicit path containing a slash is also
+allowed; relative paths start at the project root. On Unix, selection skips
+directories and files without executable access. Need fingerprints
+both the selected invocation path and canonical target path, using lossless
+path bytes, plus the target file contents. Symlinks are followed for hashing;
+probes execute through the selected path so symlink invocation semantics remain
+intact.
+
+Probes fingerprint their argument, raw stdout/stderr, and exit status. Successful
+probes stay quiet; a failed spawn or nonzero exit stops the dependent recipe
+with a source location, captured output when available, and a `help:` hint.
+Identical probes share one result per invocation, including parallel builds,
+but run again on the next invocation even when launcher contents are unchanged.
+Executable contents still participate in the post-recipe input check.
+
+This hashes the launcher. A probe can observe the identity of a delegated tool,
+but Need does not automatically track libraries, packages, or the whole
+toolchain. Use additional dependencies for inputs the launcher and probe do
+not expose.
 
 ## 11. Automatic Variables
 

@@ -359,3 +359,31 @@ containers holding declared or recorded outputs.
 When all requested artifacts are current, builds (including `need get` and dry
 runs) report `need: nothing to do; all targets are up to date` on stderr.
 `--explain` and global `--output=silent` suppress this message.
+
+Tool dependencies
+-----------------
+
+Use `tool(NAME)` to fingerprint the selected executable and resolved target
+contents. Add `probe=ARG` to observe delegated tool versions explicitly:
+`tool(inkscape, probe=--version)`. Quotes protect spaces and commas; quoted and
+unquoted values use ordinary needfile escaping. The probe is exactly one
+nonempty literal argument passed directly to the executable, without a shell
+or splitting. Need does not guess a default probe. Unknown/duplicate options,
+empty names/probes, and automatic variables are errors. Normal interpolation,
+spliced dependency tokens, and multiline variables work; each field must expand
+to one token.
+
+Tools are freshness-only, with no graph edge or `{{in}}` entry. Effective PATH
+includes dotenv overrides; relative/empty entries and relative explicit paths
+start at the selected project root. Explicit paths contain a slash. Unix
+selection skips directories and files without executable access.
+Need follows symlinks for contents and fingerprints selected/resolved path
+identity losslessly, but executes probes through the selected invocation path.
+Probes sign raw stdout/stderr, status and argument, stay quiet on success, and
+stop recipes with captured diagnostics on failure. Identical probes run once
+per invocation across parallel rules and run again on every later invocation.
+Executable contents are rechecked after recipes even when probes are memoized.
+
+This tracks the launcher; a probe can observe delegated tool identity. It does
+not automatically track libraries, packages, or a whole toolchain. Declare
+additional dependencies for those inputs when needed.

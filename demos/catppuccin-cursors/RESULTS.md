@@ -10,6 +10,15 @@ and all 64 mappings, checks executable arguments against the original probes,
 and runs the four probes with the real tools. It does not rerun renderer or
 performance measurements; the historical records below are unchanged.
 
+The tool-dependency follow-up replaces the three executable-hash shell probes
+with individual `tool(...)` dependencies for the same toolsets. Probe switches
+were verified against the installed tools. [Focused validation](tool-validation.json)
+records patch application, ledger checks, all 64 mapping dry runs, six real tool
+probes, and an artifact build followed by a no-op invocation. The PySide6 module
+fingerprint and domain renderer are unchanged. This follow-up does not rerun
+the full renderer comparison or performance measurements; issue #56 remains
+open for production reduction and Nix packaging.
+
 ## Full output comparison
 
 The pinned upstream revision is `a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4`. On Linux x86_64 GNU, both the replacement and pristine upstream built all four flavours, 16 accents, 11 scales, formats, aliases, 64 themes and 64 release ZIPs. The inventories matched for `svgs`, `pngs`, `hl`, `dist`, and `releases`. The verifier compares file bytes and symlink targets and recursively compares ZIP/`.hlc` members, names and stored attributes; timestamps, ZIP64 bookkeeping and compression encoding are excluded.

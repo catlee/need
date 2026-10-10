@@ -135,6 +135,7 @@ pub(crate) enum Dependency {
     Env(String),
     String(String),
     Command(String),
+    Tool(String, Option<String>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -147,6 +148,7 @@ pub(crate) enum ParsedDependency {
     Env(String),
     String(String),
     Command(String),
+    Tool(String, Option<String>),
 }
 
 impl ParsedDependency {
@@ -159,7 +161,7 @@ impl ParsedDependency {
             | Self::Stat(value)
             | Self::Env(value)
             | Self::String(value) => value,
-            Self::Command(value) => value,
+            Self::Command(value) | Self::Tool(value, _) => value,
         }
     }
 }
@@ -247,6 +249,8 @@ impl Jobs {
     }
 }
 
+type ProbeCache<K> = Arc<Mutex<HashMap<K, Result<String>>>>;
+
 #[derive(Clone, Default)]
 pub(crate) struct BuildSession {
     pub(crate) state: State,
@@ -262,7 +266,8 @@ pub(crate) struct BuildSession {
     pub(crate) cargo_env: BTreeSet<String>,
     pub(crate) stack: Vec<ProjectPath>,
     pub(crate) active_patterns: Vec<(RuleId, usize)>,
-    pub(crate) command_probes: Arc<Mutex<HashMap<String, std::result::Result<String, String>>>>,
+    pub(crate) tool_probes: ProbeCache<(PathBuf, String)>,
+    pub(crate) command_probes: ProbeCache<String>,
 }
 
 #[derive(Clone, Default)]

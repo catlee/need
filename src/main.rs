@@ -656,12 +656,17 @@ fn expand_dependencies(
         match dependency {
             ParsedDependency::Deferred(expression) => {
                 if let Dependency::Command(command) = parse_expanded_dependency(expression)? {
-                    validate_command_probe(&command)?;
+                    validate_probe_variables(&command, "command")?;
                 }
                 for word in expand_words(expression, vars, env_values)? {
                     let dependency = parse_expanded_dependency(&word)?;
                     if let Dependency::Command(command) = &dependency {
-                        validate_command_probe(command)?;
+                        validate_probe_variables(command, "command")?;
+                    }
+                    if let Dependency::Tool(name, probe) = &dependency {
+                        for value in std::iter::once(name).chain(probe.iter()) {
+                            validate_probe_variables(value, "tool")?;
+                        }
                     }
                     expanded.push(dependency);
                 }
@@ -697,9 +702,24 @@ fn expand_dependencies(
             ParsedDependency::String(value) => {
                 expand_typed(value, vars, env_values, Dependency::String, &mut expanded)?
             }
+            ParsedDependency::Tool(name, probe) => {
+                let expand_argument = |value: &str| -> Result<String> {
+                    validate_probe_variables(value, "tool")?;
+                    let words = expand_words(value, vars, env_values)?;
+                    if words.len() != 1 || words[0].is_empty() {
+                        return Err("invalid tool() expansion\nhelp: supply exactly one nonempty token for the name and probe".into());
+                    }
+                    validate_probe_variables(&words[0], "tool")?;
+                    Ok(words.into_iter().next().unwrap())
+                };
+                expanded.push(Dependency::Tool(
+                    expand_argument(name)?,
+                    probe.as_deref().map(expand_argument).transpose()?,
+                ));
+            }
             ParsedDependency::Command(value) => {
                 let command = expand(value, vars, env_values);
-                validate_command_probe(&command)?;
+                validate_probe_variables(&command, "command")?;
                 expanded.push(Dependency::Command(command));
             }
         }
@@ -728,7 +748,7 @@ fn expand_typed(
     Ok(())
 }
 
-fn validate_command_probe(command: &str) -> Result<()> {
+fn validate_probe_variables(command: &str, kind: &str) -> Result<()> {
     let mut rest = command;
     while let Some(start) = rest.find("{{") {
         let token_start = start + 2;
@@ -743,7 +763,7 @@ fn validate_command_probe(command: &str) -> Result<()> {
             || token.starts_with("out[")
         {
             return Err(format!(
-                "automatic variable {{{{{token}}}}} is not valid in command(...)\nhelp: use command text independent of rule inputs and outputs"
+                "automatic variable {{{{{token}}}}} is not valid in {kind}(...)\nhelp: use probe text independent of rule inputs and outputs"
             ));
         }
         rest = &rest[token_start + end + 2..];
@@ -786,6 +806,9 @@ fn resolve_rules(
         }
         for dependency in &parsed.deps {
             collect_env_refs(dependency.template(), raw_vars, &mut rule.env_refs);
+            if let ParsedDependency::Tool(_, Some(probe)) = dependency {
+                collect_env_refs(probe, raw_vars, &mut rule.env_refs);
+            }
             if let ParsedDependency::Tree(_, _, exclusions) = dependency {
                 for exclusion in exclusions {
                     collect_env_refs(exclusion, raw_vars, &mut rule.env_refs);
@@ -912,7 +935,7 @@ help: atomic publication currently supports declared outputs only"
                     path.matches('%').count() > 1
                 }
                 Dependency::Env(_) | Dependency::String(_) => false,
-                Dependency::Command(_) => false,
+                Dependency::Command(_) | Dependency::Tool(_, _) => false,
             })
         {
             return Err("only one % is supported per pattern".into());
@@ -955,6 +978,52 @@ mod tests {
         path::{Path, PathBuf},
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    fn tool_probe_environment_references_participate_in_rule_freshness() {
+        let (_, parsed) = parse_needfile_text(
+            Path::new("needfile"),
+            "out: tool(compiler, probe={{env.VERSION_ARG}})\n  echo built > {{out}}\n",
+        )
+        .unwrap();
+        let env = HashMap::from([("VERSION_ARG".into(), "--version".into())]);
+        let rules = resolve_rules(&parsed, &HashMap::new(), &env, &HashMap::new()).unwrap();
+        assert!(rules[0].env_refs.contains("VERSION_ARG"));
+    }
+
+    #[test]
+    fn tool_arguments_expand_once_with_single_token_cardinality() {
+        let vars = HashMap::from([
+            ("name".into(), vec!["compiler".into()]),
+            ("argument".into(), vec!["spaces, \"quotes\"".into()]),
+            ("many".into(), vec!["one".into(), "two".into()]),
+            ("empty".into(), vec![]),
+        ]);
+        let parsed = parse_dependency("tool({{name}}, probe={{argument}})").unwrap();
+        assert_eq!(
+            expand_dependencies(&[parsed], &vars, &HashMap::new()).unwrap(),
+            vec![Dependency::Tool(
+                "compiler".into(),
+                Some("spaces, \"quotes\"".into())
+            )]
+        );
+        for expression in [
+            "tool({{many}})",
+            "tool({{empty}})",
+            "tool(compiler, probe={{many}})",
+            "tool(compiler, probe={{stem}})",
+        ] {
+            assert!(
+                expand_dependencies(
+                    &[parse_dependency(expression).unwrap()],
+                    &vars,
+                    &HashMap::new()
+                )
+                .is_err(),
+                "{expression}"
+            );
+        }
+    }
 
     #[test]
     fn work_needed_tracks_stale_rules_across_parallel_builds() {

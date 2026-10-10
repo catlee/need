@@ -177,7 +177,7 @@ index 0000000..7f1494e
 +need.output = grouped
 +
 +@atomic
-+generated/: tree(src/svgs) src/templates/*.tera source.lock command(bash -o pipefail -c 'sha256sum -- "$(command -v bash)" "$(command -v whiskers)" | cut -d " " -f1')
++generated/: tree(src/svgs) src/templates/*.tera source.lock tool(bash, probe=--version) tool(whiskers, probe=--version)
 +  set -eu
 +  root="$PWD"
 +  cd {{out}}
@@ -191,14 +191,14 @@ index 0000000..7f1494e
 +
 +@atomic
 +@jobs(1)
-+pngs/%/ hl/%/ dist/%/: svgs/%/ generated/ scripts/build-cursors scripts/generate-metadata src/cursorList AUTHORS LICENSE default.nix requirements-need.txt source.lock env(CURSOR_FRAME_TIME) command(bash -o pipefail -c 'sha256sum -- "$(command -v bash)" "$(command -v inkscape)" "$(command -v xcursorgen)" "$(command -v zip)" "$(command -v python3)" | cut -d " " -f1') command(python3 -c 'import hashlib; from pathlib import Path; from PySide6 import QtSvg; print(hashlib.sha256(Path(QtSvg.__file__).read_bytes()).hexdigest())')
++pngs/%/ hl/%/ dist/%/: svgs/%/ generated/ scripts/build-cursors scripts/generate-metadata src/cursorList AUTHORS LICENSE default.nix requirements-need.txt source.lock env(CURSOR_FRAME_TIME) tool(bash, probe=--version) tool(inkscape, probe=--version) tool(xcursorgen, probe=-V) tool(zip, probe=-v) tool(python3, probe=--version) command(python3 -c 'import hashlib; from pathlib import Path; from PySide6 import QtSvg; print(hashlib.sha256(Path(QtSvg.__file__).read_bytes()).hexdigest())')
 +  set -eu
 +  scripts/build-cursors svgs/{{stem}} {{out[0]}} {{out[1]}} {{out[2]}}
 +  cp AUTHORS LICENSE svgs/{{stem}}/index.theme generated/hl/{{stem}}/manifest.hl {{out[2]}}/
 +  cp generated/hl/{{stem}}/manifest.hl {{out[1]}}/
 +
 +@atomic
-+releases/%.zip: dist/%/ source.lock command(bash -o pipefail -c 'sha256sum -- "$(command -v bash)" "$(command -v zip)" | cut -d " " -f1')
++releases/%.zip: dist/%/ source.lock tool(bash, probe=--version) tool(zip, probe=-v)
 +  set -eu
 +  test ! -f releases/{{stem}}.zip || cp -p releases/{{stem}}.zip {{out}}
 +  root="$PWD"

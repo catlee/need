@@ -369,6 +369,16 @@ successful directory publication.
 Interruption before publication preserves every previous tree and retains the
 usual interrupted recipe log.
 
+### Tool probe output
+
+`tool(NAME, probe=ARG)` captures stdout and stderr as separate byte streams for
+freshness. Successful probes are quiet in every output mode. Failed probes
+stop the dependent recipe and show the source location, exit status, captured
+stdout/stderr, and a `help:` hint. Spawn failures identify the executable and
+suggest checking the executable and argument. Identical probes share one
+result per invocation, including parallel builds; probe results are not
+persisted as recipe logs or cached across invocations.
+
 ## 14. Signals and Interruption
 
 If a child process is interrupted:

@@ -395,6 +395,27 @@ output.bin: input.dat string({{format}})
 
 Changing `format` invalidates the rule without pretending that the value is a file. String dependencies are freshness inputs; they are not included in `{{in}}`. 
 
+### Tool dependencies
+
+```make
+image.png: image.svg tool(inkscape, probe=--version)
+  inkscape {{in}} --export-filename={{out}}
+```
+
+`tool(NAME)` hashes the executable selected through the project's effective
+PATH, following symlinks for contents. Add `probe=ARG` to observe a delegated
+tool version. The optional probe passes exactly one literal argument directly
+to the selected executable, without a shell or splitting; there is no default
+probe. Quoted and unquoted options are equivalent. Quote spaces and commas,
+for example `tool(compiler, probe="version, details")`.
+
+Tool dependencies stay out of `{{in}}` and add no graph edge. Normal variables,
+spliced tokens and multiline assignments work; names and probes must each be
+one nonempty token and cannot use automatic variables. These dependencies
+track launchers and explicit probe results, not libraries, packages, or whole
+toolchains. See the [tool dependency specification](need-spec.md#105-tool-dependencies)
+for PATH, path identity, failure, and per-invocation memoization details.
+
 ### Command-output probes
 
 The motivating case for a command dependency is a toolchain or platform value
