@@ -5,7 +5,6 @@ import io
 import json
 import os
 import shutil
-import signal
 import stat
 import struct
 import subprocess
@@ -23,7 +22,6 @@ SESSION = [] if "--no-dbus" in sys.argv else ["dbus-run-session", "--"]
 RESULTS = {"session": "headless" if not SESSION else "isolated D-Bus"}
 ENV = dict(
     os.environ,
-    CURSOR_FRAME_TIME="30",
     QT_QPA_PLATFORM="offscreen",
 )
 
@@ -86,251 +84,63 @@ def inventory(root):
 
 def lifecycle(root):
     theme = "catppuccin-latte-mauve-cursors"
-    env = dict(ENV, PATH=f"{NEED.parent}:{ENV['PATH']}")
+    env = ENV | {"PATH": f"{NEED.parent}:{ENV['PATH']}"}
     results = {}
 
-    def run(name, args, frame_time=None, expected_failure=None):
-        run_env = env | ({"CURSOR_FRAME_TIME": frame_time} if frame_time else {})
+    def run(name, args):
         start = time.perf_counter()
         process = subprocess.run(
             [*SESSION, *args],
             cwd=root,
-            env=run_env,
-            check=False,
+            env=env,
             capture_output=True,
             text=True,
+            check=False,
         )
         output = process.stdout + process.stderr
         results[name] = {
-            "exit": process.returncode,
             "seconds": round(time.perf_counter() - start, 3),
             "need_recipes": output.count("[need]"),
-            "got_targets": output.count("[got]"),
         }
-        print(f"{name}: {results[name]}", flush=True)
-        if expected_failure:
-            assert process.returncode and expected_failure in output, (
-                f"{name}: expected failure containing {expected_failure!r}, "
-                f"got exit {process.returncode}:\n"
-                + "\n".join(output.splitlines()[-12:])
-            )
-        elif process.returncode:
+        if process.returncode:
             raise RuntimeError(
                 f"{name} failed:\n" + "\n".join(output.splitlines()[-12:])
             )
+        print(f"{name}: {results[name]}", flush=True)
 
-    def snapshot(path):
-        entries = {}
-        for entry in (path, *sorted(path.rglob("*"))):
-            name = "." if entry == path else str(entry.relative_to(path))
-            mode = stat.S_IMODE(entry.lstat().st_mode)
-            if entry.is_symlink():
-                value = ["symlink", mode, os.readlink(entry)]
-            elif entry.is_dir():
-                value = ["directory", mode]
-            else:
-                value = ["file", mode, hashlib.sha256(entry.read_bytes()).hexdigest()]
-            entries[name] = value
-        return entries
-
-    clean = ["just", "--justfile", "justfile", "clean"]
-    build = ["just", "--justfile", "justfile", "build", "latte", "mauve"]
-    run("clean", clean)
+    build = ["just", "build", "latte", "mauve"]
+    run("clean", ["just", "clean"])
     run("narrow_png_target", [str(NEED), "pngs/" + theme])
-    run("reset", clean)
+    assert all((root / name / theme).is_dir() for name in ("pngs", "hl", "dist"))
+    run("reset", ["just", "clean"])
     run("build_after_clean", build)
     assert len(list((root / "svgs").glob("catppuccin-latte-*-cursors"))) == 16
-    assert (root / "dist" / theme).is_dir()
     run("current_build", build)
     assert results["current_build"]["need_recipes"] == 0
 
-    authors = root / "AUTHORS"
-    original, original_stat = authors.read_bytes(), authors.stat()
-    os.utime(authors, ns=(original_stat.st_atime_ns, time.time_ns()))
-    run("touch_same_bytes", build)
-    assert results["touch_same_bytes"]["need_recipes"] == 0
-    os.utime(authors, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+    source = root / "src/svgs/default.svg"
+    rendered = root / "pngs" / theme / "x100/default.png"
+    original, original_png = source.read_bytes(), rendered.read_bytes()
+    assert b"#FF0000" in original
     try:
-        edited = original + b"\n# lifecycle evidence\n"
-        authors.write_bytes(edited)
-        os.utime(
-            authors,
-            ns=(original_stat.st_atime_ns, max(1, time.time_ns() - 86_400_000_000_000)),
-        )
-        run("older_mtime_content_edit", build)
-        assert results["older_mtime_content_edit"]["need_recipes"] > 0
-        assert (root / "dist" / theme / "AUTHORS").read_bytes() == edited
+        source.write_bytes(original.replace(b"#FF0000", b"#123456"))
+        run("source_edit", build)
+        assert results["source_edit"]["need_recipes"] > 0
+        assert rendered.read_bytes() != original_png
     finally:
-        authors.write_bytes(original)
-        os.utime(authors, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
-    run("restore_input", build)
-    run("frame_time_unchanged", build, "30")
-    assert results["frame_time_unchanged"]["need_recipes"] == 0
+        source.write_bytes(original)
+    run("source_restored", build)
+    assert rendered.read_bytes() == original_png
+    run("restored_current_build", build)
+    assert results["restored_current_build"]["need_recipes"] == 0
 
-    def animation_delay():
-        for path in (root / "dist" / theme / "cursors_scalable").rglob("metadata.json"):
-            data = json.loads(path.read_text())
-            if data and "delay" in data[0]:
-                return path, data[0]["delay"]
-        raise AssertionError("animated cursor metadata is missing")
-
-    metadata, before = animation_delay()
-    before_tree = snapshot(root / "dist" / theme)
-    run("frame_time_changed", build, "31")
-    assert results["frame_time_changed"]["need_recipes"] > 0
-    _, after = animation_delay()
-    assert before == 30 and after == 31
-    assert before_tree != snapshot(root / "dist" / theme)
-    run("frame_time_restored", build, "30")
-
-    outputs = [root / output / theme for output in ("pngs", "hl", "dist")]
-    before_failure = [snapshot(path) for path in outputs]
-    state = (root / ".need" / "state.json").read_bytes()
-    run(
-        "invalid_frame_failure",
-        build,
-        "0",
-        expected_failure="must be a positive integer",
-    )
-    assert before_failure == [snapshot(path) for path in outputs]
-    assert state == (root / ".need" / "state.json").read_bytes()
-    run("failure_recovery", build, "30")
-    helper = root / "scripts" / "build-cursors"
-    helper_bytes = helper.read_bytes()
-    marker = b'mkdir -p "${SCALES[@]/#/$BUILD_DIR/x}" "$BUILD_DIR/config"'
-    assert helper_bytes.count(marker) == 1
-    injected = helper_bytes.replace(
-        marker, marker + b'\ntouch "$BUILD_DIR/failure-marker"\nexit 42', 1
-    )
-    helper.write_bytes(injected)
-    try:
-        run("post_write_generator_failure", build, expected_failure="failed")
-    finally:
-        helper.write_bytes(helper_bytes)
-    assert before_failure == [snapshot(path) for path in outputs]
-    assert state == (root / ".need" / "state.json").read_bytes()
-    assert not any(path.name == "failure-marker" for path in (root / "pngs").rglob("*"))
-    run("post_write_failure_recovery", build)
-
-    interrupt_helper = helper_bytes.replace(
-        marker, marker + b'\ntouch "$BUILD_DIR/interrupt-ready"\nsleep 60', 1
-    )
-    before_interruption = [snapshot(path) for path in outputs]
-    state_before_interruption = (root / ".need" / "state.json").read_bytes()
-    helper.write_bytes(interrupt_helper)
-    interrupt_env = env.copy()
-    process = None
-    ready = None
-    interrupt_started = time.monotonic()
-    try:
-        process = subprocess.Popen(
-            [*SESSION, *build],
-            cwd=root,
-            env=interrupt_env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            start_new_session=True,
-        )
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline and process.poll() is None:
-            ready = next((root / "pngs").rglob("interrupt-ready"), None)
-            if ready:
-                break
-            time.sleep(0.05)
-        assert ready is not None, (
-            "generator did not reach the post-write interruption point"
-        )
-        assert root / "pngs" / theme not in ready.parents, (
-            "readiness marker appeared in published output"
-        )
-        assert any(part.startswith(".need-tmp-dir-") for part in ready.parts), ready
-        time.sleep(0.2)
-        os.killpg(process.pid, signal.SIGTERM)
-        output, _ = process.communicate(timeout=15)
-    except BaseException:
-        if process is not None and process.poll() is None:
-            os.killpg(process.pid, signal.SIGKILL)
-            process.communicate()
-        raise
-    finally:
-        helper.write_bytes(helper_bytes)
-    results["post_write_interruption"] = {
-        "terminated_by_sigterm": process.returncode == -signal.SIGTERM,
-        "ready_marker_observed": ready is not None,
-        "seconds": round(time.monotonic() - interrupt_started, 3),
-    }
-    assert ready and process.returncode != 0, (
-        "interrupt marker was not reached:\n" + "\n".join(output.splitlines()[-12:])
-    )
-    assert before_interruption == [snapshot(path) for path in outputs]
-    assert state_before_interruption == (root / ".need" / "state.json").read_bytes()
-    run("post_write_interruption_recovery", build)
-    assert not any(
-        path.name == "interrupt-ready" for path in (root / "pngs").rglob("*")
-    )
-
-    source_svg = root / "src" / "svgs" / "wait-12.svg"
-    source_bytes, source_stat = source_svg.read_bytes(), source_svg.stat()
-    original_tree = inventory(root / "dist" / theme)
-    before_deletion = [snapshot(path) for path in outputs]
-    state_before_deletion = (root / ".need" / "state.json").read_bytes()
-    try:
-        source_svg.unlink()
-        run("source_deletion", build, expected_failure="Failed to open file")
-        assert before_deletion == [snapshot(path) for path in outputs]
-        assert state_before_deletion == (root / ".need" / "state.json").read_bytes()
-        results["source_deletion"] = {
-            "supported": False,
-            "reason": "Whiskers requires every src/svgs input; deletion fails before publication",
-        }
-    finally:
-        source_svg.write_bytes(source_bytes)
-        os.chmod(source_svg, stat.S_IMODE(source_stat.st_mode))
-        os.utime(source_svg, ns=(source_stat.st_atime_ns, source_stat.st_mtime_ns))
-    run("source_deletion_recovery", build)
-    assert original_tree == inventory(root / "dist" / theme)
-    results["atomic_failure"] = {
-        "published_roots_unchanged": True,
-        "state_unchanged": True,
-        "recovery_succeeded": True,
-        "generator_error": "helper wrote into its output staging tree then exited nonzero",
-        "interruption_preserved_old_outputs": True,
-    }
-    results["frame_time_metadata"] = {
-        "file": str(metadata.relative_to(root)),
-        "before_delay": before,
-        "changed_delay": after,
-    }
+    run("multi_accent_build", ["just", "build", "latte", "mauve blue"])
+    assert (root / "dist/catppuccin-latte-blue-cursors").is_dir()
+    run("archives", ["just", "zip"])
+    assert len(list((root / "releases").glob("*.zip"))) == 2
+    run("current_archives", ["just", "zip"])
+    assert results["current_archives"]["need_recipes"] == 0
     return results
-
-
-def pristine_deletion_probe(root):
-    source = root / "src" / "svgs" / "wait-12.svg"
-    content, metadata = source.read_bytes(), source.stat()
-    try:
-        source.unlink()
-        process = subprocess.run(
-            ["./build", "-f", "latte", "-a", "mauve"],
-            cwd=root,
-            env=ENV,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        output = process.stdout + process.stderr
-        assert process.returncode and "wait-12.svg" in output
-        return {
-            "revision": (DEMO / "upstream.lock").read_text().strip(),
-            "command": "./build -f latte -a mauve",
-            "exit": process.returncode,
-            "missing_source_rejected": True,
-            "failure": "Whiskers read_file cannot open src/svgs/wait-12.svg",
-        }
-    finally:
-        source.write_bytes(content)
-        os.chmod(source, stat.S_IMODE(metadata.st_mode))
-        os.utime(source, ns=(metadata.st_atime_ns, metadata.st_mtime_ns))
 
 
 def test_archive_inventory():
@@ -483,9 +293,9 @@ def ledger(before, after, patch=DEMO / "upstream.patch"):
         rows.append(row)
     # These delivered helpers are outside the upstream tree and never existed before.
     for filename, category in [
-        (".gitignore", "production"),
-        ("justfile", "production"),
-        ("upstream.lock", "production"),
+        (".gitignore", "setup"),
+        ("justfile", "setup"),
+        ("upstream.lock", "setup"),
         ("verify.py", "verification"),
     ]:
         new = counted((DEMO / filename).read_text().splitlines())
@@ -504,7 +314,7 @@ def ledger(before, after, patch=DEMO / "upstream.patch"):
     for scope in ("project", "converted_pipeline"):
         summaries[scope] = {}
         selected = [r for r in rows if scope == "project" or r["scope"]]
-        for category in ("production", "verification", "combined"):
+        for category in ("production", "setup", "verification", "combined"):
             members = [
                 r
                 for r in selected
@@ -523,7 +333,7 @@ def ledger(before, after, patch=DEMO / "upstream.patch"):
             }
             summaries[scope][category] = totals
     return {
-        "counting_rule": "UTF-8 source/configuration including SVG; exclude README.md, CHANGELOG.md, AUTHORS, LICENSE and .webp. Nonblank/noncomment excludes blank and leading-# lines; docstrings/inline/XML comments count. Patch is transport: count applied source once, plus delivered demo helpers separately.",
+        "counting_rule": "UTF-8 source/configuration including SVG; exclude README.md, CHANGELOG.md, AUTHORS, LICENSE and .webp. Nonblank/noncomment excludes blank and leading-# lines; docstrings/inline/XML comments count. Patch is transport: count applied source once; report demo setup and verification separately.",
         "ledger": rows,
         "summary": summaries,
         "removable_files_or_tasks": [],
@@ -651,9 +461,6 @@ if __name__ == "__main__":
         }
         if "--lifecycle" in sys.argv:
             RESULTS["lifecycle"] = lifecycle(root)
-            RESULTS["lifecycle"]["pristine_source_deletion"] = pristine_deletion_probe(
-                before
-            )
             (DEMO / "evidence.json").write_text(json.dumps(RESULTS, indent=2) + "\n")
             print(
                 "One-theme lifecycle checks passed; evidence.json contains measurements."
@@ -661,7 +468,7 @@ if __name__ == "__main__":
             raise SystemExit(0)
         if "--equivalence" in sys.argv:
             measurements = {}
-            for label, directory in (("replacement", checkout), ("pristine", before)):
+            for label, directory in (("replacement", root), ("pristine", before)):
                 measurements[label] = {}
                 for action in ("all", "zip"):
                     start = time.perf_counter()
@@ -675,19 +482,17 @@ if __name__ == "__main__":
                     )
                     output = process.stdout + process.stderr
                     if process.returncode:
-                        raise RuntimeError(
-                            f"{label} just {action} failed:\n"
-                            + "\n".join(output.splitlines()[-12:])
-                        )
+                        raise RuntimeError(f"{label} just {action} failed:\n{output}")
                     measurements[label][action] = {
                         "seconds": round(time.perf_counter() - start, 3),
                         "need_recipes": output.count("[need]"),
                     }
+                    print(
+                        f"{label} {action}: {measurements[label][action]}", flush=True
+                    )
             roots = ("svgs", "pngs", "hl", "dist", "releases")
             for output in roots:
-                assert inventory(before / output) == inventory(checkout / output), (
-                    output
-                )
+                assert inventory(before / output) == inventory(root / output), output
             assert len(list((before / "dist").glob("catppuccin-*-cursors"))) == 64
             assert len(list((before / "releases").glob("*.zip"))) == 64
             RESULTS["full_equivalence"] = {

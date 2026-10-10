@@ -90,27 +90,24 @@ index 3f249fd..c5b489f 100755
 +need get -j2 "svgs/catppuccin-$FLAVOR-%-cursors/: %" -- $all_accents
 +need get -j2 "dist/catppuccin-$FLAVOR-%-cursors/: %" -- $ACCENTS
 diff --git a/default.nix b/default.nix
-index 21a8359..9c29eeb 100644
+index 21a8359..7d34373 100644
 --- a/default.nix
 +++ b/default.nix
-@@ -1,6 +1,7 @@
- {
-   lib,
-   stdenvNoCC,
-+  rustPlatform,
-   inkscape,
-   just,
-   xcursorgen,
-@@ -9,6 +10,18 @@
+@@ -9,6 +9,23 @@
    python3,
    python3Packages,
  }:
 +let
 +  needSource = builtins.fetchGit {
 +    url = "https://github.com/catlee/need.git";
-+    rev = "c01aba29b8ae404c23afa0a4ff991971f4b7229c";
++    rev = "693e476b8ad9c06b2eb3aaa2d4f6757142b908be";
 +  };
-+  need = rustPlatform.buildRustPackage {
++  needPkgs = import (builtins.fetchGit {
++    url = "https://github.com/NixOS/nixpkgs.git";
++    ref = "nixos-25.11";
++    rev = "b6018f87da91d19d0ab4cf979885689b469cdd41";
++  }) { system = stdenvNoCC.hostPlatform.system; };
++  need = needPkgs.rustPlatform.buildRustPackage {
 +    pname = "need";
 +    version = "0.1.1";
 +    src = needSource;
@@ -120,18 +117,15 @@ index 21a8359..9c29eeb 100644
  stdenvNoCC.mkDerivation {
    name = "catppuccin-cursors";
    src = lib.fileset.toSource {
-@@ -19,6 +32,10 @@ stdenvNoCC.mkDerivation {
+@@ -19,6 +36,7 @@ stdenvNoCC.mkDerivation {
          ./scripts
          ./justfile
          ./build
-+        ./default.nix
 +        ./needfile
-+        ./source.lock
-+        ./requirements-need.txt
          ./AUTHORS
          ./LICENSE
        ]
-@@ -27,6 +44,7 @@ stdenvNoCC.mkDerivation {
+@@ -27,6 +45,7 @@ stdenvNoCC.mkDerivation {
 
    nativeBuildInputs = [
      just
@@ -170,14 +164,14 @@ index e939e5a..7d1e66c 100644
  all: clean (build "latte") (build "frappe") (build "macchiato") (build "mocha")
 diff --git a/needfile b/needfile
 new file mode 100644
-index 0000000..7f1494e
+index 0000000..3467661
 --- /dev/null
 +++ b/needfile
 @@ -0,0 +1,29 @@
 +need.output = grouped
 +
 +@atomic
-+generated/: tree(src/svgs) src/templates/*.tera source.lock tool(bash, probe=--version) tool(whiskers, probe=--version)
++generated/: tree(src/svgs) src/templates/*.tera
 +  set -eu
 +  root="$PWD"
 +  cd {{out}}
@@ -191,30 +185,23 @@ index 0000000..7f1494e
 +
 +@atomic
 +@jobs(1)
-+pngs/%/ hl/%/ dist/%/: svgs/%/ generated/ scripts/build-cursors scripts/generate-metadata src/cursorList AUTHORS LICENSE default.nix requirements-need.txt source.lock env(CURSOR_FRAME_TIME) tool(bash, probe=--version) tool(inkscape, probe=--version) tool(xcursorgen, probe=-V) tool(zip, probe=-v) tool(python3, probe=--version) command(python3 -c 'import hashlib; from pathlib import Path; from PySide6 import QtSvg; print(hashlib.sha256(Path(QtSvg.__file__).read_bytes()).hexdigest())')
++pngs/%/ hl/%/ dist/%/: svgs/%/ generated/ scripts/build-cursors scripts/generate-metadata src/cursorList AUTHORS LICENSE
 +  set -eu
 +  scripts/build-cursors svgs/{{stem}} {{out[0]}} {{out[1]}} {{out[2]}}
 +  cp AUTHORS LICENSE svgs/{{stem}}/index.theme generated/hl/{{stem}}/manifest.hl {{out[2]}}/
 +  cp generated/hl/{{stem}}/manifest.hl {{out[1]}}/
 +
 +@atomic
-+releases/%.zip: dist/%/ source.lock tool(bash, probe=--version) tool(zip, probe=-v)
++releases/%.zip: dist/%/
 +  set -eu
 +  test ! -f releases/{{stem}}.zip || cp -p releases/{{stem}}.zip {{out}}
 +  root="$PWD"
 +  cd dist && zip -qry "$root"/{{out}} {{stem}}
-diff --git a/requirements-need.txt b/requirements-need.txt
-new file mode 100644
-index 0000000..51d461b
---- /dev/null
-+++ b/requirements-need.txt
-@@ -0,0 +1 @@
-+PySide6==6.10.2
 diff --git a/scripts/build-cursors b/scripts/build-cursors
-index eab5d68..1f78800 100755
+index eab5d68..ffdc7f5 100755
 --- a/scripts/build-cursors
 +++ b/scripts/build-cursors
-@@ -2,96 +2,73 @@
+@@ -2,96 +2,68 @@
 
  set -euo pipefail
 
@@ -231,14 +218,8 @@ index eab5d68..1f78800 100755
 
  NOMINAL_SIZE=24
  REAL_SIZE=32
--FRAME_TIME=30
+ FRAME_TIME=30
 -SCALES="50 75 100 125 150 175 200 225 250 275 300"
-+FRAME_TIME="${CURSOR_FRAME_TIME:-30}"
-+if [[ ! "$FRAME_TIME" =~ ^[1-9][0-9]*$ ]]; then
-+  echo "error: $0: CURSOR_FRAME_TIME must be a positive integer" >&2
-+  echo "help: set CURSOR_FRAME_TIME=30 for the upstream default" >&2
-+  exit 1
-+fi
 +SCALES=(50 75 100 125 150 175 200 225 250 275 300)
 
  # Make folders
@@ -377,10 +358,3 @@ index 9f4e244..3986e13 100755
 +if ((${#indexes[@]})); then
 +  need get -j2 'releases/%.zip: dist/%/index.theme' -- "${indexes[@]}"
 +fi
-diff --git a/source.lock b/source.lock
-new file mode 100644
-index 0000000..c23e373
---- /dev/null
-+++ b/source.lock
-@@ -0,0 +1 @@
-+a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4

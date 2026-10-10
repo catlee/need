@@ -240,7 +240,7 @@ checked-in needfile directory.
 The [Catppuccin cursors demo](demos/catppuccin-cursors/README.md) replaces custom
 build orchestration with a needfile while retaining the upstream generators.
 It includes a runnable integration patch and measurements of output equivalence,
-freshness, failure recovery, and code reduction.
+freshness, and code reduction.
 
 ## Agent skill
 

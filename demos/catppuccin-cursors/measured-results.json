@@ -3966,5 +3966,583 @@
       },
       "ledger_matches_previous": true
     }
+  },
+  "simplification_issue_56": {
+    "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+    "session": "headless",
+    "need_profile": "debug",
+    "need_binary_sha256": "6147d9ab8cd83339aa0066e3ba19187701a6a677cffe256c7e581ea94f111f3e",
+    "tools": {
+      "inkscape": "Inkscape 1.4.4 (dcaf3e7d9e, 2026-05-05)",
+      "whiskers": "catppuccin-whiskers 2.9.0",
+      "xcursorgen": "xcursorgen version 1.0.9",
+      "python": "Python 3.12.13"
+    },
+    "integration_patch": {
+      "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+      "sha256": "29724f64f9e6a75b489ea9c674cbc7b4e633f2e0d6b00390afa5eb06c56a16e5",
+      "applied_to_pristine": true,
+      "ledger_reproduced": true,
+      "git_numstat_verified": true,
+      "patch_drift_rejected": true
+    },
+    "full_render_integration_patch": {
+      "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+      "sha256": "98747cef0c526b3c53121a6efbf30477d017e87445f02fce71d1d482fa970caf",
+      "applied_to_pristine": true,
+      "ledger_reproduced": true,
+      "git_numstat_verified": true,
+      "patch_drift_rejected": true
+    },
+    "render_provenance": {
+      "excluded_source": [
+        "default.nix"
+      ],
+      "reason": "Final Nix branch-ref correction was made during the Linux render; all other tracked upstream sources and needfile are identical. Nix evaluation/build is unverified.",
+      "source_manifest_sha256": "af7fd62c634359ddd9cc1228291bbb09680dd3b2e1fb7af441677341fd4fb65a",
+      "files_compared": 99
+    },
+    "code_removal": {
+      "counting_rule": "UTF-8 source/configuration including SVG; exclude README.md, CHANGELOG.md, AUTHORS, LICENSE and .webp. Nonblank/noncomment excludes blank and leading-# lines; docstrings/inline/XML comments count. Patch is transport: count applied source once; report demo setup and verification separately.",
+      "ledger": [
+        {
+          "file": ".gitignore",
+          "category": "production",
+          "scope": true,
+          "before": {
+            "total": 6,
+            "nonblank_noncomment": 6
+          },
+          "after": {
+            "total": 9,
+            "nonblank_noncomment": 8
+          },
+          "deleted": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "added": {
+            "total": 3,
+            "nonblank_noncomment": 2
+          }
+        },
+        {
+          "file": "build",
+          "category": "production",
+          "scope": true,
+          "before": {
+            "total": 70,
+            "nonblank_noncomment": 53
+          },
+          "after": {
+            "total": 19,
+            "nonblank_noncomment": 13
+          },
+          "deleted": {
+            "total": 60,
+            "nonblank_noncomment": 49
+          },
+          "added": {
+            "total": 9,
+            "nonblank_noncomment": 9
+          }
+        },
+        {
+          "file": "default.nix",
+          "category": "production",
+          "scope": true,
+          "before": {
+            "total": 61,
+            "nonblank_noncomment": 52
+          },
+          "after": {
+            "total": 80,
+            "nonblank_noncomment": 71
+          },
+          "deleted": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "added": {
+            "total": 19,
+            "nonblank_noncomment": 19
+          }
+        },
+        {
+          "file": "justfile",
+          "category": "production",
+          "scope": true,
+          "before": {
+            "total": 19,
+            "nonblank_noncomment": 10
+          },
+          "after": {
+            "total": 22,
+            "nonblank_noncomment": 12
+          },
+          "deleted": {
+            "total": 2,
+            "nonblank_noncomment": 2
+          },
+          "added": {
+            "total": 5,
+            "nonblank_noncomment": 4
+          }
+        },
+        {
+          "file": "needfile",
+          "category": "production",
+          "scope": true,
+          "before": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "after": {
+            "total": 29,
+            "nonblank_noncomment": 25
+          },
+          "deleted": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "added": {
+            "total": 29,
+            "nonblank_noncomment": 25
+          }
+        },
+        {
+          "file": "scripts/build-cursors",
+          "category": "production",
+          "scope": true,
+          "before": {
+            "total": 97,
+            "nonblank_noncomment": 72
+          },
+          "after": {
+            "total": 69,
+            "nonblank_noncomment": 52
+          },
+          "deleted": {
+            "total": 54,
+            "nonblank_noncomment": 45
+          },
+          "added": {
+            "total": 26,
+            "nonblank_noncomment": 25
+          }
+        },
+        {
+          "file": "scripts/create_zips",
+          "category": "production",
+          "scope": true,
+          "before": {
+            "total": 19,
+            "nonblank_noncomment": 14
+          },
+          "after": {
+            "total": 13,
+            "nonblank_noncomment": 12
+          },
+          "deleted": {
+            "total": 16,
+            "nonblank_noncomment": 12
+          },
+          "added": {
+            "total": 10,
+            "nonblank_noncomment": 10
+          }
+        },
+        {
+          "file": "demo/.gitignore",
+          "category": "setup",
+          "scope": true,
+          "before": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "after": {
+            "total": 4,
+            "nonblank_noncomment": 4
+          },
+          "deleted": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "added": {
+            "total": 4,
+            "nonblank_noncomment": 4
+          }
+        },
+        {
+          "file": "demo/justfile",
+          "category": "setup",
+          "scope": true,
+          "before": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "after": {
+            "total": 12,
+            "nonblank_noncomment": 10
+          },
+          "deleted": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "added": {
+            "total": 12,
+            "nonblank_noncomment": 10
+          }
+        },
+        {
+          "file": "demo/upstream.lock",
+          "category": "setup",
+          "scope": true,
+          "before": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "after": {
+            "total": 1,
+            "nonblank_noncomment": 1
+          },
+          "deleted": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "added": {
+            "total": 1,
+            "nonblank_noncomment": 1
+          }
+        },
+        {
+          "file": "demo/verify.py",
+          "category": "verification",
+          "scope": true,
+          "before": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "after": {
+            "total": 512,
+            "nonblank_noncomment": 485
+          },
+          "deleted": {
+            "total": 0,
+            "nonblank_noncomment": 0
+          },
+          "added": {
+            "total": 512,
+            "nonblank_noncomment": 485
+          }
+        }
+      ],
+      "summary": {
+        "project": {
+          "production": {
+            "before": {
+              "total": 2317,
+              "nonblank_noncomment": 2197
+            },
+            "after": {
+              "total": 2286,
+              "nonblank_noncomment": 2183
+            },
+            "deleted": {
+              "total": 132,
+              "nonblank_noncomment": 108
+            },
+            "added": {
+              "total": 101,
+              "nonblank_noncomment": 94
+            },
+            "net_code_removed": {
+              "total": 31,
+              "nonblank_noncomment": 14
+            }
+          },
+          "setup": {
+            "before": {
+              "total": 0,
+              "nonblank_noncomment": 0
+            },
+            "after": {
+              "total": 17,
+              "nonblank_noncomment": 15
+            },
+            "deleted": {
+              "total": 0,
+              "nonblank_noncomment": 0
+            },
+            "added": {
+              "total": 17,
+              "nonblank_noncomment": 15
+            },
+            "net_code_removed": {
+              "total": -17,
+              "nonblank_noncomment": -15
+            }
+          },
+          "verification": {
+            "before": {
+              "total": 0,
+              "nonblank_noncomment": 0
+            },
+            "after": {
+              "total": 512,
+              "nonblank_noncomment": 485
+            },
+            "deleted": {
+              "total": 0,
+              "nonblank_noncomment": 0
+            },
+            "added": {
+              "total": 512,
+              "nonblank_noncomment": 485
+            },
+            "net_code_removed": {
+              "total": -512,
+              "nonblank_noncomment": -485
+            }
+          },
+          "combined": {
+            "before": {
+              "total": 2317,
+              "nonblank_noncomment": 2197
+            },
+            "after": {
+              "total": 2815,
+              "nonblank_noncomment": 2683
+            },
+            "deleted": {
+              "total": 132,
+              "nonblank_noncomment": 108
+            },
+            "added": {
+              "total": 630,
+              "nonblank_noncomment": 594
+            },
+            "net_code_removed": {
+              "total": -498,
+              "nonblank_noncomment": -486
+            }
+          }
+        },
+        "converted_pipeline": {
+          "production": {
+            "before": {
+              "total": 392,
+              "nonblank_noncomment": 303
+            },
+            "after": {
+              "total": 361,
+              "nonblank_noncomment": 289
+            },
+            "deleted": {
+              "total": 132,
+              "nonblank_noncomment": 108
+            },
+            "added": {
+              "total": 101,
+              "nonblank_noncomment": 94
+            },
+            "net_code_removed": {
+              "total": 31,
+              "nonblank_noncomment": 14
+            }
+          },
+          "setup": {
+            "before": {
+              "total": 0,
+              "nonblank_noncomment": 0
+            },
+            "after": {
+              "total": 17,
+              "nonblank_noncomment": 15
+            },
+            "deleted": {
+              "total": 0,
+              "nonblank_noncomment": 0
+            },
+            "added": {
+              "total": 17,
+              "nonblank_noncomment": 15
+            },
+            "net_code_removed": {
+              "total": -17,
+              "nonblank_noncomment": -15
+            }
+          },
+          "verification": {
+            "before": {
+              "total": 0,
+              "nonblank_noncomment": 0
+            },
+            "after": {
+              "total": 512,
+              "nonblank_noncomment": 485
+            },
+            "deleted": {
+              "total": 0,
+              "nonblank_noncomment": 0
+            },
+            "added": {
+              "total": 512,
+              "nonblank_noncomment": 485
+            },
+            "net_code_removed": {
+              "total": -512,
+              "nonblank_noncomment": -485
+            }
+          },
+          "combined": {
+            "before": {
+              "total": 392,
+              "nonblank_noncomment": 303
+            },
+            "after": {
+              "total": 890,
+              "nonblank_noncomment": 789
+            },
+            "deleted": {
+              "total": 132,
+              "nonblank_noncomment": 108
+            },
+            "added": {
+              "total": 630,
+              "nonblank_noncomment": 594
+            },
+            "net_code_removed": {
+              "total": -498,
+              "nonblank_noncomment": -486
+            }
+          }
+        }
+      },
+      "removable_files_or_tasks": [],
+      "excluded_delivered_files": {
+        "documentation": [
+          "README.md",
+          "RESULTS.md",
+          "repository README demo link"
+        ],
+        "measurement_data": [
+          "measured-results.json",
+          "evidence.json"
+        ],
+        "patch_transport": [
+          "upstream.patch"
+        ],
+        "ignored_generated_or_installed": [
+          "upstream/",
+          ".need/",
+          "generated/",
+          "theme/",
+          ".venv/",
+          "__pycache__/"
+        ]
+      },
+      "partial_conversion": false,
+      "project_wide_savings_proven": true,
+      "ledger_scope": "Changed and added files; unchanged files are included in the summary totals.",
+      "retained_files": 84
+    },
+    "mappings": {
+      "themes": 64,
+      "roots": [
+        "svgs",
+        "pngs",
+        "hl",
+        "dist"
+      ],
+      "dry_run_only": true
+    },
+    "lifecycle": {
+      "clean": {
+        "seconds": 0.012,
+        "need_recipes": 0
+      },
+      "narrow_png_target": {
+        "seconds": 23.637,
+        "need_recipes": 3
+      },
+      "reset": {
+        "seconds": 0.327,
+        "need_recipes": 0
+      },
+      "build_after_clean": {
+        "seconds": 22.232,
+        "need_recipes": 18
+      },
+      "current_build": {
+        "seconds": 3.091,
+        "need_recipes": 0
+      },
+      "source_edit": {
+        "seconds": 20.901,
+        "need_recipes": 18
+      },
+      "source_restored": {
+        "seconds": 28.747,
+        "need_recipes": 18
+      },
+      "restored_current_build": {
+        "seconds": 2.822,
+        "need_recipes": 0
+      },
+      "multi_accent_build": {
+        "seconds": 20.584,
+        "need_recipes": 1
+      },
+      "archives": {
+        "seconds": 1.336,
+        "need_recipes": 2
+      },
+      "current_archives": {
+        "seconds": 1.116,
+        "need_recipes": 0
+      }
+    },
+    "full_equivalence": {
+      "builds": {
+        "replacement": {
+          "all": {
+            "seconds": 265.655,
+            "need_recipes": 129
+          },
+          "zip": {
+            "seconds": 26.261,
+            "need_recipes": 64
+          }
+        },
+        "pristine": {
+          "all": {
+            "seconds": 275.427,
+            "need_recipes": 0
+          },
+          "zip": {
+            "seconds": 11.314,
+            "need_recipes": 0
+          }
+        }
+      },
+      "themes": 64,
+      "release_archives": 64,
+      "roots_equal": [
+        "svgs",
+        "pngs",
+        "hl",
+        "dist",
+        "releases"
+      ],
+      "comparison": "recursive member names, file contents, Unix type and mode, DOS attributes, comments, non-time extra fields, and symlink targets; ignores DOS/extended timestamps, ZIP64 size/offset fields, and compression encoding"
+    },
+    "limitations": [
+      "Single observations on one Linux x86_64 machine; no speedup claim.",
+      "Full comparison uses a disk-backed TMPDIR, not the default /tmp tmpfs.",
+      "An earlier /tmp full run completed replacement generation but pristine xcursorgen failed on mocha/peach. That pristine theme succeeded separately; the original failure cause is unconfirmed.",
+      "Nix expression body parsed, but Nix evaluation and x86_64-linux/aarch64-linux builds were not run because Nix is unavailable.",
+      "Tool upgrades are not automatic freshness inputs. Use clean or force after changing tools."
+    ]
   }
 }
