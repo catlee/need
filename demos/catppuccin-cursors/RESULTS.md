@@ -23,6 +23,20 @@ A final Nix branch-reference correction was made during the Linux render. The ot
 
 An earlier full run in `/tmp` completed the replacement build, but pristine `xcursorgen` failed late in generation. The same pristine theme passed separately. The original failure cause is unconfirmed; the successful full retry is the output-equivalence evidence above.
 
+## Renderer maintenance comparison
+
+Fresh disposable copies of both workflows ran `just build latte mauve`, repeated it unchanged, then ran it after changing `REAL_SIZE=32` to `REAL_SIZE=40` in `scripts/build-cursors`. No dependency declarations or freshness logic were changed. The PNG at `pngs/catppuccin-latte-mauve-cursors/x100/default.png` had identical bytes between workflows before and after the edit.
+
+| Request | Upstream seconds | Need seconds | Need recipes |
+|---|---:|---:|---:|
+| Initial theme | 3.384 | 10.099 | 18 |
+| Unchanged repeat | 3.611 | 1.697 | 0 |
+| Renderer size edit | 4.099 | 5.136 | 1 |
+
+Upstream rewrote the PNG on the unchanged repeat; Need preserved its modification time. Both produced a 40 × 40 PNG after the edit. The original workflow already handles this change correctly. Need adds an unchanged build that skips generation, with the helper listed as a dependency instead of retaining the renderer's timestamp check.
+
+These are single observations with a debug-profile Need binary, not a benchmark. The Need recipe renders templates for all four flavours on the first request; upstream renders only the requested flavour. Initial single-theme work is therefore different. The recorded comparison validates rebuild behaviour and output equality, not a general speedup or a measured reduction in maintenance effort. Raw observations are under `simplification_issue_56.renderer_maintenance` in the JSON.
+
 ## Code accounting
 
 Counts are physical / nonblank noncomment lines. Production includes the applied needfile, renderer changes, entry points, ignores and Nix packaging. Demo checkout/setup files and verification are reported separately. Count the applied patch once; exclude documentation, measured data and generated artifacts. Unchanged source files remain in the totals. `verify.py --ledger-only` checks fresh application, Git numstat totals, drift rejection and all 64 mappings.
@@ -45,6 +59,8 @@ Counts are physical / nonblank noncomment lines. Production includes the applied
 | Combined | 2317 / 2197 | 2815 / 2683 |
 
 Production removes 31 physical lines and 14 nonblank/noncomment lines. Including demo setup, that is 14 fewer physical lines and one additional nonblank line. Verification adds 512 lines, included in the combined total. The changed-file ledger and complete category totals are in the JSON evidence; this is a modest production simplification, not a large overall source reduction.
+
+The renderer changes also combine repeated alias loops and shorten directory creation. Those edits can be made independently of Need, so the net reduction above cannot all be attributed to replacing build orchestration. The main demonstrated benefit is declaring dependencies and moving freshness out of the generators; whether maintainers find that easier to understand still needs feedback.
 
 ## Packaging and limits
 

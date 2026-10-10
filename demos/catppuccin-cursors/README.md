@@ -79,6 +79,18 @@ need --file upstream/needfile --explain dist/catppuccin-mocha-mauve-cursors/
 
 Use `just upstream all` for every theme and `just upstream zip` for archives. The existing `all` recipe still starts with a clean; repeat `build` to demonstrate caching. Tool upgrades require a clean or forced rebuild, as no tool identity is declared here.
 
+## Demonstrate the build logic
+
+Show the original `build` script beside the needfile. Follow the path from SVG templates to a theme to its archive. The old script assembles paths and calls each stage in order; the needfile declares the artifacts and their dependencies. The existing rendering and metadata generators still do the domain work.
+
+Then demonstrate a maintenance change:
+
+1. Build `latte mauve`, then repeat it. Need runs zero recipes on the repeat.
+2. Change `REAL_SIZE=32` to `REAL_SIZE=40` in `upstream/scripts/build-cursors`. Run the same build. The declared helper dependency reruns one renderer recipe; `pngs/catppuccin-latte-mauve-cursors/x100/default.png` becomes 40 × 40.
+3. Show the removed `-ot` check in the renderer. Freshness now belongs to Need, so the helper can just generate its outputs. Restore `REAL_SIZE=32` afterwards.
+
+The original workflow handles that size change too. In the measured comparison it also rewrote the PNG on the unchanged build, while Need left it untouched. This demonstrates incremental builds with freshness handled outside the renderer. It does not establish a large code reduction: part of the saved code comes from combining alias loops, which can be done independently of Need. See [RESULTS.md](RESULTS.md) for the comparison and its limits.
+
 ## Reproduce the evidence
 
 ```sh

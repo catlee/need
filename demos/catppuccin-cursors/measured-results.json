@@ -4543,6 +4543,86 @@
       "An earlier /tmp full run completed replacement generation but pristine xcursorgen failed on mocha/peach. That pristine theme succeeded separately; the original failure cause is unconfirmed.",
       "Nix expression body parsed, but Nix evaluation and x86_64-linux/aarch64-linux builds were not run because Nix is unavailable.",
       "Tool upgrades are not automatic freshness inputs. Use clean or force after changing tools."
-    ]
+    ],
+    "renderer_maintenance": {
+      "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+      "patch_sha256": "29724f64f9e6a75b489ea9c674cbc7b4e633f2e0d6b00390afa5eb06c56a16e5",
+      "change": "scripts/build-cursors REAL_SIZE=32 to REAL_SIZE=40",
+      "workflows": {
+        "pristine": {
+          "initial": {
+            "seconds": 3.384,
+            "need_recipes": 0,
+            "png_dimensions": [
+              32,
+              32
+            ],
+            "png_sha256": "151a420c41ffcaff99cd01cf3e858a1107ad80f69b3a65d61c356fc4b22e902b",
+            "png_mtime_ns": 1791662203992521693
+          },
+          "unchanged": {
+            "seconds": 3.611,
+            "need_recipes": 0,
+            "png_dimensions": [
+              32,
+              32
+            ],
+            "png_sha256": "151a420c41ffcaff99cd01cf3e858a1107ad80f69b3a65d61c356fc4b22e902b",
+            "png_mtime_ns": 1791662207521241262
+          },
+          "renderer_edit": {
+            "seconds": 4.099,
+            "need_recipes": 0,
+            "png_dimensions": [
+              40,
+              40
+            ],
+            "png_sha256": "7e9efe2f26791c79d4c4b055083952ee5cb10700ac4a1f070e3cf59dc6a89fab",
+            "png_mtime_ns": 1791662211294843675
+          }
+        },
+        "need": {
+          "initial": {
+            "seconds": 10.099,
+            "need_recipes": 18,
+            "png_dimensions": [
+              32,
+              32
+            ],
+            "png_sha256": "151a420c41ffcaff99cd01cf3e858a1107ad80f69b3a65d61c356fc4b22e902b",
+            "png_mtime_ns": 1791662221287694381
+          },
+          "unchanged": {
+            "seconds": 1.697,
+            "need_recipes": 0,
+            "png_dimensions": [
+              32,
+              32
+            ],
+            "png_sha256": "151a420c41ffcaff99cd01cf3e858a1107ad80f69b3a65d61c356fc4b22e902b",
+            "png_mtime_ns": 1791662221287694381
+          },
+          "renderer_edit": {
+            "seconds": 5.136,
+            "need_recipes": 1,
+            "png_dimensions": [
+              40,
+              40
+            ],
+            "png_sha256": "7e9efe2f26791c79d4c4b055083952ee5cb10700ac4a1f070e3cf59dc6a89fab",
+            "png_mtime_ns": 1791662227935370983
+          }
+        }
+      },
+      "command": [
+        "just",
+        "build",
+        "latte",
+        "mauve"
+      ],
+      "need_binary_sha256": "6147d9ab8cd83339aa0066e3ba19187701a6a677cffe256c7e581ea94f111f3e",
+      "png_path": "pngs/catppuccin-latte-mauve-cursors/x100/default.png",
+      "limits": "Single observations, debug-profile Need; initial template-rendering scope differs. Timing does not establish a general speedup. Need recipe counts apply only to the Need workflow."
+    }
   }
 }
