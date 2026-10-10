@@ -262,8 +262,9 @@ words outside quotes; single and double quotes group text and are removed; and
 parentheses group dependency expressions. A backslash escapes whitespace, a
 quote character outside quotes, the active quote character inside quotes, or
 another backslash. Before any other character, a backslash remains literal.
-This rule also applies inside expressions such as
-`command(...)`, so escaped quotes can preserve shell quoting there.
+This rule applies to ordinary dependency expressions. `command(...)` bodies
+are shell text: Need preserves their quotes and backslashes, including when a
+command token comes from a variable. They are not decoded after expansion.
 
 An escape at the end of a word MUST be rejected with a diagnostic and `help:`
 hint. An unterminated quote MUST likewise be rejected. The trailing backslash
@@ -692,7 +693,22 @@ The semantics are:
 - The command body is expanded using the normal needfile variables and
   environment references, then executed by `/bin/sh -c` from the directory
   containing the needfile, using the current process environment. The shell
-  syntax and quoting rules are therefore the same as for recipes.
+  syntax and quoting rules are therefore the same as for recipes. Use normal
+  shell quotes, for example `command(test -f "tool with spaces")` or
+  `command(test -f "{{path}}")`. Embedded references still require one token;
+  Need inserts that value verbatim, without shell escaping or re-tokenizing it.
+- Structural tokenization balances unquoted, unescaped parentheses and tracks
+  single/double quotes. Backslashes are literal inside shell single quotes;
+  elsewhere they protect the next character from structural interpretation.
+  Quoted parentheses, escaped closing parentheses, and balanced nested command
+  substitutions (with their own quote contexts) are supported. This is not a
+  POSIX shell parser: here-documents, backtick substitutions, shell comments
+  containing unmatched delimiters, and `case` patterns are not supported.
+  Put complex probes in a script and use `command(sh path/to/probe.sh)`.
+- Existing probes that escaped quotes or spaces solely for Need must remove
+  that extra escaping. Repeated overescaping is not decoded for compatibility.
+  Header continuation remains Need syntax; each command expression must fit on
+  one logical header or variable-value line.
 - The command text, complete stdout, complete stderr, and exit status all
   contribute to the dependency signature. The command text is included so
   changing the probe itself invalidates the rule even if it currently returns

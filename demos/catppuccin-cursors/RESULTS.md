@@ -2,7 +2,13 @@
 
 Directory output groups replace the intermediate `work/%/` tree and three copy rules with one rule declaring `pngs/%/ hl/%/ dist/%/`. The needfile is 29 lines, down from 38. Multi-command recipes use `set -eu`: without it, a failed generator followed by successful copies could return success and publish incomplete trees. The real failure probe caught this and the corrected recipes are verified below.
 
-**Issue #56 remains incomplete.** The complete production ledger removes eight physical lines but adds seven nonblank/noncomment lines after packaging and demo setup are counted. The graph is simpler, but this does not yet demonstrate the required project-wide code reduction. The remaining tool-fingerprint dependency expressions are also too heavily escaped for a first-impression demo.
+**Issue #56 remains incomplete.** The complete production ledger removes eight physical lines but adds seven nonblank/noncomment lines after packaging and demo setup are counted. The graph is simpler, but this does not yet demonstrate the required project-wide code reduction. At measurement time, the tool-fingerprint dependency expressions were also too heavily escaped for a first-impression demo.
+
+The command-quoting follow-up uses normal shell text in those probes. Separate
+[validation](quoting-validation.json) reproduces patch application, ledger totals,
+and all 64 mappings, checks executable arguments against the original probes,
+and runs the four probes with the real tools. It does not rerun renderer or
+performance measurements; the historical records below are unchanged.
 
 ## Full output comparison
 

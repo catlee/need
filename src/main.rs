@@ -1757,6 +1757,42 @@ mod tests {
     }
 
     #[test]
+    fn command_expansion_preserves_shell_text_and_token_cardinality() {
+        let command = r#"test -f "{{path}}"; printf '%s' 'literal\'"#;
+        let vars = HashMap::from([
+            ("path".into(), vec!["tool with spaces".into()]),
+            ("probe".into(), vec![format!("command({command})")]),
+        ]);
+        let expected = Dependency::Command(command.replace("{{path}}", "tool with spaces"));
+        assert_eq!(
+            expand_dependencies(
+                &[ParsedDependency::Deferred(format!("command({command})"))],
+                &vars,
+                &HashMap::new()
+            )
+            .unwrap(),
+            vec![expected]
+        );
+        assert_eq!(
+            expand_dependencies(
+                &[ParsedDependency::Deferred("{{probe}}".into())],
+                &vars,
+                &HashMap::new()
+            )
+            .unwrap(),
+            vec![Dependency::Command(command.into())]
+        );
+        let vars = HashMap::from([("path".into(), vec!["one".into(), "two".into()])]);
+        let error = expand_dependencies(
+            &[ParsedDependency::Deferred(format!("command({command})"))],
+            &vars,
+            &HashMap::new(),
+        )
+        .unwrap_err();
+        assert!(error.contains("2 tokens in embedded interpolation"));
+    }
+
+    #[test]
     fn resolves_deferred_dependency_at_the_phase_boundary() {
         let parsed = ParsedDependency::Deferred("file({{input}})".into());
         let vars = HashMap::from([(String::from("input"), vec![String::from("source.txt")])]);

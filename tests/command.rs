@@ -65,6 +65,7 @@ fn command_probe_controls_freshness_and_captures_all_process_results() {
     let stderr = String::from_utf8_lossy(&failed.stderr);
     assert!(!failed.status.success());
     assert!(stderr.contains("command dependency failed"));
+    assert!(stderr.contains("needfile:1:"));
     assert!(stderr.contains("two"));
     assert!(stderr.contains("(7)"));
     assert_eq!(
@@ -79,7 +80,7 @@ fn identical_command_probes_are_memoized_per_invocation() {
     let root = project("memo");
     fs::write(
         root.join("needfile"),
-        "output.txt: command(printf probe; echo x >> probe-count) command(printf probe; echo x >> probe-count)\n  printf built > {{out}}\n",
+        "output.txt: command(printf '%s' 'probe value'; echo x >> probe-count) command(printf '%s' 'probe value'; echo x >> probe-count)\n  printf built > {{out}}\n",
     )
     .unwrap();
     let result = run(&root, &["output.txt"], &[]);
@@ -110,5 +111,56 @@ fn command_probe_rejects_automatic_variables() {
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(!result.status.success());
     assert!(stderr.contains("automatic variable {{in}} is not valid in command(...)"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn shell_quoting_survives_direct_spliced_and_interpolated_probes() {
+    let root = project("quoting");
+    fs::write(root.join("tool with spaces"), "tool bytes").unwrap();
+    fs::write(root.join(r#"literal\\"#), "literal").unwrap();
+    fs::write(
+        root.join("needfile"),
+        r#"path = "tool with spaces"
+probe = command(test -f "tool with spaces")
+nested = command(test "$(printf "%s" ")")" = ")")
+probes =
+  command(test -f "{{path}}")
+  command(test -f 'literal\'\\)
+out: command(test -f "tool with spaces") {{probe}} {{probes}} {{nested}} command(set -e; test \"literal\" = '"literal"'; test "" = ''; test "$(printf ')')" = ')'; printf '%s' \) '# hash') # comment
+  printf built > {{out}}
+"#,
+    ).unwrap();
+    let result = run(&root, &["out"], &[]);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let current = run(&root, &["out"], &[]);
+    assert!(String::from_utf8_lossy(&current.stderr).contains("nothing to do"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn malformed_command_headers_report_source_and_help() {
+    let root = project("malformed");
+    for expression in [
+        "command(test 'open)",
+        "command(test \\)",
+        "command(true)junk",
+    ] {
+        fs::write(
+            root.join("needfile"),
+            format!("out: {expression}\n  touch {{{{out}}}}\n"),
+        )
+        .unwrap();
+        let result = run(&root, &["out"], &[]);
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(!result.status.success());
+        assert!(stderr.contains("needfile:1:"), "{stderr}");
+        assert!(stderr.contains("help:"), "{stderr}");
+        assert!(!root.join("out").exists());
+    }
     fs::remove_dir_all(root).unwrap();
 }

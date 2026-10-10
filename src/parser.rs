@@ -147,8 +147,9 @@ pub(crate) fn parse_needfile_text(path: &Path, text: &str) -> Result<ParsedNeedf
             i += 1
         }
         let (o, d) = header.split_once(':').unwrap();
-        let outputs = split_words(o)?;
-        let deps = split_words(d)?
+        let outputs = split_words(o).map_err(|error| format!("{source}: {error}"))?;
+        let deps = split_words(d)
+            .map_err(|error| format!("{source}: {error}"))?
             .into_iter()
             .map(|dependency| {
                 parse_dependency_template(&dependency).map_err(|error| format!("{source}: {error}"))
@@ -250,11 +251,36 @@ fn assignment(line: &str) -> Option<(&str, &str, &str)> {
 fn strip_inline_comment(line: &str) -> &str {
     let mut quote = None;
     let mut parentheses = 0;
-    for (index, character) in line.char_indices() {
+    let mut chars = line.char_indices().peekable();
+    while let Some((index, character)) = chars.next() {
         match character {
+            '\\' => {
+                if let Some(&(_, next)) = chars.peek()
+                    && (next.is_whitespace() || matches!(next, '\\' | '\'' | '"'))
+                {
+                    chars.next();
+                }
+            }
             '\'' | '"' if quote == Some(character) => quote = None,
             '\'' | '"' if quote.is_none() => quote = Some(character),
-            '(' if quote.is_none() => parentheses += 1,
+            '(' if quote.is_none() => {
+                if parentheses == 0
+                    && line[..index].strip_suffix("command").is_some_and(|prefix| {
+                        prefix.is_empty() || prefix.ends_with([' ', '\t', ':', '='])
+                    })
+                {
+                    let mut body = line[index + 1..].chars().peekable();
+                    let Ok(body) = scan_command(&mut body) else {
+                        return line;
+                    };
+                    let end = index + 1 + body.len();
+                    while chars.peek().is_some_and(|(index, _)| *index < end) {
+                        chars.next();
+                    }
+                } else {
+                    parentheses += 1;
+                }
+            }
             ')' if quote.is_none() && parentheses > 0 => parentheses -= 1,
             '#' if quote.is_none() && parentheses == 0 => return &line[..index],
             _ => {}
@@ -275,8 +301,16 @@ fn display_path(path: &Path) -> String {
     }
 }
 
+fn unquote_dependency(raw: &str) -> String {
+    if raw.starts_with("command(") {
+        raw.to_owned()
+    } else {
+        unquote(raw)
+    }
+}
+
 pub(crate) fn parse_dependency(raw: &str) -> Result<ParsedDependency> {
-    let raw = unquote(raw);
+    let raw = unquote_dependency(raw);
     if let Some(value) = raw.strip_prefix("tree(").and_then(|x| x.strip_suffix(')')) {
         return parse_tree_options(value)
             .map(|(path, follow, exclusions)| ParsedDependency::Tree(path, follow, exclusions));
@@ -308,7 +342,11 @@ pub(crate) fn parse_dependency(raw: &str) -> Result<ParsedDependency> {
         ),
     ] {
         if let Some(value) = raw.strip_prefix(prefix).and_then(|x| x.strip_suffix(')')) {
-            let value = unquote(value);
+            let value = if prefix == "command(" {
+                value.to_owned()
+            } else {
+                unquote(value)
+            };
             if prefix == "stat(" && value.is_empty() {
                 return Err(
                     "empty stat() path\nhelp: supply a nonempty filesystem entry path".into(),
@@ -321,7 +359,7 @@ pub(crate) fn parse_dependency(raw: &str) -> Result<ParsedDependency> {
 }
 
 pub(crate) fn parse_expanded_dependency(raw: &str) -> Result<Dependency> {
-    let raw = unquote(raw);
+    let raw = unquote_dependency(raw);
     if let Some(value) = raw.strip_prefix("tree(").and_then(|x| x.strip_suffix(')')) {
         return parse_tree_options(value).and_then(|(path, follow, exclusions)| {
             Ok(Dependency::Tree(
@@ -340,7 +378,11 @@ pub(crate) fn parse_expanded_dependency(raw: &str) -> Result<Dependency> {
         ("command(", Dependency::Command as fn(String) -> Dependency),
     ] {
         if let Some(value) = raw.strip_prefix(prefix).and_then(|x| x.strip_suffix(')')) {
-            let value = unquote(value);
+            let value = if prefix == "command(" {
+                value.to_owned()
+            } else {
+                unquote(value)
+            };
             if prefix == "stat(" && value.is_empty() {
                 return Err(
                     "empty stat() path\nhelp: supply a nonempty filesystem entry path".into(),
@@ -432,7 +474,7 @@ pub(crate) fn canonical_exclusions(values: Vec<String>) -> Result<Vec<String>> {
 }
 
 fn parse_dependency_template(raw: &str) -> Result<ParsedDependency> {
-    let raw = unquote(raw);
+    let raw = unquote_dependency(raw);
     if raw.starts_with("tree(") {
         parse_dependency(&raw)
     } else if raw.contains("{{") {
@@ -609,6 +651,45 @@ pub(crate) fn parse_dotenv(text: &str) -> Result<HashMap<String, String>> {
     }
     Ok(values)
 }
+// Each $() starts a fresh quote context, even inside double quotes.
+fn scan_command(chars: &mut std::iter::Peekable<impl Iterator<Item = char>>) -> Result<String> {
+    let mut body = String::new();
+    let mut contexts = vec![(1usize, None)];
+    while let Some(c) = chars.next() {
+        body.push(c);
+        let (depth, quote) = contexts.last_mut().unwrap();
+        match c {
+            '\\' if *quote != Some('\'') => {
+                let Some(next) = chars.next() else {
+                    return Err("trailing escape in command(...)\nhelp: add a character after the final backslash or remove it".into());
+                };
+                body.push(next);
+            }
+            '$' if *quote != Some('\'') && chars.peek() == Some(&'(') => {
+                body.push(chars.next().unwrap());
+                contexts.push((1, None));
+            }
+            '\'' | '"' if *quote == Some(c) => *quote = None,
+            '\'' | '"' if quote.is_none() => *quote = Some(c),
+            '(' if quote.is_none() => *depth += 1,
+            ')' if quote.is_none() => {
+                *depth -= 1;
+                if *depth == 0 {
+                    contexts.pop();
+                    if contexts.is_empty() {
+                        return Ok(body);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Err(
+        "unterminated command(...) expression\nhelp: close shell quotes and dependency parentheses"
+            .into(),
+    )
+}
+
 pub(crate) fn split_words(s: &str) -> Result<Vec<String>> {
     let mut out = Vec::new();
     let mut cur = String::new();
@@ -616,6 +697,16 @@ pub(crate) fn split_words(s: &str) -> Result<Vec<String>> {
     let mut depth = 0;
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
+        if cur == "command" && c == '(' && quote.is_none() {
+            cur.push(c);
+            cur.push_str(&scan_command(&mut chars)?);
+            if chars.peek().is_some_and(|next| !next.is_whitespace()) {
+                return Err(format!(
+                    "unexpected text after command(...) in expression: {s}\nhelp: separate dependencies with whitespace"
+                ));
+            }
+            continue;
+        }
         match c {
             '\\' => {
                 let Some(&next) = chars.peek() else {
@@ -1064,8 +1155,38 @@ mod tests {
     fn preserves_quotes_inside_command_expressions() {
         assert_eq!(
             split_words(r#"command(echo \"hello world\")"#).unwrap(),
-            vec![r#"command(echo "hello world")"#]
+            vec![r#"command(echo \"hello world\")"#]
         );
+    }
+
+    #[test]
+    fn command_bodies_are_not_dependency_words() {
+        for body in [
+            r#"test -f "tool with spaces""#,
+            r#"test "$(printf "%s" ")")" = ")""#,
+            r#"test "$(printf "%s" "$(printf ")")")" = ")""#,
+            r#"printf '%s' '' ')' '# hash' 'literal\' \)"#,
+            r#"echo $(echo $(printf '%s' hi))"#,
+            r#"bash -o pipefail -c 'sha256sum -- "$(command -v bash)" "$(command -v whiskers)" | cut -d " " -f1'"#,
+            r#"python3 -c 'import hashlib; from pathlib import Path; from PySide6 import QtSvg; print(hashlib.sha256(Path(QtSvg.__file__).read_bytes()).hexdigest())'"#,
+            r#"printf '%s' \"literal\""#,
+        ] {
+            let expression = format!("command({body})");
+            assert_eq!(
+                split_words(&format!("input {expression} other")).unwrap(),
+                vec!["input".to_owned(), expression.clone(), "other".to_owned()]
+            );
+            assert_eq!(
+                parse_dependency_template(&expression).unwrap(),
+                ParsedDependency::Command(body.into())
+            );
+            assert_eq!(
+                parse_expanded_dependency(&expression).unwrap(),
+                Dependency::Command(body.into())
+            );
+            let line = format!("out: {expression} # comment");
+            assert_eq!(strip_inline_comment(&line), format!("out: {expression} "));
+        }
     }
 
     #[test]
@@ -1147,7 +1268,7 @@ mod tests {
             rules[0].deps,
             vec![
                 ParsedDependency::File("file#name".into()),
-                ParsedDependency::Command("printf # probe".into()),
+                ParsedDependency::Command("printf '# probe'".into()),
             ]
         );
     }

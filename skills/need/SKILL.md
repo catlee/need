@@ -58,7 +58,18 @@ Rule outputs and dependencies use quoted words. Single or double quotes group
 whitespace and are removed. Backslash escapes whitespace, quote characters, or
 another backslash; before other characters it stays literal. An ending
 backslash or unterminated quote is an error. The trailing backslash used for a
-continued rule header remains needfile syntax.
+continued rule header remains needfile syntax. Command bodies are the exception:
+write normal shell text such as `command(test -f "tool with spaces")` or
+`command(test -f "{{path}}")`. Quotes and backslashes survive tokenization and
+expansion, including spliced and multiline-variable command tokens. Embedded
+references require one token and are inserted verbatim, without shell escaping.
+Remove extra escaping used solely for older Need versions; repeated overescaping
+is not decoded. Structural scanning balances unquoted, unescaped parentheses
+and tracks quotes; backslashes inside shell single quotes are literal. Quoted
+parentheses, escaped `\)`, and balanced nested `$()` substitutions with their
+own quote contexts work. Put probes using here-documents, backtick substitutions,
+comments with unmatched delimiters, or `case` patterns in a script. Need does not
+parse full shell grammar; header continuation remains Need syntax.
 
 ```make
 build/app: src/main.c

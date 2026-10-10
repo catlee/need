@@ -43,11 +43,10 @@ Words use a small shell-like escaping rule. A backslash escapes whitespace, a
 quote character outside quotes, the active quote character inside quotes, or
 another backslash; a backslash before any other character remains literal.
 Quote delimiters are removed, so use an escaped quote when the quote itself
-belongs in the word. This also applies inside
-dependency expressions, including `command(...)`:
+belongs in the word. Command bodies instead preserve normal shell text:
 
 ```make
-build/output: "assets/My\ File.json" command(echo\ \"hello world\")
+build/output: "assets/My File.json" command(echo "hello world")
   touch {{out}}
 ```
 
@@ -418,6 +417,19 @@ current environment. Identical expanded probes are memoized for one invocation,
 but probe results are not cached between invocations. Automatic variables such
 as `{{in}}`, `{{out}}`, and `{{stem}}` are rejected in probes; ordinary variables
 and explicit environment references remain available.
+
+Write normal shell quotes and backslashes inside `command(...)`, including in
+variable definitions. Need expands embedded single-token references verbatim,
+then passes the body to the shell without decoding it again. For example,
+`path = "tool with spaces"` works with `command(test -f "{{path}}")`.
+Remove any extra escaping previously used only to survive Need's tokenizer.
+
+Need locates the expression end by balancing unquoted, unescaped parentheses
+and tracking single/double quotes. Backslashes inside single quotes are literal.
+This supports quoted parentheses, `\)`, and balanced nested `$()` substitutions
+with their own quote contexts. It is not a full shell parser. Put here-documents,
+backtick substitutions, comments with unmatched delimiters, and `case` patterns
+in a script called by the probe. Header continuation remains Need syntax.
 
 ### Compiler depfiles
 

@@ -70,6 +70,10 @@ public/logo.png public/icon.png: {{assets}} env(BRAND_COLOR)
 
 Use `file(path)`, `tree(path)`, `mtime(path)`, `stat(path)`, `env(NAME)`,
 `string(value)`, and `command(command)` when file-content freshness is not the right model.
+Command bodies preserve shell quotes and backslashes: write
+`command(test -f "tool with spaces")`, including in variable values. Remove extra
+escaping used only for older Need versions. See [command probes](docs/needfile.md#command-output-probes)
+for structural parsing limits.
 `tree(path)` does not follow symlinks unless given `follow-symlinks=true`.
 
 `stat(path)` tracks one entry without following symlinks: presence, file type,

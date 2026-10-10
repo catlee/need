@@ -1,0 +1,103 @@
+{
+  "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+  "need_binary_sha256": "1333af00f1e265051d195fa7b462e81e755af7866d036162c756870e8c243083",
+  "integration_patch": {
+    "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+    "sha256": "2920f9bab5ce9bdeecde0a70129233e788dd9413360487413d1474fc56581af3",
+    "applied_to_pristine": true,
+    "ledger_reproduced": true,
+    "git_numstat_verified": true,
+    "patch_drift_rejected": true
+  },
+  "mappings": {
+    "themes": 64,
+    "roots": [
+      "svgs",
+      "pngs",
+      "hl",
+      "dist"
+    ],
+    "dry_run_only": true
+  },
+  "tools": {
+    "inkscape": "Inkscape 1.4.4 (dcaf3e7d9e, 2026-05-05)",
+    "whiskers": "catppuccin-whiskers 2.9.0",
+    "xcursorgen": "xcursorgen version 1.0.9",
+    "python": "Python 3.12.13"
+  },
+  "historical_measurements": "measured-results.json",
+  "ledger_summary": {
+    "before": {
+      "total": 2317,
+      "nonblank_noncomment": 2197
+    },
+    "after": {
+      "total": 2309,
+      "nonblank_noncomment": 2204
+    },
+    "deleted": {
+      "total": 133,
+      "nonblank_noncomment": 109
+    },
+    "added": {
+      "total": 125,
+      "nonblank_noncomment": 116
+    },
+    "net_code_removed": {
+      "total": 8,
+      "nonblank_noncomment": -7
+    }
+  },
+  "command_quoting": {
+    "baseline_argv_equal": true,
+    "real_probes": [
+      {
+        "executable": "bash",
+        "argv": [
+          "-o",
+          "pipefail",
+          "-c",
+          "sha256sum -- \"$(command -v bash)\" \"$(command -v whiskers)\" | cut -d \" \" -f1"
+        ],
+        "stdout": "575e03ac834b739349a4484de481abcd06a6f7193cefc795260a32a1943f20a5\n05a36866bd920af3b058856cf2b92fdd220da4c4ffbdf8a438b5efd1d14e11c7\n",
+        "stderr": "",
+        "exit_status": 0
+      },
+      {
+        "executable": "bash",
+        "argv": [
+          "-o",
+          "pipefail",
+          "-c",
+          "sha256sum -- \"$(command -v bash)\" \"$(command -v inkscape)\" \"$(command -v xcursorgen)\" \"$(command -v zip)\" \"$(command -v python3)\" | cut -d \" \" -f1"
+        ],
+        "stdout": "575e03ac834b739349a4484de481abcd06a6f7193cefc795260a32a1943f20a5\n84c8b9244f3cf6b3adcf06a6cb823ab0dbd32fa7e92ca314efb63ee7ad048877\nbe24759f286ac68971e8e7eb891b3c8af6a7b6dbcee6e7631c826743b6fc5f0f\n9035fa6b01355878a33d50e1a900b0768c7675ae96dbecbd4007fd4f4a4a2cb9\nd713474fd44339f8bd8150edc7b324d0be494dbf2998a1de04a7b0ecdbc1c2ed\n",
+        "stderr": "",
+        "exit_status": 0
+      },
+      {
+        "executable": "python3",
+        "argv": [
+          "-c",
+          "import hashlib; from pathlib import Path; from PySide6 import QtSvg; print(hashlib.sha256(Path(QtSvg.__file__).read_bytes()).hexdigest())"
+        ],
+        "stdout": "f99f8ac9abfe9b2dae10da24853a167ba3e0729b8c62afe153006263da5c312f\n",
+        "stderr": "",
+        "exit_status": 0
+      },
+      {
+        "executable": "bash",
+        "argv": [
+          "-o",
+          "pipefail",
+          "-c",
+          "sha256sum -- \"$(command -v bash)\" \"$(command -v zip)\" | cut -d \" \" -f1"
+        ],
+        "stdout": "575e03ac834b739349a4484de481abcd06a6f7193cefc795260a32a1943f20a5\n9035fa6b01355878a33d50e1a900b0768c7675ae96dbecbd4007fd4f4a4a2cb9\n",
+        "stderr": "",
+        "exit_status": 0
+      }
+    ],
+    "scope": "patch/ledger/64 mappings and four real tool probes; no renderer rebuild or new timing measurements"
+  }
+}
