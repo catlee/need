@@ -56,6 +56,10 @@ pub(crate) fn run_build(
         println!("need {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
+    if !literal_targets && take_flag(&mut args, "--skill") {
+        print!("{}", include_str!("../skills/need/SKILL.md"));
+        return Ok(());
+    }
     if !literal_targets && args.first().is_some_and(|arg| arg == "map") {
         args.remove(0);
         return map::run(args);
@@ -171,7 +175,7 @@ pub(crate) fn run_build(
     };
     if !literal_targets && args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "usage: need [--version] [--force] [-n, --dry-run] [--file PATH] [--root PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need outputs [-0] [--file PATH] [--root PATH]\n       need clean [--outputs-only|--remove-outputs] [--file PATH] [--root PATH]\n       need logs [--file PATH] [--root PATH] TARGET\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] [-c COMMAND] <RULE> [--] <INPUT>...\n       need get [OPTIONS] [-0] --from <PATH|-> <RULE>\n       need get [OPTIONS] --from <PATH|->"
+            "usage: need [--version] [--skill] [--force] [-n, --dry-run] [--file PATH] [--root PATH] [--explain] [--list] [--cargo] [--output=MODE] [--jobs N] [-j [N]] [target ...]\n       need outputs [-0] [--file PATH] [--root PATH]\n       need clean [--outputs-only|--remove-outputs] [--file PATH] [--root PATH]\n       need logs [--file PATH] [--root PATH] TARGET\n       need map [-0] <RULE> <INPUT>...\n       need get [OPTIONS] [-c COMMAND] <RULE> [--] <INPUT>...\n       need get [OPTIONS] [-0] --from <PATH|-> <RULE>\n       need get [OPTIONS] --from <PATH|->\n\nAgent reference: need --skill prints the bundled skill and installation instructions."
         );
         return Ok(());
     }
@@ -978,6 +982,16 @@ mod tests {
         path::{Path, PathBuf},
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    fn skill_query_does_not_read_the_needfile() {
+        run_args(vec![
+            "--file".into(),
+            "missing/needfile".into(),
+            "--skill".into(),
+        ])
+        .unwrap();
+    }
 
     #[test]
     fn tool_probe_environment_references_participate_in_rule_freshness() {

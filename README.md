@@ -238,7 +238,11 @@ freshness, failure recovery, and code reduction.
 
 ## Agent skill
 
-This repository includes an agent skill for working with `need` and `needfile`:
+Run `need --skill` to print the bundled agent reference for your installed
+version, including installation instructions. It works without a needfile.
+`need --help` points agents to this reference.
+
+You can also install the repository skill:
 
 ```sh
 npx skills add catlee/need --skill need --global
@@ -255,3 +259,6 @@ tracks completed work.
 
 Use [Conventional Commits](https://www.conventionalcommits.org/), for example
 `fix(parser): preserve quoted tokens`.
+
+The [skill evals](evals/README.md) check agent-authored needfiles against actual
+build behavior. Model runs are separate from the normal checks.

@@ -46,7 +46,7 @@ The current implementation includes the core artifact graph, including:
   command-line targets, and configurable output modes
 - a concise stderr status when no recipes need to run (including dry runs),
   suppressed by `--explain` or global `silent` output
-- `--version` and `--help` command-line queries
+- `--version`, `--help`, and bundled agent guidance through `--skill`
 - `need outputs` for listing recorded successful output paths, `need clean`
   cleanup modes for removing state and/or those outputs, and `need logs TARGET`
   for inspecting the latest retained execution log for a declared artifact target
@@ -2544,8 +2544,16 @@ Options:
     --list            list known targets/rules
     --cargo           emit Cargo rerun metadata
     --version
+    --skill           print bundled agent guidance and installation instructions
 -h, --help
 ```
+
+`--help` points to `--skill` as the preferred compact agent reference.
+`need --skill` writes the bundled `skills/need/SKILL.md` verbatim to stdout,
+including YAML frontmatter and installation instructions. It requires no
+needfile and does not build artifacts or create state. The guidance is embedded
+at compile time so it matches the binary's version. A leading `--` treats
+`--skill` as a literal target instead.
 
 The built-in cleanup command is:
 

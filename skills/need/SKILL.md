@@ -8,10 +8,24 @@ description: >
 need
 ====
 
+This guidance is bundled with the installed binary. Run `need --skill` for the
+reference matching that version; prefer it if an installed skill differs.
+To install this version for Codex:
+
+```sh
+mkdir -p ~/.agents/skills/need
+need --skill > ~/.agents/skills/need/SKILL.md
+```
+
+For other agents, save the output as `need/SKILL.md` in their skills directory.
+Alternatively, install the repository skill with
+`npx skills add catlee/need --skill need --global`.
+
 Discovery
 ---------
 
 - `need --help` Print command-line usage
+- `need --skill` Print the bundled agent reference and installation instructions
 - `need --list` List declared targets and rules
 - `need --explain TARGET` Show whether targets are current or stale, including actionable stale reasons
 - `need --dry-run TARGET` Show recipes that would run
@@ -104,6 +118,12 @@ Supported attributes include `@atomic`, `@allow-missing`, `@jobs(N)`,
 must appear immediately before their rule. An attribute must be followed by a
 rule; otherwise `need` reports its path, line, and a placement hint.
 
+Pattern rules use one `%` capture per output or dependency word; `{{stem}}`
+is available in their recipes. Request concrete targets to instantiate them;
+pattern rules are not default targets. Dependency globs match existing files
+and concrete declared outputs, but do not instantiate arbitrary pattern rules.
+Both matching contents and glob membership affect freshness.
+
 Dependency expressions make freshness explicit:
 
 ```make
@@ -121,6 +141,18 @@ right semantics. `command(...)` runs from the project root and is
 freshness-only: expanded command text, complete stdout/stderr, and exit status
 are signed; nonzero status stops the build. It does not add a graph edge or
 appear in `{{in}}`, and automatic variables are not allowed in probes.
+
+Bare file dependencies already use content hashing; no option enables it.
+`mtime(path)` uses coarse filesystem metadata instead. Use `tree(path)` for
+recursive membership and contents; a bare directory path does not implicitly
+become a tree dependency.
+
+`env(NAME)` tracks one environment value. `{{env.NAME}}` interpolation also
+tracks that value automatically; the whole environment is not hashed.
+Opt in to dotenv loading with `need.env = load`: search starts beside the
+needfile and continues through its ancestors, even with `--root`. Process
+values win unless `need.env.override = true`. Use `need.env.file = .env.local`
+for another filename and `need.env.required = true` to require it.
 
 `tree(path)` does not follow symlinks by default. Use
 `tree(path, follow-symlinks=true)` to include resolved symlink contents;
@@ -169,8 +201,8 @@ Notes
 -----
 
 `need` builds file and explicitly declared directory artifacts. Use `just` for commands such as testing, running,
-or starting services. `need clean` removes `.need/` beside the discovered or
-explicitly selected needfile. `need clean --outputs-only` removes the paths
+or starting services. `need clean` removes `.need/` under the selected project root
+(the needfile directory unless `--root PATH` is supplied). `need clean --outputs-only` removes the paths
 recorded from successful builds while retaining state; `--remove-outputs` then
 removes state too. `need outputs [-0]` exposes that recorded set for other
 tools. These commands use the project lock and only act on safe project-relative
@@ -183,7 +215,12 @@ configuration, while relative targets, dependencies, recipe working directory,
 state, and logs use the selected root. Recipes and dependency expressions can
 use `{{needfile.dir}}` for checked-in helpers. `{{in}}`
 and `{{out}}` are shell-escaped; use indexed forms such as `{{in[0]}}` when
-argument order matters.
+argument order matters. Automatic input/output lists also support half-open
+slices such as `{{in[1:]}}` and `{{out[:1]}}`; user variables do not.
+
+Use `--output=MODE`, `need.output = MODE`, or per-rule `@output(MODE)` for
+`stream`, `grouped`, `log`, or `silent` output. Set `need.log.keep = N` to
+retain successful logs for `need logs TARGET`; the default is zero.
 
 Use the opt-in `@atomic` attribute when readers must never observe a
 partially written declared output. `need` substitutes same-directory

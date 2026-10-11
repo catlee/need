@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-11",
+  "model": "gpt-6-luna",
+  "reasoning": "Inherited runner default; not explicitly pinned for this smoke run",
+  "runner": "Codex collaboration subagents, fresh context per case",
+  "repository_head": "693e476b8ad9c06b2eb3aaa2d4f6757142b908be",
+  "repository_dirty": true,
+  "skill_sha256": "210b315626cca3aa960dfe5f1effa440e92f09693517e356af18d893361db9ad",
+  "binary_sha256": "5e2e4c0a5b2b0b264c9ab5f256dc889b25e54d96f607b4ee63f3cdd20f129d74",
+  "input_tokens": null,
+  "output_tokens": null,
+  "limitations": [
+    "One trial per case; no baseline comparison",
+    "Shared runtime global instructions and installed skill metadata",
+    "Tool-call and retry counts are agent-reported, not independently instrumented"
+  ],
+  "cases": {
+    "generated": {
+      "passed": true,
+      "tool_calls": 7,
+      "corrections_or_retries": 0,
+      "additional_docs_consulted": false,
+      "note": "Agent tested clean and unchanged builds; grader tested input mutations and missing outputs.",
+      "needfile": "unrelated.txt: unrelated.src\n  cp {{in}} {{out}}\n\nbuild/generated.txt: source.txt file(helper.py)\n  python helper.py generate source.txt {{out}}\n\nbuild/bundle.txt: build/generated.txt footer.txt file(helper.py)\n  python helper.py bundle build/generated.txt footer.txt {{out}}\n"
+    },
+    "environment": {
+      "passed": true,
+      "tool_calls": 6,
+      "corrections_or_retries": 0,
+      "additional_docs_consulted": false,
+      "note": "One git diff inspection failed outside a Git repository; no implementation retry.",
+      "needfile": "build/mode.txt: env(BUILD_MODE)\n  python3 helper.py env {{out}}\nunrelated.txt: unrelated.src\n  cp {{in}} {{out}}\n"
+    },
+    "atomic": {
+      "passed": true,
+      "tool_calls": 7,
+      "corrections_or_retries": 1,
+      "additional_docs_consulted": false,
+      "note": "Retried verification after using the reserved zsh variable status.",
+      "needfile": "@atomic\nbuild/first.txt build/second.txt: source.txt\n  python3 helper.py pair {{out[0]}} {{out[1]}}\n\nunrelated.txt: unrelated.src\n  cp {{in}} {{out}}\n"
+    }
+  }
+}
