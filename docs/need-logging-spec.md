@@ -359,6 +359,9 @@ In `stream` mode, output may already have appeared live and need not be repeated
 Directory output groups use normalized root paths in status lines and log
 lookup, so `previews` and `previews/` share logs. Status lines identify all roots;
 `need logs` accepts any member and selects the group's shared execution log.
+Child requests share the owner's execution log and status lines. Missing or
+unsupported member diagnostics identify the requested path and owning rule with a
+`help:` hint; successful recipe logs do not prove a requested member exists.
 Recipes receive sibling staging directories through `{{out}}` and its indexed
 forms. Validation, input-change, publication, rollback, or old-tree cleanup
 failures report the affected path and a `help:` hint and do not commit successful

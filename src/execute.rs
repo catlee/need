@@ -209,8 +209,17 @@ fn parallel_batches<T: Clone>(
 const MAX_DEPENDENCY_DEPTH: usize = 64;
 
 pub(crate) fn build(c: &mut BuildCtx, target: &str, parent: Option<&str>) -> BuildResult<()> {
-    let target = ProjectPath::new(target)?;
     let force = c.options.force && c.session.stack.is_empty();
+    build_with_force(c, target, parent, force)
+}
+
+fn build_with_force(
+    c: &mut BuildCtx,
+    target: &str,
+    parent: Option<&str>,
+    force: bool,
+) -> BuildResult<()> {
+    let target = ProjectPath::new(target)?;
     if c.session.built.contains(&target) && !force {
         return Ok(());
     }
@@ -270,6 +279,9 @@ fn build_targets_inner(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildResult
         for target in unique_targets {
             build(c, target.as_str(), None)?;
         }
+        for target in targets {
+            validate_directory_member(c, target.as_str())?;
+        }
         return Ok(());
     }
     for batch in parallel_batches(&unique_targets, c.options.jobs, |target| {
@@ -309,6 +321,9 @@ fn build_targets_inner(c: &mut BuildCtx, targets: &[ProjectPath]) -> BuildResult
             c.session.cargo_env.extend(child.session.cargo_env);
         }
     }
+    for target in targets {
+        validate_directory_member(c, target.as_str())?;
+    }
     Ok(())
 }
 
@@ -325,6 +340,14 @@ pub(crate) fn build_inner(
         c.session.built.insert(ProjectPath::new(target)?);
         return Ok(());
     };
+    if c.project.rules[id.0].kind == OutputKind::Directory
+        && !outputs.iter().any(|output| output.as_str() == target)
+    {
+        build_with_force(c, outputs[0].as_str(), None, force)?;
+        validate_directory_member(c, target)?;
+        c.session.built.insert(ProjectPath::new(target)?);
+        return Ok(());
+    }
     if let Some(stem) = &stem {
         c.session.active_patterns.push((id, stem.len()));
     }
@@ -500,6 +523,8 @@ pub(crate) fn build_inner(
                     if !parallel || !parallel_targets.contains(path) {
                         build(c, path, None).map_err(|e| required_by(e, target))?;
                     }
+                    validate_directory_member(c, path)
+                        .map_err(|e| required_by(e.into(), target))?;
                     if !generated {
                         record_cargo_dependency(c, &dependency);
                     }
@@ -1662,13 +1687,53 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
             }
         }
     }
+    let mut owners = Vec::new();
+    for (i, rule) in c
+        .project
+        .rules
+        .iter()
+        .enumerate()
+        .filter(|(_, rule)| rule.kind == OutputKind::Directory)
+    {
+        for output in &rule.outputs {
+            let candidate = Path::new(t)
+                .ancestors()
+                .skip(1)
+                .filter_map(Path::to_str)
+                .filter(|ancestor| !ancestor.is_empty())
+                .filter_map(|ancestor| {
+                    if rule.pattern {
+                        PercentPattern::new(output.as_str())
+                            .and_then(|pattern| pattern.capture(ancestor).map(str::to_owned))
+                    } else {
+                        (output.as_str() == ancestor).then(String::new)
+                    }
+                })
+                .last();
+            if let Some(stem) = candidate {
+                owners.push((i, stem));
+            }
+        }
+    }
+    owners.sort_unstable();
+    owners.dedup();
+    if owners.len() > 1 {
+        let sources = owners
+            .iter()
+            .map(|(i, _)| c.project.rules[*i].source.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!(
+            "ambiguous directory owners for {t} ({sources})\nhelp: use disjoint directory output patterns and roots"
+        ));
+    }
     let mut found = Vec::new();
     for (i, r) in c
         .project
         .rules
         .iter()
         .enumerate()
-        .filter(|(_, r)| r.pattern)
+        .filter(|(_, r)| r.pattern && (owners.is_empty() || r.kind != OutputKind::Directory))
     {
         let mut matches = Vec::new();
         for p in &r.outputs {
@@ -1714,11 +1779,54 @@ pub(crate) fn select_rule(c: &BuildCtx, t: &str) -> Result<TargetMatch> {
             outputs: o,
         });
     }
+    if let Some((i, stem)) = owners.pop() {
+        let rule = &c.project.rules[i];
+        return Ok(TargetMatch::Rule {
+            id: RuleId(i),
+            outputs: rule
+                .outputs
+                .iter()
+                .map(|output| ProjectPath::output(&output.as_str().replace('%', &stem)))
+                .collect::<Result<Vec<_>>>()?,
+            stem: rule.pattern.then_some(stem),
+        });
+    }
     if abs(c, t).is_file() {
         return Ok(TargetMatch::Source);
     }
     Err(format!("no rule to produce {t}"))
 }
+fn validate_directory_member(c: &BuildCtx, target: &str) -> Result<()> {
+    let TargetMatch::Rule { id, outputs, .. } = select_rule(c, target)? else {
+        return Ok(());
+    };
+    if c.options.dry
+        || c.project.rules[id.0].kind != OutputKind::Directory
+        || outputs.iter().any(|output| output.as_str() == target)
+    {
+        return Ok(());
+    }
+    let owner = outputs
+        .iter()
+        .find(|output| Path::new(target).starts_with(output.as_str()))
+        .ok_or_else(|| format!("no directory owner for {target}"))?;
+    let relative = Path::new(target).strip_prefix(owner.as_str()).unwrap();
+    let mut path = abs(c, owner);
+    for component in relative.components() {
+        path.push(component);
+        let metadata = fs::symlink_metadata(&path).map_err(|error| format!(
+            "{}: directory owner {owner} did not produce member {target}: {error}\nhelp: make the directory recipe produce this member or correct the requested path", c.project.rules[id.0].source))?;
+        if !metadata.is_file() && !metadata.is_dir() {
+            return Err(format!(
+                "{}: unsupported directory member {target} at {}\nhelp: request a regular file or directory without traversing symlinks",
+                c.project.rules[id.0].source,
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn is_glob(s: &str) -> bool {
     s.contains('*') || s.contains('?')
 }
@@ -1902,8 +2010,9 @@ pub(crate) fn dependency_signature(c: &mut BuildCtx, dependency: &Dependency) ->
     }
     let q = abs(c, path);
     if matches!(dependency, Dependency::File(_))
-        && let Ok(TargetMatch::Rule { id, .. }) = select_rule(c, path)
+        && let Ok(TargetMatch::Rule { id, outputs, .. }) = select_rule(c, path)
         && c.project.rules[id.0].kind == OutputKind::Directory
+        && (outputs.iter().any(|output| output.as_str() == path) || q.is_dir())
     {
         return match fs::symlink_metadata(&q) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok("MISSING".into()),

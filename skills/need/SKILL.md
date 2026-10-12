@@ -369,9 +369,20 @@ A crash during publication may leave mixed versions; recovery removes staging
 trees and reevaluates freshness.
 
 `need previews` and `need previews/` select the same artifact. A plain root
-dependency builds and fingerprints the whole tree. Child requests do not build
-the parent; `tree(...)` remains freshness-only. Directory outputs exclusively
-own their subtree, including against directory pattern ancestors. Do not declare
+dependency builds and fingerprints the whole tree.
+
+Request generated members directly or use them as plain file dependencies. Need
+builds the concrete or pattern directory owner once and validates every member,
+including siblings sharing a group. Patterns infer the outermost matching ancestor;
+competing owners fail. A trailing slash on a request does not declare a root.
+File members track content; real directory members track their subtree. Symlink
+members and traversal through symlinks are rejected. Declare the owner before a
+dependency glob to populate it on a clean checkout; globs do not invent children
+or pattern instances. Dry runs plan owners without validating members.
+`tree(...)` remains freshness-only.
+
+Directory outputs exclusively own their subtree, including against directory
+pattern ancestors. Do not declare
 overlapping outputs (including duplicate or nested roots within one group), the
 project root, `.need` trees, or symlinked parents.
 Preexisting file/symlink roots are rejected; a real unrecorded directory may be

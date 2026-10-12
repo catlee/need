@@ -176,7 +176,13 @@ validation and an input recheck, `need` publishes the whole tree atomically.
 Existing trees survive failed or interrupted recipes, and stale children disappear
 on replacement. `need previews` and `need previews/` select the same artifact.
 A plain dependency on the declared root builds it and fingerprints its complete
-tree. Child requests do not build the parent, and `tree(...)` remains freshness-only.
+tree. Request a generated child directly (`need previews/icon.png`) or use it
+as a downstream file dependency: Need builds its concrete or pattern directory
+owner, then checks that every requested member exists. File members track content;
+real directory members track their subtree. Symlink members and traversal through
+symlinks are rejected. Each pattern uses its outermost matching ancestor; competing
+owners fail. Globs do not infer missing children: depend on the owner before a
+glob to populate it on a clean checkout. `tree(...)` remains freshness-only.
 
 A rule can produce several directory trees with one generator invocation:
 

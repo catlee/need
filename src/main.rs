@@ -1173,6 +1173,172 @@ mod tests {
 
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     #[test]
+    fn directory_children_build_validate_and_fingerprint_members() {
+        for pattern in [false, true] {
+            let root = temp_project("directory-children");
+            let output = if pattern {
+                "generated/%/"
+            } else {
+                "generated/theme/"
+            };
+            let text = format!(
+                "@atomic\n{output}:\n  echo run >> runs\n  mkdir -p {{{{out}}}}/sub\n  echo member > {{{{out}}}}/sub/item\n  echo other > {{{{out}}}}/other\nconsumer: generated/theme/sub/item\n  cat {{{{in}}}} > {{{{out}}}}\n"
+            );
+            let mut ctx = context(&root, &text);
+            let targets = [
+                "generated/theme/sub/item",
+                "generated/theme/other",
+                "consumer",
+            ]
+            .map(|target| ProjectPath::new(target).unwrap());
+            build_targets(&mut ctx, &targets).unwrap();
+            assert_eq!(
+                fs::read_to_string(root.join("consumer")).unwrap(),
+                "member\n"
+            );
+            assert_eq!(fs::read_to_string(root.join("runs")).unwrap(), "run\n");
+            for jobs in [
+                Jobs::default(),
+                Jobs::Limited(std::num::NonZeroUsize::new(3).unwrap()),
+            ] {
+                ctx.options.jobs = jobs;
+                ctx.options.force = true;
+                build_targets(&mut ctx, &targets).unwrap();
+            }
+            assert_eq!(
+                fs::read_to_string(root.join("runs")).unwrap(),
+                "run\n".repeat(3)
+            );
+            ctx.options.force = true;
+            build(&mut ctx, "generated/theme/sub/item", None).unwrap();
+            assert_eq!(
+                fs::read_to_string(root.join("runs")).unwrap(),
+                "run\n".repeat(4)
+            );
+            ctx.options.force = false;
+            let file = dependency_signature(
+                &mut ctx,
+                &Dependency::File("generated/theme/sub/item".into()),
+            )
+            .unwrap();
+            let subtree =
+                dependency_signature(&mut ctx, &Dependency::File("generated/theme/sub".into()))
+                    .unwrap();
+            fs::write(root.join("generated/theme/other"), "changed").unwrap();
+            assert_eq!(
+                file,
+                dependency_signature(
+                    &mut ctx,
+                    &Dependency::File("generated/theme/sub/item".into())
+                )
+                .unwrap()
+            );
+            assert_eq!(
+                subtree,
+                dependency_signature(&mut ctx, &Dependency::File("generated/theme/sub".into()))
+                    .unwrap()
+            );
+            for jobs in [
+                Jobs::default(),
+                Jobs::Limited(std::num::NonZeroUsize::new(3).unwrap()),
+            ] {
+                for force in [false, true] {
+                    ctx.options.jobs = jobs;
+                    ctx.options.force = force;
+                    ctx.session.built.clear();
+                    let requests = ["generated/theme/sub/item", "generated/theme/missing"]
+                        .map(|target| ProjectPath::new(target).unwrap());
+                    let error = build_targets(&mut ctx, &requests).unwrap_err().to_string();
+                    assert!(
+                        error.contains("did not produce member generated/theme/missing"),
+                        "{error}"
+                    );
+                }
+            }
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_child_globs_follow_declared_order_and_validate_removed_members() {
+        let root = temp_project("directory-child-globs");
+        let text = "@atomic\ngenerated/:\n  echo item > {{out}}/item\nconsumer: generated generated/*\n  echo {{in}} > {{out}}\n";
+        let mut ctx = context(&root, text);
+        build_targets(&mut ctx, &[ProjectPath::new("consumer").unwrap()]).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.join("consumer")).unwrap(),
+            "generated generated/item\n"
+        );
+        fs::write(root.join("generated/removed"), "stale").unwrap();
+        let mut ctx = context(
+            &root,
+            "@atomic\ngenerated/:\n  echo item > {{out}}/item\nconsumer: generated/*\n  touch {{out}}\n",
+        );
+        let error = build(&mut ctx, "consumer", None).unwrap_err().to_string();
+        assert!(
+            error.contains("did not produce member generated/removed"),
+            "{error}"
+        );
+        fs::remove_dir_all(root.join("generated")).unwrap();
+        assert_eq!(
+            dependency_signature(&mut ctx, &Dependency::File("generated".into())).unwrap(),
+            "MISSING"
+        );
+        fs::write(root.join("generated"), "wrong kind").unwrap();
+        assert!(dependency_signature(&mut ctx, &Dependency::File("generated".into())).is_err());
+        fs::remove_file(root.join("generated")).unwrap();
+        std::os::unix::fs::symlink("consumer", root.join("generated")).unwrap();
+        assert!(dependency_signature(&mut ctx, &Dependency::File("generated".into())).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_children_reject_symlinks_cycles_and_ambiguous_owners() {
+        let root = temp_project("directory-child-validation");
+        fs::write(root.join("outside"), "external").unwrap();
+        let text = "@atomic\ngenerated/:\n  ln -s ../outside {{out}}/link\n  ln -s .. {{out}}/escape\n  ln -s sub/item {{out}}/internal\n  ln -s sub {{out}}/alias\n  mkdir {{out}}/sub\n  touch {{out}}/sub/item\n";
+        for target in [
+            "generated/link",
+            "generated/escape/outside",
+            "generated/internal",
+            "generated/alias/item",
+        ] {
+            let mut ctx = context(&root, text);
+            let error = build(&mut ctx, target, None).unwrap_err().to_string();
+            assert!(error.contains("without traversing symlinks"), "{error}");
+        }
+        let mut ctx = context(
+            &root,
+            "@atomic\ngenerated/: generated/sub/item\n  touch {{out}}/item\n",
+        );
+        assert!(
+            build(&mut ctx, "generated/sub/item", None)
+                .unwrap_err()
+                .to_string()
+                .contains("dependency cycle")
+        );
+        for text in [
+            "@atomic\ngenerated/%/:\n  touch {{out}}/item\n@atomic\ngenerated/%/sub/:\n  touch {{out}}/item\n",
+            "@atomic\ngenerated/%/:\n  touch {{out}}/item\n@atomic\n%/theme/:\n  touch {{out}}/item\n",
+        ] {
+            let mut ctx = context(&root, text);
+            let error = build(&mut ctx, "generated/theme/sub/item", None)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("ambiguous directory owners"), "{error}");
+        }
+        let mut ctx = context(&root, text);
+        assert!(expand_glob(&ctx, "generated/**/*.new").unwrap().is_empty());
+        assert!(!root.join("runs").exists());
+        ctx.options.dry = true;
+        build(&mut ctx, "generated/missing", None).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
     fn directory_group_force_requests_run_once_in_serial_and_parallel() {
         let root = temp_project("directory-group-force");
         let text = "@atomic\na/ b/:\n  echo run >> runs\n  touch {{out[0]}}/item {{out[1]}}/item\n";
@@ -1291,10 +1457,6 @@ mod tests {
     fn directory_group_ownership_checks_secondary_patterns_and_instantiated_siblings() {
         let root = temp_project("directory-group-owners");
         for (text, target) in [
-            (
-                "@atomic\npngs/%/ hl/%/:\n  true\nchild: hl/theme/child\n  touch {{out}}\n",
-                "child",
-            ),
             (
                 "@atomic\npngs/%/ hl/%/:\n  true\n@atomic\nhl/theme/child/:\n  true\n",
                 "hl/theme/child",
@@ -1495,7 +1657,7 @@ mod tests {
             build(&mut ctx, "out/a/b", None)
                 .unwrap_err()
                 .to_string()
-                .contains("overlaps")
+                .contains("did not produce member")
         );
         let ctx = context(&root, "@atomic\na%/:\n  true\n@atomic\n%/child/:\n  true\n");
         directory::register_outputs(

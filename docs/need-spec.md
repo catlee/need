@@ -67,6 +67,7 @@ The current implementation includes the core artifact graph, including:
 - opt-in atomic publication for declared file outputs through `@atomic`
 - explicit trailing-slash directory artifacts and all-directory output groups
   with atomic publication per tree and rollback on handled publication failure
+- child-to-owner resolution for concrete and pattern directory artifacts
 - partial declared output sets through `@allow-missing`, including persisted
   absent-output outcomes and subset cleanup
 - explicit command-output freshness probes through `command(...)`
@@ -411,9 +412,27 @@ pngs/%/ hl/%/ dist/%/: svgs/%/
 ```
 
 The root is one whole-graph artifact. Plain dependencies on the root build its
-producer and fingerprint the tree; child paths do not implicitly build the root.
-`tree(...)` stays freshness-only. Each root owns its entire subtree. Concrete
-declared, remembered, requested, and resolved outputs MUST NOT overlap a directory
+producer and fingerprint the tree.
+
+Child requests and plain file dependencies resolve concrete and pattern directory
+owners, build the whole group once, then validate every requested member. For each
+directory output pattern, the outermost matching ancestor is the owner; competing
+owners are errors. A trailing slash on a request does not declare a new root;
+only needfile outputs declare roots. Existing members still build their owner when stale. Regular
+file members use file-content fingerprints; directory members fingerprint their
+subtree. Members must be regular files or real directories, with no symlink leaf
+or symlink traversal, including links whose targets stay inside the owner.
+Whole-tree fingerprints still record raw symlink targets without following them.
+A successful owner recipe missing a requested member reports the member, owner,
+source location, and a repair hint. Dry runs plan owners without validating members.
+Dependency globs discover existing paths and declared outputs; they do not invent
+children or instantiate directory patterns. Matched children resolve their owners
+and must survive generation. Put an explicit owner dependency before a glob to
+populate it on a clean checkout. `tree(...)` remains freshness-only.
+
+Each root owns its entire subtree. Child requests are aliases, not separately
+owned outputs. Concrete declared, remembered, requested, and resolved outputs
+MUST NOT overlap a directory
 owner, including duplicate or nested roots within the same group. Disjoint
 sibling roots are allowed. Ancestors matching any member of directory patterns
 count as owners, even before an instance has built. Parallel workers share

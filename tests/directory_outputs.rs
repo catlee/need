@@ -110,7 +110,7 @@ fn recovery_removes_abandoned_directories_without_following_links() {
 }
 
 #[test]
-fn directory_destination_and_parent_symlinks_and_child_requests_are_rejected() {
+fn directory_destination_and_parent_symlinks_and_missing_children_are_rejected() {
     let root = project(RULE);
     fs::write(root.join("input"), "safe").unwrap();
     fs::write(root.join("out"), "file").unwrap();
@@ -120,7 +120,17 @@ fn directory_destination_and_parent_symlinks_and_child_requests_are_rejected() {
     assert!(!run(&root, &[]).status.success());
     fs::remove_file(root.join("out")).unwrap();
     assert!(!run(&root, &["out/child"]).status.success());
-    assert!(!root.join("out").exists());
+    assert!(root.join("out/item").is_file());
+    success(&root, &["out/item"]);
+    for options in [vec![], vec!["-j2"], vec!["--force"], vec!["-j2", "--force"]] {
+        let mut args = options;
+        args.extend(["out/item", "out/missing"]);
+        let result = run(&root, &args);
+        assert!(!result.status.success());
+        assert!(
+            String::from_utf8_lossy(&result.stderr).contains("did not produce member out/missing")
+        );
+    }
     fs::create_dir(root.join("real")).unwrap();
     symlink("real", root.join("parent")).unwrap();
     fs::write(
