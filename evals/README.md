@@ -1,8 +1,17 @@
 # Skill evals
 
-Three small authoring tasks check generated dependencies, environment freshness,
-and atomic output groups. Grade actual builds, unchanged reruns, input changes,
-deleted outputs, and failure recovery. Each task also preserves an unrelated rule.
+Four small tasks check generated dependencies, environment freshness, atomic
+output groups, and repair of an existing dependency cycle. Grade actual builds,
+unchanged reruns, input changes, deleted outputs, and failure recovery. Each task
+also preserves an unrelated rule.
+
+The cycle-repair task starts with a generator depending on its own consumer.
+The grader checks that the generator builds independently, source changes flow
+through to the bundle (even with preserved timestamps), footer changes leave the
+generator current, and the unrelated rule still responds to its input. Self-tests
+reject the original cycle and repairs that drop required dependency edges or the
+unrelated rule. This checks the submitted build behavior; it does not measure
+whether the agent used diagnostics to reach the repair.
 
 Build need, then create a fresh run directory outside this repository:
 

@@ -31,6 +31,15 @@ CASES = {
         "prompt": "Add build/bundle.txt, combining generated uppercase source.txt followed by footer.txt. Generate build/generated.txt as a separate artifact using helper.py generate INPUT OUTPUT, then combine using helper.py bundle INPUT... OUTPUT. Changes to either input must rebuild the bundle; unchanged builds must do no work. Preserve the unrelated rule.",
         "needfile": UNRELATED,
     },
+    "cycle-repair": {
+        "prompt": "Building build/bundle.txt fails. Diagnose and repair the existing needfile so the bundle contains uppercase source.txt followed by footer.txt. Keep build/generated.txt independently buildable, keep both helper invocations, and preserve the unrelated rule. Source changes must rebuild the generator and bundle; footer-only changes must rebuild only the bundle; unchanged builds must do no work.",
+        "needfile": (
+            "build/bundle.txt: build/generated.txt footer.txt\n"
+            "  python3 helper.py bundle {{in}} {{out}}\n"
+            "build/generated.txt: build/bundle.txt\n"
+            "  python3 helper.py generate source.txt {{out}}\n"
+        ) + UNRELATED,
+    },
     "environment": {
         "prompt": "Fix build/mode.txt so changes to BUILD_MODE rebuild it, while unchanged values and changes to unrelated environment variables do no work. Keep the existing helper invocation and preserve the unrelated rule.",
         "needfile": 'build/mode.txt:\n  python3 helper.py env {{out}}\n' + UNRELATED,
@@ -96,8 +105,14 @@ def check(name, submitted, binary):
 
         run("unrelated.txt")
         assert contents("unrelated.txt") == "untouched\n"
-        if name == "generated":
+        if name in ("generated", "cycle-repair"):
             target = "build/bundle.txt"
+            if name == "cycle-repair":
+                run("build/generated.txt")
+                assert contents("build/generated.txt") == "HELLO\n"
+                assert events() == "generate\n"
+                assert not (root / target).exists(), "generator built its consumer"
+                unchanged("build/generated.txt")
             run(target)
             assert contents(target) == "HELLO\nfooter\n"
             unchanged(target)
