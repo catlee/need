@@ -1,0 +1,257 @@
+{
+  "date": "2026-10-12",
+  "command": "python verify.py --lifecycle --no-dbus",
+  "base_engine_revision": "7ec65a41829902b0954f0b95ced49b19dd92a6d9",
+  "reused_commits": [
+    "4c73512b05051d6dc0b2b7245204b417c6efb174",
+    "ce0e7fed231bd35d1dee2ba69561afa9f23297cb"
+  ],
+  "need_profile": "debug",
+  "verifier_sha256": "fa92e789cc05349ee7fccae53ff0274fcf753cd8e0ebbeab7fd577ea130dc0e5",
+  "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+  "session": "headless",
+  "tools": {
+    "inkscape": "Inkscape 1.4.4 (dcaf3e7d9e, 2026-05-05)",
+    "whiskers": "catppuccin-whiskers 2.9.0",
+    "xcursorgen": "xcursorgen version 1.0.9",
+    "python": "Python 3.12.13"
+  },
+  "need_binary_sha256": "71d39c715fad6c1580fe7060a4351a09596d17ff5c3a6c27d430271de2d34515",
+  "integration_patch": {
+    "revision": "a7eb08527dcce01010fa0ec46fa2bc4c3154f0d4",
+    "sha256": "29724f64f9e6a75b489ea9c674cbc7b4e633f2e0d6b00390afa5eb06c56a16e5",
+    "applied_to_pristine": true,
+    "ledger_reproduced": true,
+    "git_numstat_verified": true,
+    "patch_drift_rejected": true
+  },
+  "mappings": {
+    "themes": 64,
+    "roots": [
+      "svgs",
+      "pngs",
+      "hl",
+      "dist"
+    ],
+    "dry_run_only": true
+  },
+  "lifecycle": {
+    "clean": {
+      "seconds": 0.043,
+      "need_recipes": 0
+    },
+    "narrow_png_target": {
+      "seconds": 63.041,
+      "need_recipes": 3
+    },
+    "reset": {
+      "seconds": 1.787,
+      "need_recipes": 0
+    },
+    "build_after_clean": {
+      "seconds": 76.725,
+      "need_recipes": 18
+    },
+    "current_build": {
+      "seconds": 10.793,
+      "need_recipes": 0
+    },
+    "source_edit": {
+      "seconds": 66.009,
+      "need_recipes": 18
+    },
+    "source_restored": {
+      "seconds": 80.803,
+      "need_recipes": 18
+    },
+    "restored_current_build": {
+      "seconds": 16.542,
+      "need_recipes": 0
+    },
+    "staged_generator_failure": {
+      "seconds": 11.291,
+      "need_recipes": 1
+    },
+    "failure_recovery": {
+      "seconds": 13.317,
+      "need_recipes": 0
+    },
+    "required_source_deletion": {
+      "seconds": 1.777,
+      "need_recipes": 1
+    },
+    "deletion_recovery": {
+      "seconds": 11.136,
+      "need_recipes": 0
+    },
+    "multi_accent_build": {
+      "seconds": 38.553,
+      "need_recipes": 1
+    },
+    "archives": {
+      "seconds": 1.418,
+      "need_recipes": 2
+    },
+    "current_archives": {
+      "seconds": 1.07,
+      "need_recipes": 0
+    },
+    "pristine_multi_accent_build": {
+      "seconds": 10.598,
+      "need_recipes": 0
+    },
+    "pristine_archives": {
+      "seconds": 1.029,
+      "need_recipes": 0
+    },
+    "focused_equivalence": {
+      "themes": 2,
+      "roots_equal": [
+        "svgs",
+        "pngs",
+        "dist",
+        "releases"
+      ],
+      "selected_hl_themes_equal": true,
+      "pristine_only_hl_entries": [
+        "catppuccin-latte-dark-cursors",
+        "catppuccin-latte-dark-cursors/manifest.hl",
+        "catppuccin-latte-flamingo-cursors",
+        "catppuccin-latte-flamingo-cursors/manifest.hl",
+        "catppuccin-latte-green-cursors",
+        "catppuccin-latte-green-cursors/manifest.hl",
+        "catppuccin-latte-lavender-cursors",
+        "catppuccin-latte-lavender-cursors/manifest.hl",
+        "catppuccin-latte-light-cursors",
+        "catppuccin-latte-light-cursors/manifest.hl",
+        "catppuccin-latte-maroon-cursors",
+        "catppuccin-latte-maroon-cursors/manifest.hl",
+        "catppuccin-latte-peach-cursors",
+        "catppuccin-latte-peach-cursors/manifest.hl",
+        "catppuccin-latte-pink-cursors",
+        "catppuccin-latte-pink-cursors/manifest.hl",
+        "catppuccin-latte-red-cursors",
+        "catppuccin-latte-red-cursors/manifest.hl",
+        "catppuccin-latte-rosewater-cursors",
+        "catppuccin-latte-rosewater-cursors/manifest.hl",
+        "catppuccin-latte-sapphire-cursors",
+        "catppuccin-latte-sapphire-cursors/manifest.hl",
+        "catppuccin-latte-sky-cursors",
+        "catppuccin-latte-sky-cursors/manifest.hl",
+        "catppuccin-latte-teal-cursors",
+        "catppuccin-latte-teal-cursors/manifest.hl",
+        "catppuccin-latte-yellow-cursors",
+        "catppuccin-latte-yellow-cursors/manifest.hl"
+      ]
+    }
+  },
+  "failure_assertions": {
+    "staged_write_preserved_published_roots_and_state": true,
+    "required_source_deletion_preserved_published_roots_and_state": true,
+    "state_snapshotted_immediately_before_each_probe": true
+  },
+  "ledger": {
+    "production": {
+      "before": {
+        "total": 2317,
+        "nonblank_noncomment": 2197
+      },
+      "after": {
+        "total": 2286,
+        "nonblank_noncomment": 2183
+      },
+      "deleted": {
+        "total": 132,
+        "nonblank_noncomment": 108
+      },
+      "added": {
+        "total": 101,
+        "nonblank_noncomment": 94
+      },
+      "net_code_removed": {
+        "total": 31,
+        "nonblank_noncomment": 14
+      }
+    },
+    "setup": {
+      "before": {
+        "total": 0,
+        "nonblank_noncomment": 0
+      },
+      "after": {
+        "total": 17,
+        "nonblank_noncomment": 15
+      },
+      "deleted": {
+        "total": 0,
+        "nonblank_noncomment": 0
+      },
+      "added": {
+        "total": 17,
+        "nonblank_noncomment": 15
+      },
+      "net_code_removed": {
+        "total": -17,
+        "nonblank_noncomment": -15
+      }
+    },
+    "verification": {
+      "before": {
+        "total": 0,
+        "nonblank_noncomment": 0
+      },
+      "after": {
+        "total": 577,
+        "nonblank_noncomment": 547
+      },
+      "deleted": {
+        "total": 0,
+        "nonblank_noncomment": 0
+      },
+      "added": {
+        "total": 577,
+        "nonblank_noncomment": 547
+      },
+      "net_code_removed": {
+        "total": -577,
+        "nonblank_noncomment": -547
+      }
+    },
+    "combined": {
+      "before": {
+        "total": 2317,
+        "nonblank_noncomment": 2197
+      },
+      "after": {
+        "total": 2880,
+        "nonblank_noncomment": 2745
+      },
+      "deleted": {
+        "total": 132,
+        "nonblank_noncomment": 108
+      },
+      "added": {
+        "total": 695,
+        "nonblank_noncomment": 656
+      },
+      "net_code_removed": {
+        "total": -563,
+        "nonblank_noncomment": -548
+      }
+    }
+  },
+  "project_wide_savings_proven": false,
+  "checks": [
+    "just format",
+    "just check: 157 unit tests, 62 integration tests, formatting, Clippy",
+    "ruff check and format --check",
+    "python -m py_compile",
+    "bash -n build scripts/build-cursors scripts/create_zips"
+  ],
+  "limitations": [
+    "Nix unavailable; neither architecture evaluated or built.",
+    "Production plus delivered setup removes 14 physical lines but adds one nonblank line.",
+    "Two-theme hl roots differ by 14 unrendered theme directories and manifests, listed above.",
+    "No fresh full 64-theme comparison, renderer-size experiment, interruption probe or speedup claim. Historical records remain separate."
+  ]
+}

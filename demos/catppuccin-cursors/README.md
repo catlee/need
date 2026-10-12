@@ -99,7 +99,7 @@ python3 verify.py --lifecycle
 python3 verify.py --equivalence
 ```
 
-`--ledger-only` checks patch application, line accounting and all 64 theme mappings. `--lifecycle` checks a narrow request, an unchanged build, an SVG edit that changes rendered PNG bytes, restoration, multi-accent arguments and cached archives. `--equivalence` applies the patch to a disposable pinned checkout, builds all themes and archives with both workflows, and compares their five public output inventories. It does not depend on the generated files in your demo checkout.
+`--ledger-only` checks patch application, line accounting and all 64 theme mappings. `--lifecycle` checks a narrow request, an unchanged build, an SVG edit that changes rendered PNG bytes, restoration, staged generator failure, required-source deletion, multi-accent arguments, cached archives and equivalence with pristine upstream for the requested two themes (including archives). Pristine also emits unused `hl` manifests for the other 14 accents; the verifier records that inventory difference. `--equivalence` applies the patch to a disposable pinned checkout, builds all themes and archives with both workflows, and compares their five public output inventories. It does not depend on the generated files in your demo checkout.
 
 Set `NEED=/absolute/path/to/need` to verify another binary. By default, verification uses `dbus-run-session`. For headless use without a session bus, pass `--no-dbus` and set `DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/need-no-session-bus`.
 

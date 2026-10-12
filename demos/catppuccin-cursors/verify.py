@@ -82,16 +82,16 @@ def inventory(root):
     return result
 
 
-def lifecycle(root):
+def lifecycle(root, pristine):
     theme = "catppuccin-latte-mauve-cursors"
     env = ENV | {"PATH": f"{NEED.parent}:{ENV['PATH']}"}
     results = {}
 
-    def run(name, args):
+    def run(name, args, directory=root, failure=None):
         start = time.perf_counter()
         process = subprocess.run(
             [*SESSION, *args],
-            cwd=root,
+            cwd=directory,
             env=env,
             capture_output=True,
             text=True,
@@ -102,7 +102,9 @@ def lifecycle(root):
             "seconds": round(time.perf_counter() - start, 3),
             "need_recipes": output.count("[need]"),
         }
-        if process.returncode:
+        if failure:
+            assert process.returncode and failure in output, output
+        elif process.returncode:
             raise RuntimeError(
                 f"{name} failed:\n" + "\n".join(output.splitlines()[-12:])
             )
@@ -134,12 +136,69 @@ def lifecycle(root):
     run("restored_current_build", build)
     assert results["restored_current_build"]["need_recipes"] == 0
 
+    outputs = [root / name / theme for name in ("pngs", "hl", "dist")]
+    before_failure = [inventory(path) for path in outputs]
+    state = (root / ".need/state.json").read_bytes()
+    helper = root / "scripts/build-cursors"
+    original_helper = helper.read_bytes()
+    marker = b"# Generate pixmaps"
+    assert original_helper.count(marker) == 1
+    try:
+        helper.write_bytes(
+            original_helper.replace(
+                marker, b'touch "$BUILD_DIR/failure-marker"\nexit 42\n' + marker
+            )
+        )
+        run("staged_generator_failure", build, failure="failed")
+        assert before_failure == [inventory(path) for path in outputs]
+        assert state == (root / ".need/state.json").read_bytes()
+    finally:
+        helper.write_bytes(original_helper)
+    run("failure_recovery", build)
+    assert results["failure_recovery"]["need_recipes"] == 0
+
+    state = (root / ".need/state.json").read_bytes()
+    missing = root / "src/svgs/wait-12.svg"
+    missing_bytes = missing.read_bytes()
+    try:
+        missing.unlink()
+        run("required_source_deletion", build, failure="Failed to open file")
+        assert before_failure == [inventory(path) for path in outputs]
+        assert state == (root / ".need/state.json").read_bytes()
+    finally:
+        missing.write_bytes(missing_bytes)
+    run("deletion_recovery", build)
+
     run("multi_accent_build", ["just", "build", "latte", "mauve blue"])
     assert (root / "dist/catppuccin-latte-blue-cursors").is_dir()
     run("archives", ["just", "zip"])
     assert len(list((root / "releases").glob("*.zip"))) == 2
     run("current_archives", ["just", "zip"])
     assert results["current_archives"]["need_recipes"] == 0
+    run(
+        "pristine_multi_accent_build",
+        ["just", "build", "latte", "mauve blue"],
+        pristine,
+    )
+    run("pristine_archives", ["just", "zip"], pristine)
+    roots = ("svgs", "pngs", "dist", "releases")
+    for name in roots:
+        assert inventory(root / name) == inventory(pristine / name), name
+    for accent in ("mauve", "blue"):
+        selected = f"catppuccin-latte-{accent}-cursors"
+        assert inventory(root / "hl" / selected) == inventory(
+            pristine / "hl" / selected
+        )
+    extra = sorted(set(inventory(pristine / "hl")) - set(inventory(root / "hl")))
+    assert len(extra) == 28 and all(
+        name.endswith(("-cursors", "/manifest.hl")) for name in extra
+    ), extra
+    results["focused_equivalence"] = {
+        "themes": 2,
+        "roots_equal": list(roots),
+        "selected_hl_themes_equal": True,
+        "pristine_only_hl_entries": extra,
+    }
     return results
 
 
@@ -268,7 +327,7 @@ def ledger(before, after, patch=DEMO / "upstream.patch"):
             assert (
                 row["after"][metric]
                 == row["before"][metric] - row["deleted"][metric] + row["added"][metric]
-            )
+            ), (filename, metric, row)
         if filename in changes:
             difference = subprocess.run(
                 [
@@ -353,9 +412,10 @@ def ledger(before, after, patch=DEMO / "upstream.patch"):
             ],
         },
         "partial_conversion": False,
-        "project_wide_savings_proven": summaries["project"]["production"][
-            "net_code_removed"
-        ]["nonblank_noncomment"]
+        "project_wide_savings_proven": sum(
+            summaries["project"][category]["net_code_removed"]["nonblank_noncomment"]
+            for category in ("production", "setup")
+        )
         > 0,
     }
 
@@ -390,12 +450,17 @@ if __name__ == "__main__":
             source.extractall(before, filter="data")
         root = temporary / "integration with spaces"
         shutil.copytree(before, root)
-        subprocess.run(["git", "apply", "--check", str(patch)], cwd=root, check=True)
-        subprocess.run(["git", "apply", str(patch)], cwd=root, check=True)
+        # Apply outside repository discovery, including when TMPDIR is in this checkout.
+        subprocess.run(
+            ["git", "--git-dir=", "apply", "--check", str(patch)], cwd=root, check=True
+        )
+        subprocess.run(["git", "--git-dir=", "apply", str(patch)], cwd=root, check=True)
         first = ledger(before, root)
         repeated = temporary / "second integration"
         shutil.copytree(before, repeated)
-        subprocess.run(["git", "apply", str(patch)], cwd=repeated, check=True)
+        subprocess.run(
+            ["git", "--git-dir=", "apply", str(patch)], cwd=repeated, check=True
+        )
         assert inventory(root) == inventory(repeated)
         assert first == ledger(before, repeated), "freshly reapplied ledger must agree"
         drift = temporary / "upstream drift"
@@ -403,7 +468,7 @@ if __name__ == "__main__":
         helper = drift / "scripts/build-cursors"
         helper.write_text(helper.read_text().replace("FRAME_TIME=30", "FRAME_TIME=31"))
         rejected = subprocess.run(
-            ["git", "apply", "--check", str(patch)],
+            ["git", "--git-dir=", "apply", "--check", str(patch)],
             cwd=drift,
             capture_output=True,
             text=True,
@@ -460,7 +525,7 @@ if __name__ == "__main__":
             "dry_run_only": True,
         }
         if "--lifecycle" in sys.argv:
-            RESULTS["lifecycle"] = lifecycle(root)
+            RESULTS["lifecycle"] = lifecycle(root, before)
             (DEMO / "evidence.json").write_text(json.dumps(RESULTS, indent=2) + "\n")
             print(
                 "One-theme lifecycle checks passed; evidence.json contains measurements."
