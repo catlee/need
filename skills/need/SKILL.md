@@ -378,7 +378,9 @@ competing owners fail. A trailing slash on a request does not declare a root.
 File members track content; real directory members track their subtree. Symlink
 members and traversal through symlinks are rejected. Declare the owner before a
 dependency glob to populate it on a clean checkout; globs do not invent children
-or pattern instances. Dry runs plan owners without validating members.
+or pattern instances. Globs refresh membership after discovered owners finish,
+including newly generated children and omitting removed ones. Dry runs plan owners
+without validating members.
 `tree(...)` remains freshness-only.
 
 Directory outputs exclusively own their subtree, including against directory

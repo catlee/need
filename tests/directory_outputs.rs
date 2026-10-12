@@ -37,6 +37,25 @@ fn success(root: &Path, args: &[&str]) -> Output {
 const RULE: &str = "@atomic\nout/: input\n  cp {{in}} {{out}}/item\n  mkdir {{out}}/empty\n";
 
 #[test]
+fn child_glob_refreshes_added_and_removed_members_across_invocations() {
+    let root = project(
+        "@atomic\ngenerated/: source\n  cp source {{out}}/a; if grep -q two source; then echo B > {{out}}/b; fi\nconsumer: generated/*\n  echo run >> runs\n  cat {{in}} > {{out}}\n",
+    );
+    fs::write(root.join("source"), "one\n").unwrap();
+    success(&root, &["generated", "consumer"]);
+    for (source, expected) in [("two\n", "two\nB\n"), ("one\n", "one\n")] {
+        fs::write(root.join("source"), source).unwrap();
+        success(&root, &["consumer"]);
+        assert_eq!(fs::read_to_string(root.join("consumer")).unwrap(), expected);
+        let runs = fs::read(root.join("runs")).unwrap();
+        let cached = success(&root, &["consumer"]);
+        assert!(String::from_utf8_lossy(&cached.stderr).contains("nothing to do"));
+        assert_eq!(fs::read(root.join("runs")).unwrap(), runs);
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn initial_and_existing_publication_replace_whole_tree_and_record_only_root() {
     let root = project(RULE);
     fs::write(root.join("input"), "new").unwrap();

@@ -426,9 +426,10 @@ Whole-tree fingerprints still record raw symlink targets without following them.
 A successful owner recipe missing a requested member reports the member, owner,
 source location, and a repair hint. Dry runs plan owners without validating members.
 Dependency globs discover existing paths and declared outputs; they do not invent
-children or instantiate directory patterns. Matched children resolve their owners
-and must survive generation. Put an explicit owner dependency before a glob to
-populate it on a clean checkout. `tree(...)` remains freshness-only.
+children or instantiate directory patterns. Existing matches discover directory
+owners, which finish before the glob is expanded again for recipe inputs and
+freshness. Children added by generation are included; removed children are omitted.
+Put an explicit owner dependency before a glob to populate it on a clean checkout. `tree(...)` remains freshness-only.
 
 Each root owns its entire subtree. Child requests are aliases, not separately
 owned outputs. Concrete declared, remembered, requested, and resolved outputs

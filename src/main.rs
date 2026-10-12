@@ -1261,7 +1261,7 @@ mod tests {
 
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     #[test]
-    fn directory_child_globs_follow_declared_order_and_validate_removed_members() {
+    fn directory_child_globs_follow_declared_order_and_drop_removed_members() {
         let root = temp_project("directory-child-globs");
         let text = "@atomic\ngenerated/:\n  echo item > {{out}}/item\nconsumer: generated generated/*\n  echo {{in}} > {{out}}\n";
         let mut ctx = context(&root, text);
@@ -1275,11 +1275,8 @@ mod tests {
             &root,
             "@atomic\ngenerated/:\n  echo item > {{out}}/item\nconsumer: generated/*\n  touch {{out}}\n",
         );
-        let error = build(&mut ctx, "consumer", None).unwrap_err().to_string();
-        assert!(
-            error.contains("did not produce member generated/removed"),
-            "{error}"
-        );
+        build(&mut ctx, "consumer", None).unwrap();
+        assert!(!root.join("generated/removed").exists());
         fs::remove_dir_all(root.join("generated")).unwrap();
         assert_eq!(
             dependency_signature(&mut ctx, &Dependency::File("generated".into())).unwrap(),
@@ -1291,6 +1288,46 @@ mod tests {
         std::os::unix::fs::symlink("consumer", root.join("generated")).unwrap();
         assert!(dependency_signature(&mut ctx, &Dependency::File("generated".into())).is_err());
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    #[test]
+    fn directory_child_globs_refresh_recipe_inputs_after_owner_rebuilds() {
+        for output in ["generated/", "generated/%/"] {
+            let root = temp_project("directory-child-glob-refresh");
+            let directory = if output.contains('%') {
+                "generated/theme"
+            } else {
+                "generated"
+            };
+            let text = format!(
+                "@atomic\n{output}: source\n  cp source {{{{out}}}}/a; if grep -q two source; then echo B > {{{{out}}}}/b; fi\nconsumer: {directory}/*\n  echo run >> runs\n  cat {{{{in}}}} > {{{{out}}}}\n"
+            );
+            fs::write(root.join("source"), "one\n").unwrap();
+            let mut ctx = context(&root, &text);
+            build_targets(
+                &mut ctx,
+                &[
+                    ProjectPath::new(directory).unwrap(),
+                    ProjectPath::new("consumer").unwrap(),
+                ],
+            )
+            .unwrap();
+            assert_eq!(fs::read_to_string(root.join("consumer")).unwrap(), "one\n");
+            for (source, expected) in [("two\n", "two\nB\n"), ("one\n", "one\n")] {
+                fs::write(root.join("source"), source).unwrap();
+                ctx.session.built.clear();
+                build_targets(&mut ctx, &[ProjectPath::new("consumer").unwrap()]).unwrap();
+                assert_eq!(fs::read_to_string(root.join("consumer")).unwrap(), expected);
+                let runs = fs::read(root.join("runs")).unwrap();
+                ctx.session.built.clear();
+                ctx.session.work_needed.store(false, Ordering::Relaxed);
+                build_targets(&mut ctx, &[ProjectPath::new("consumer").unwrap()]).unwrap();
+                assert!(!ctx.session.work_needed.load(Ordering::Relaxed));
+                assert_eq!(fs::read(root.join("runs")).unwrap(), runs);
+            }
+            fs::remove_dir_all(root).unwrap();
+        }
     }
 
     #[cfg(all(target_os = "linux", target_env = "gnu"))]

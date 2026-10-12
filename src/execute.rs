@@ -496,6 +496,24 @@ pub(crate) fn build_inner(
         let resolved: Vec<Dependency> = if let Dependency::File(path) = dependency
             && is_glob(path)
         {
+            let mut owners = HashSet::new();
+            loop {
+                let mut pending = Vec::new();
+                for member in expand_glob(c, path)? {
+                    if let TargetMatch::Rule { id, outputs, .. } = select_rule(c, &member)?
+                        && c.project.rules[id.0].kind == OutputKind::Directory
+                        && owners.insert(group_key(&outputs))
+                    {
+                        pending.push(outputs[0].clone());
+                    }
+                }
+                if pending.is_empty() {
+                    break;
+                }
+                for owner in pending {
+                    build(c, owner.as_str(), None).map_err(|e| required_by(e, target))?;
+                }
+            }
             expand_glob(c, path)?
                 .into_iter()
                 .map(Dependency::File)
