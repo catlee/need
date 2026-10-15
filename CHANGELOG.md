@@ -6,6 +6,37 @@ All notable changes to `need` are documented here.
 
 ## [Unreleased] - ReleaseDate
 
+## [0.1.2](https://github.com/catlee/need/compare/v0.1.1...v0.1.2) - 2026-10-15
+
+### Added
+
+- resolve directory children through owning artifacts
+- *(cli)* bundle agent skill and add behavioral evals
+- track executable tool dependencies and explicit probes
+- support directory output groups with a cursor demo
+- report when all targets are up to date
+- add atomic directory artifacts
+- implement stat filesystem metadata dependencies
+- *(tree)* support repeated exact path exclusions
+- *(get)* support inline artifact recipes
+
+### Fixed
+
+- refresh child globs after directory owners build
+- *(parser)* preserve shell quoting in command probes
+- *(resolve)* terminate recursive pattern expansion
+
+### Other
+
+- *(deps)* bump signal-hook from 0.4.4 to 0.4.5
+- *(deps)* bump serde_json from 1.0.151 to 1.0.154
+- *(demo)* verify cursor lifecycle and scoped equivalence
+- *(demo)* validate renderer maintenance workflow
+- *(demo)* simplify cursor artifact orchestration
+- *(evals)* cover dependency cycle repair
+- cache directory hashes and coalesce shared builds
+- describe implemented stat dependencies in needfile guide
+
 ## [0.1.1](https://github.com/catlee/need/compare/v0.1.0...v0.1.1) - 2026-09-24
 
 ### Added
